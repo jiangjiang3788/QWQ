@@ -1,0 +1,19 @@
+V15.9 AI Request Runtime stabilization and diagnostics
+
+V15.7
+- Remaining reachable AI generation calls were reviewed and more direct calls were routed through OVOAIRequestRuntime.
+- GPT image, NovelAI image, legacy call generation/summary, and journal generation now carry explicit task/source diagnostics.
+- Main private-chat requests now include a source label and short duplicate-submit protection.
+
+V15.8
+- Added bounded concurrency (maximum 6 active requests) with a visible queue.
+- Added task-aware default timeouts, active/queued cancellation, and cancel-all support.
+- Streaming responses remain registered until their response body finishes, so cancellation and completion timing work after headers arrive.
+- Added optional dedupe keys without changing callers that do not opt in.
+
+V15.9
+- Diagnostics now record lifecycle phase, queue wait, first-byte time, response bytes, timeout, sanitized endpoint, cancel reason, and active/queued counts.
+- Proment adds cancel-all and clear-request-diagnostics controls.
+- Session diagnostic history increased to 30 records; the UI shows the latest 12.
+
+No Prompt templates, response parsers, database schema, Git settings, QuickDock layout, world-book selection, structured profile data, or vector-memory ownership were changed.

@@ -1,0 +1,485 @@
+// --- 聊天辅助功能模块 ---
+
+// 辅助功能
+function setupVoiceMessageSystem() {
+    const voiceMessageBtn = document.getElementById('voice-message-btn');
+    const sendVoiceForm = document.getElementById('send-voice-form');
+    const sendVoiceModal = document.getElementById('send-voice-modal');
+    const voiceDurationPreview = document.getElementById('voice-duration-preview');
+    const voiceTextInput = document.getElementById('voice-text-input');
+
+    voiceMessageBtn.addEventListener('click', () => {
+        sendVoiceForm.reset();
+        voiceDurationPreview.textContent = '0"';
+        sendVoiceModal.classList.add('visible');
+    });
+    sendVoiceForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendMyVoiceMessage(voiceTextInput.value.trim());
+    });
+}
+
+function sendMyVoiceMessage(text) {
+    if (!text) return;
+    document.getElementById('send-voice-modal').classList.remove('visible');
+    setTimeout(() => {
+        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        if (!chat.history) chat.history = [];
+
+        // --- 添加时间感知逻辑 ---
+        if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
+            const now = new Date();
+            const lastMessageTime = chat.lastUserMessageTimestamp;
+            if (lastMessageTime) {
+                const timeGap = now.getTime() - lastMessageTime;
+                const thirtyMinutes = 30 * 60 * 1000;
+
+                if (timeGap > thirtyMinutes) {
+                    const displayContent = `[system-display:距离上次聊天已经过去 ${formatTimeGap(timeGap)}]`;
+                    const visualMessage = {
+                        id: `msg_visual_timesense_${Date.now()}`,
+                        role: 'system',
+                        content: displayContent,
+                        parts: [],
+                        timestamp: now.getTime() - 2
+                    };
+
+                    if (currentChatType === 'group') {
+                        visualMessage.senderId = 'user_me';
+                    }
+
+                    chat.history.push(visualMessage);
+                    addMessageBubble(visualMessage, currentChatId, currentChatType);
+                }
+            }
+            chat.lastUserMessageTimestamp = now.getTime();
+        }
+        // ----------------------
+
+        const myName = (currentChatType === 'private') ? chat.myName : chat.me.nickname;
+        const content = `[${myName}的语音：${text}]`;
+        const message = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: content,
+            parts: [{type: 'text', text: content}],
+            timestamp: Date.now()
+        };
+        if (currentChatType === 'group') {
+            message.senderId = 'user_me';
+        }
+        chat.history.push(message);
+        addMessageBubble(message, currentChatId, currentChatType);
+        saveCurrentChat();
+        renderChatList();
+    }, 100);
+}
+
+function setupPhotoVideoSystem() {
+    const photoVideoBtn = document.getElementById('photo-video-btn');
+    const sendPvForm = document.getElementById('send-pv-form');
+    const sendPvModal = document.getElementById('send-pv-modal');
+    const pvTextInput = document.getElementById('pv-text-input');
+
+    photoVideoBtn.addEventListener('click', () => {
+        sendPvForm.reset();
+        sendPvModal.classList.add('visible');
+    });
+    sendPvForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendMyPhotoVideo(pvTextInput.value.trim());
+    });
+}
+
+function sendMyPhotoVideo(text) {
+    if (!text) return;
+    document.getElementById('send-pv-modal').classList.remove('visible');
+    setTimeout(() => {
+        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        if (!chat.history) chat.history = [];
+
+        // --- 添加时间感知逻辑 ---
+        if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
+            const now = new Date();
+            const lastMessageTime = chat.lastUserMessageTimestamp;
+            if (lastMessageTime) {
+                const timeGap = now.getTime() - lastMessageTime;
+                const thirtyMinutes = 30 * 60 * 1000;
+
+                if (timeGap > thirtyMinutes) {
+                    const displayContent = `[system-display:距离上次聊天已经过去 ${formatTimeGap(timeGap)}]`;
+                    const visualMessage = {
+                        id: `msg_visual_timesense_${Date.now()}`,
+                        role: 'system',
+                        content: displayContent,
+                        parts: [],
+                        timestamp: now.getTime() - 2
+                    };
+
+                    if (currentChatType === 'group') {
+                        visualMessage.senderId = 'user_me';
+                    }
+
+                    chat.history.push(visualMessage);
+                    addMessageBubble(visualMessage, currentChatId, currentChatType);
+                }
+            }
+            chat.lastUserMessageTimestamp = now.getTime();
+        }
+        // ----------------------
+
+        const myName = (currentChatType === 'private') ? chat.myName : chat.me.nickname;
+        const content = `[${myName}发来的照片\/视频：${text}]`;
+        const message = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: content,
+            parts: [{type: 'text', text: content}],
+            timestamp: Date.now()
+        };
+        if (currentChatType === 'group') {
+            message.senderId = 'user_me';
+        }
+        chat.history.push(message);
+        addMessageBubble(message, currentChatId, currentChatType);
+        saveCurrentChat();
+        renderChatList();
+    }, 100);
+}
+
+function setupImageRecognition() {
+    const imageRecognitionBtn = document.getElementById('image-recognition-btn');
+    const imageUploadInput = document.getElementById('image-upload-input');
+
+    imageRecognitionBtn.addEventListener('click', () => {
+        imageUploadInput.click();
+    });
+    imageUploadInput.addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const opts = { quality: 0.8, maxWidth: 1024, maxHeight: 1024 };
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const compressedUrl = await compressImage(file, opts);
+                    sendImageForRecognition(compressedUrl);
+                } catch (err) {
+                    console.error('Image compression failed:', err);
+                    showToast(`第 ${i + 1} 张图片处理失败，请重试`);
+                }
+            }
+            if (files.length > 1) {
+                showToast(`已发送 ${files.length} 张图片`);
+            }
+        } finally {
+            e.target.value = null;
+        }
+    });
+}
+
+function setupCameraCapture() {
+    const cameraCaptureBtn = document.getElementById('camera-capture-btn');
+    const cameraUploadInput = document.getElementById('camera-upload-input');
+    if (!cameraCaptureBtn || !cameraUploadInput) return;
+
+    cameraCaptureBtn.addEventListener('click', () => {
+        cameraUploadInput.click();
+    });
+    cameraUploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                const compressedUrl = await compressImage(file, {
+                    quality: 0.8,
+                    maxWidth: 1024,
+                    maxHeight: 1024
+                });
+                sendImageForRecognition(compressedUrl);
+            } catch (error) {
+                console.error('Image compression failed:', error);
+                showToast('图片处理失败，请重试');
+            } finally {
+                e.target.value = null;
+            }
+        }
+    });
+}
+
+async function sendImageForRecognition(base64Data) {
+    if (!base64Data || isGenerating) return;
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    if (!chat.history) chat.history = [];
+
+    // --- 添加时间感知逻辑 ---
+    if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
+        const now = new Date();
+        const lastMessageTime = chat.lastUserMessageTimestamp;
+        if (lastMessageTime) {
+            const timeGap = now.getTime() - lastMessageTime;
+            const thirtyMinutes = 30 * 60 * 1000;
+
+            if (timeGap > thirtyMinutes) {
+                const displayContent = `[system-display:距离上次聊天已经过去 ${formatTimeGap(timeGap)}]`;
+                const visualMessage = {
+                    id: `msg_visual_timesense_${Date.now()}`,
+                    role: 'system',
+                    content: displayContent,
+                    parts: [],
+                    timestamp: now.getTime() - 2
+                };
+
+                if (currentChatType === 'group') {
+                    visualMessage.senderId = 'user_me';
+                }
+
+                chat.history.push(visualMessage);
+                addMessageBubble(visualMessage, currentChatId, currentChatType);
+            }
+        }
+        chat.lastUserMessageTimestamp = now.getTime();
+    }
+    // ----------------------
+
+    const myName = (currentChatType === 'private') ? chat.myName : chat.me.nickname;
+    const textPrompt = `[${myName}发来了一张图片：]`;
+    const message = {
+        id: `msg_${Date.now()}`,
+        role: 'user',
+        content: base64Data,
+        parts: [{type: 'text', text: textPrompt}, {type: 'image', data: base64Data}],
+        timestamp: Date.now(),
+    };
+    if (currentChatType === 'group') {
+        message.senderId = 'user_me';
+    }
+    chat.history.push(message);
+    addMessageBubble(message, currentChatId, currentChatType);
+    await saveCurrentChat();
+    renderChatList();
+}
+
+// V10.4: wallet, transfer, family-card and gift action runtime removed.
+
+function setupLocationSystem() {
+    const locationBtn = document.getElementById('location-btn');
+    const sendLocationModal = document.getElementById('send-location-modal');
+    const sendLocationForm = document.getElementById('send-location-form');
+    const locationPlaceInput = document.getElementById('location-place-input');
+    const locationDistanceInput = document.getElementById('location-distance-input');
+    const locationUnitSelect = document.getElementById('location-unit-select');
+
+    if (!locationBtn || !sendLocationForm) return;
+
+    locationBtn.addEventListener('click', () => {
+        sendLocationForm.reset();
+        sendLocationModal.classList.add('visible');
+    });
+    sendLocationModal.addEventListener('click', (e) => {
+        if (e.target === sendLocationModal) sendLocationModal.classList.remove('visible');
+    });
+    sendLocationForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const place = (locationPlaceInput.value || '').trim();
+        if (!place) {
+            if (typeof showToast === 'function') showToast('请输入当前位置');
+            return;
+        }
+        const distanceNum = (locationDistanceInput.value || '').trim();
+        const unit = (locationUnitSelect && locationUnitSelect.value) || '千米';
+        let content = `[我的位置：${place}`;
+        if (distanceNum && !isNaN(parseFloat(distanceNum))) {
+            content += `；距你约 ${distanceNum}${unit}`;
+        }
+        content += ']';
+        sendMyLocation(content);
+    });
+}
+
+function sendMyLocation(content) {
+    document.getElementById('send-location-modal').classList.remove('visible');
+    setTimeout(() => {
+        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        if (!chat) return;
+        if (!chat.history) chat.history = [];
+
+        // --- 添加时间感知逻辑 ---
+        if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
+            const now = new Date();
+            const lastMessageTime = chat.lastUserMessageTimestamp;
+            if (lastMessageTime) {
+                const timeGap = now.getTime() - lastMessageTime;
+                const thirtyMinutes = 30 * 60 * 1000;
+
+                if (timeGap > thirtyMinutes) {
+                    const displayContent = `[system-display:距离上次聊天已经过去 ${formatTimeGap(timeGap)}]`;
+                    const visualMessage = {
+                        id: `msg_visual_timesense_${Date.now()}`,
+                        role: 'system',
+                        content: displayContent,
+                        parts: [],
+                        timestamp: now.getTime() - 2
+                    };
+
+                    if (currentChatType === 'group') {
+                        visualMessage.senderId = 'user_me';
+                    }
+
+                    chat.history.push(visualMessage);
+                    addMessageBubble(visualMessage, currentChatId, currentChatType);
+                }
+            }
+            chat.lastUserMessageTimestamp = now.getTime();
+        }
+        // ----------------------
+
+        const message = {
+            id: `msg_${Date.now()}`,
+            role: 'user',
+            content: content,
+            parts: [{ type: 'text', text: content }],
+            timestamp: Date.now()
+        };
+        if (currentChatType === 'group') {
+            message.senderId = 'user_me';
+        }
+        chat.history.push(message);
+        addMessageBubble(message, currentChatId, currentChatType);
+        saveCurrentChat();
+        renderChatList();
+    }, 100);
+}
+
+function setupTimeSkipSystem() {
+    const timeSkipBtn = document.getElementById('time-skip-btn');
+    const timeSkipModal = document.getElementById('time-skip-modal');
+    const timeSkipForm = document.getElementById('time-skip-form');
+    const timeSkipInput = document.getElementById('time-skip-input');
+
+    timeSkipBtn.addEventListener('click', () => {
+        timeSkipForm.reset();
+        timeSkipModal.classList.add('visible');
+    });
+    timeSkipModal.addEventListener('click', (e) => {
+        if (e.target === timeSkipModal) timeSkipModal.classList.remove('visible');
+    });
+    timeSkipForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendTimeSkipMessage(timeSkipInput.value.trim());
+    });
+}
+
+async function sendTimeSkipMessage(text) {
+    if (!text) return;
+    document.getElementById('time-skip-modal').classList.remove('visible');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+    if (!chat) return;
+
+    const visualMessage = {
+        id: `msg_visual_${Date.now()}`,
+        role: 'system',
+        content: `[system-display:${text}]`,
+        parts: [],
+        timestamp: Date.now()
+    };
+    const contextMessage = {
+        id: `msg_context_${Date.now()}`,
+        role: 'user',
+        content: `[system: ${text}]`,
+        parts: [{type: 'text', text: `[system: ${text}]`}],
+        timestamp: Date.now()
+    };
+    if (currentChatType === 'group') {
+        contextMessage.senderId = 'user_me';
+        visualMessage.senderId = 'user_me';
+    }
+
+    chat.history.push(visualMessage, contextMessage);
+    addMessageBubble(visualMessage, currentChatId, currentChatType);
+    await saveCurrentChat();
+    renderChatList();
+}
+
+const AudioManager = {
+    _audio: null,
+    
+    get audio() {
+        if (!this._audio) {
+            this._audio = new Audio();
+            this._audio.addEventListener('ended', () => {
+                if (typeof window.resumeMusicPlayback === 'function') {
+                    window.resumeMusicPlayback();
+                }
+            });
+            this._audio.addEventListener('error', (e) => {
+                console.warn('Audio Object Error:', e);
+            });
+        }
+        return this._audio;
+    },
+
+    play(source) {
+        if (!source) return;
+        const a = this.audio;
+        
+        // 如果当前正在播放且源相同，可以重置进度（打断重播）
+        // 如果源不同，直接切换
+        try {
+            a.src = source;
+            a.volume = 1.0; 
+            a.currentTime = 0;
+            
+            const p = a.play();
+            if (p && typeof p.catch === 'function') {
+                p.catch(e => {
+                    // 忽略 AbortError (被新的播放打断是正常的)
+                    if (e.name !== 'AbortError') {
+                        console.warn('播放提示音失败:', e);
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('音频播放异常:', e);
+        }
+    },
+
+    // 预热/解锁音频对象（用于在没有发送音效时获取播放权限）
+    unlock() {
+        if (db.globalReceiveSound) {
+            const a = this.audio;
+            // 记录当前状态
+            const originalSrc = a.src;
+            
+            // 切换到接收音效进行预热
+            if (!a.src || a.src !== db.globalReceiveSound) {
+                 a.src = db.globalReceiveSound;
+            }
+            
+            a.volume = 0; // 静音
+            const p = a.play();
+            if (p) {
+                p.then(() => {
+                    a.pause();
+                    a.currentTime = 0;
+                    a.volume = 1; 
+                }).catch(e => {
+                    // 预热失败也不影响流程
+                    a.volume = 1;
+                });
+            }
+        }
+    }
+};
+
+function playSound(source) {
+    AudioManager.play(source);
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupCameraCapture);
+    } else {
+        setupCameraCapture();
+    }
+}

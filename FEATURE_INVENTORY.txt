@@ -1,0 +1,34 @@
+OVO V12.4 功能盘点
+
+已删除：账号验证、Live、番茄钟、群聊、论坛、商城、钱包/转账/亲属卡、Peek、通话、节点、角色导入、角色真实相册、桌面小组件、日间/夜间模式、无功能占位入口。
+保留：单人私聊、手动创建角色、结构化档案、向量记忆、世界书、小剧场、状态栏、收藏、搜索、提醒、媒体发送、TTS、视觉识别、贴纸、备份/恢复/GitHub、外观设置、存储分析、魔法屋。
+待评估：旧日记、思维链设置、拉黑系统、天气互动、电量互动、保活、消息归档、正则过滤。
+
+V13.6 QuickDock: 仅保留 API 快捷切换、Git 上传、Git 下载恢复、控制台、Proment。
+
+V14.1: 数据分析新增核心计数概览；Proment 新增世界书、结构化档案、向量记忆、最近聊天与状态栏的策略配置。当前仅保存策略，尚未改写运行时 Prompt。
+
+[V15.0]
+- 主聊天请求接入独立 AI Request Runtime
+- 统一错误分类与请求耗时诊断
+- Proment 新增只读 AI 请求诊断
+- 不记录 API Key，不改变 API 设置界面
+- 跳过结构化档案字段级控制计划
+
+V15.3:
+- 通用 fetchAiResponse 接入统一 AI Request Runtime
+- 图片自动描述、表情识图、向量 Embedding 接入统一请求诊断
+- AI 请求诊断保留最多 20 条会话历史，界面展示最近 8 条
+- 不改变 Prompt、响应解析、结构化档案或向量记忆管理边界
+
+V15.6
+- AI Request Runtime Phase 2: active request registry, optional timeout, cancellation APIs, sanitized endpoint diagnostics.
+- Avatar recognition, block system and battery interaction now use the shared runtime with legacy fallbacks.
+- Theater, memory-table summary and journal summary carry explicit task/source diagnostics.
+- No prompt, parser, database schema or API UI behavior changed.
+
+V15.7-V15.9
+- AI requests: residual coverage, source tagging, duplicate-submit protection for main chat, image-generation runtime coverage.
+- Runtime stability: bounded concurrency queue, task-aware timeout defaults, active/queued cancellation, stream-lifecycle tracking.
+- Diagnostics: request phase, queue wait, first byte, response bytes, timeout, sanitized endpoint, cancellation reason and queue state.
+- Proment remains diagnostic/control-only; it does not manage vector-memory data or structured-profile fields.

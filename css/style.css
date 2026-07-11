@@ -1,0 +1,7 @@
+
+/* V13.7 data analysis overview */
+.data-analysis-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%;}
+.data-analysis-summary-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;padding:10px 6px;border:1px solid rgba(0,0,0,.06);border-radius:14px;background:rgba(255,255,255,.82);box-shadow:0 4px 14px rgba(0,0,0,.04);box-sizing:border-box;}
+.data-analysis-summary-card strong{font-size:20px;line-height:1.2;color:#333;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.data-analysis-summary-card span{font-size:12px;color:#888;margin-top:5px;}
+@media (max-width:420px){.data-analysis-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.data-analysis-nav{grid-template-columns:1fr!important;}}
