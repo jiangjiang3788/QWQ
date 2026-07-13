@@ -1,0 +1,15 @@
+OVO 单用户版 V16.6.2 启动恢复版
+
+本版只处理“页面完全打不开且没有调试信息”的问题：
+
+1. 所有启动必需的第三方 JavaScript 已放入 vendor/，不再依赖 unpkg、jsDelivr、BootCDN、cdnjs。
+2. index.html 增加页面内启动错误面板：脚本、资源、数据库或初始化失败会直接显示。
+3. 新增 diagnostic.html，可在主程序打不开时独立检查本地脚本与 IndexedDB。
+4. document.fonts / FontFace 不可用时不再阻止整个应用启动。
+5. 保留统一记忆 V5 功能，不更改现有记忆结构。
+
+使用：
+- 解压整个文件夹，不能只单独拿 index.html。
+- 推荐部署到 Netlify，或使用本地静态服务器。
+- 也可直接打开 index.html；本版必要 JS 都是本地文件。
+- 如果仍失败，打开 diagnostic.html，页面会显示具体失败项。

@@ -473,11 +473,13 @@ function applyWallpaper(url) {
 async function applyGlobalFont(fontUrl) {
     const fontName = 'CustomGlobalFont';
     
-    document.fonts.forEach(font => {
-        if (font.family === fontName) {
-            document.fonts.delete(font);
-        }
-    });
+    if (document.fonts && typeof document.fonts.forEach === 'function') {
+        document.fonts.forEach(font => {
+            if (font.family === fontName && typeof document.fonts.delete === 'function') {
+                document.fonts.delete(font);
+            }
+        });
+    }
 
     const styleId = 'global-font-style';
     let styleElement = document.getElementById(styleId);
@@ -502,6 +504,9 @@ async function applyGlobalFont(fontUrl) {
         
         if (bufferToLoad) {
             try {
+                if (typeof FontFace === 'undefined' || !document.fonts || typeof document.fonts.add !== 'function') {
+                    throw new Error('当前浏览器不支持本地字体加载 API');
+                }
                 const fontFace = new FontFace(fontName, bufferToLoad);
                 const loadedFont = await fontFace.load();
                 document.fonts.add(loadedFont);

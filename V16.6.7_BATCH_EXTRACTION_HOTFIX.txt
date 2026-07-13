@@ -1,0 +1,19 @@
+OVO V16.6.7 / 统一记忆 V5.4.1
+批量事件提取运行时修复
+
+问题：
+V16.6.6 的 extractEventsFromMessages() 调用 formatSelectedForSummary() 时漏传 character 参数。
+函数签名为：formatSelectedForSummary(character, selected)
+错误调用为：formatSelectedForSummary(selected)
+因此 selected 实际为 undefined，访问 selected.working 时抛出：
+Cannot read properties of undefined (reading 'working')
+
+修复：
+1. 事件提取统一调用 buildEventExtractionPrompt(character, validMessages, selected)。
+2. formatSelectedForSummary() 对缺失的 selected 及数组字段增加安全默认值。
+3. 调试计数改为 roomPlateEntries / impression / topics / eventBoxes / events / vectorUsed。
+4. 同时验证“重新扫描全部聊天”和“仅提取未处理消息”两条路径。
+
+数据影响：
+不会修改或删除聊天、门牌、印象、主题、事件盒或已有事件。
+失败的上一批没有推进游标，可以在修复版中直接重新提取。

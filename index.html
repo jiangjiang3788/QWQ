@@ -12,16 +12,55 @@
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <meta content="no-referrer" name="referrer"/>
-<script src="https://unpkg.com/dexie/dist/dexie.js"></script>
-<script src="https://unpkg.com/dompurify@2.3.8/dist/purify.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-<script src="https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<link href="https://fonts.googleapis.com" rel="preconnect"/>
-<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style id="ovo-boot-style">
+#ovo-boot-panel{display:none;position:fixed;inset:0;z-index:2147483647;background:#fff;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:22px;box-sizing:border-box;overflow:auto}
+#ovo-boot-panel.visible{display:block}#ovo-boot-panel h2{margin:0 0 12px;font-size:20px}#ovo-boot-panel pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f7;border-radius:10px;padding:12px;font-size:12px;line-height:1.55}#ovo-boot-panel button,#ovo-boot-panel a{display:inline-block;margin:8px 8px 0 0;padding:10px 14px;border:0;border-radius:10px;background:#111;color:#fff;text-decoration:none;font-size:14px}
+</style>
+<script>
+(function(){
+  var state={phase:'读取入口文件',startedAt:Date.now(),errors:[],resources:[]};
+  function textOf(value){try{return value&&value.stack?value.stack:String(value||'未知错误')}catch(_){return '未知错误'}}
+  function ensurePanel(){
+    var panel=document.getElementById('ovo-boot-panel');
+    if(panel)return panel;
+    panel=document.createElement('div');panel.id='ovo-boot-panel';
+    panel.innerHTML='<h2>应用启动失败</h2><p id="ovo-boot-summary"></p><pre id="ovo-boot-detail"></pre><button id="ovo-boot-reload">重新加载</button><a href="diagnostic.html">打开启动诊断</a>';
+    (document.body||document.documentElement).appendChild(panel);
+    panel.querySelector('#ovo-boot-reload').onclick=function(){location.reload()};
+    return panel;
+  }
+  function show(reason){
+    var panel=ensurePanel();panel.classList.add('visible');
+    var summary=panel.querySelector('#ovo-boot-summary');var detail=panel.querySelector('#ovo-boot-detail');
+    summary.textContent='启动停在：'+state.phase+'。现在页面会直接显示错误，不再只写入控制台。';
+    var lines=['原因：'+textOf(reason),'地址：'+location.href,'协议：'+location.protocol,'耗时：'+(Date.now()-state.startedAt)+'ms'];
+    if(state.resources.length)lines.push('资源错误：\n'+state.resources.join('\n'));
+    if(state.errors.length)lines.push('脚本错误：\n'+state.errors.join('\n\n'));
+    detail.textContent=lines.join('\n\n');
+  }
+  window.__OVO_BOOT__={
+    mark:function(phase){state.phase=phase;console.log('[Boot]',phase)},
+    fail:function(error){state.errors.push(textOf(error));show(error)},
+    success:function(){state.phase='启动完成';var p=document.getElementById('ovo-boot-panel');if(p)p.remove();console.log('[Boot] 启动完成')},
+    state:state
+  };
+  window.addEventListener('error',function(e){
+    if(e.target&&e.target!==window&&(e.target.src||e.target.href)){
+      var url=e.target.src||e.target.href;state.resources.push('加载失败：'+url);show('必要资源加载失败');return;
+    }
+    var message=e.error?textOf(e.error):(e.message||'脚本执行错误');state.errors.push(message);show(message);
+  },true);
+  window.addEventListener('unhandledrejection',function(e){var msg=textOf(e.reason);state.errors.push(msg);show(msg)});
+  setTimeout(function(){if(state.phase!=='启动完成')show('启动超过 15 秒仍未完成')},15000);
+})();
+</script>
+<script src="vendor/dexie.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/echarts.min.js"></script>
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/mammoth.browser.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/Sortable.min.js"></script>
 <script>
         // V11.2: file:// cannot fetch a web app manifest. Add it only on web origins.
         if (location.protocol === 'http:' || location.protocol === 'https:') {
@@ -38,6 +77,7 @@
 <!-- CSS Split: Core Features -->
 <link href="css/chat.css" rel="stylesheet"/>
 <link href="css/settings.css" rel="stylesheet"/>
+<link href="css/api_settings_v161.css" rel="stylesheet"/>
 <!-- Weather Module -->
 <script src="js/modules/weather.js"></script>
 <!-- CSS Split: Modules -->
@@ -46,6 +86,7 @@
 <link href="css/modules/worldbook.css" rel="stylesheet"/>
 <link href="css/modules/journal.css" rel="stylesheet"/>
 <link href="css/modules/vector_memory.css" rel="stylesheet"/>
+<link href="css/modules/unified_memory.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
 <link href="css/modules/more.css" rel="stylesheet"/>
@@ -61,7 +102,7 @@
 <!-- Other Styles -->
 <link href="contacts.css" rel="stylesheet"/>
 <link href="more_menu.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<script src="vendor/crypto-js.min.js"></script>
 <!-- CSS Split: Extracted from inline <style> -->
 <link href="css/modules/block_system.css" rel="stylesheet"/>
 <link href="css/modules/voice_selector.css" rel="stylesheet"/>
@@ -403,7 +444,7 @@
 <path d="M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.18 6.5 3.61L12 11.41 5.5 7.79 12 4.18zm-7 5.34 6 3.33v6.88l-6-3.34V9.52zm8 10.21v-6.88l6-3.33v6.87l-6 3.34z"></path>
 </svg>
 </div>
-<span class="expansion-item-name">向量</span>
+<span class="expansion-item-name">统一记忆</span>
 </div>
 <div class="expansion-item" id="delete-history-btn">
 <div class="expansion-item-icon">
@@ -3541,6 +3582,12 @@
 <button class="btn btn-small btn-secondary" id="setting-open-memory-table-btn" style="min-width: 132px;" type="button">打开结构记忆</button>
 </div>
 </div>
+<div class="kkt-item">
+<div class="kkt-item-label">统一记忆中心 <span style="font-size:10px;color:#999;">V5.4.1</span></div>
+<div class="kkt-item-control">
+<button class="btn btn-small btn-primary" id="setting-open-unified-memory-btn" style="min-width: 132px;" type="button">打开统一记忆</button>
+</div>
+</div>
 <div class="kkt-item" id="setting-auto-journal-interval-container" style="display: none;">
 <div class="kkt-item-label">自动总结间隔(条)</div>
 <div class="kkt-item-control">
@@ -6011,7 +6058,7 @@
 <div class="kkt-settings-container">
 <div class="proment-overview" id="proment-overview">
 <div class="proment-overview-head">
-<div><strong>上下文策略</strong><p>先保存配置；本版只建立管理结构，不改变现有聊天 Prompt。</p></div>
+<div><strong>上下文策略</strong><p>世界书预算已接入真实请求；其余上下文仍以诊断和预览为主。</p></div>
 <span class="proment-stage-badge">诊断版</span>
 </div>
 <div class="proment-status-grid" id="proment-status-grid"></div>
@@ -6032,6 +6079,7 @@
 <button class="btn btn-secondary" id="proment-open-structured" type="button">结构化档案</button>
 <button class="btn btn-primary" id="proment-preview-context" type="button">设计预览</button>
 <button class="btn btn-secondary" id="proment-preview-runtime" type="button">最近真实 Prompt</button>
+<button class="btn btn-secondary" id="proment-compare-runtime" type="button">设计/真实对照</button>
 <button class="btn btn-secondary" id="proment-preview-worldbook" type="button">世界书命中诊断</button>
 <button class="btn btn-secondary" id="proment-preview-ai-request" type="button">AI 请求诊断</button>
 <button class="btn btn-secondary" id="proment-cancel-ai-requests" type="button">取消全部 AI 请求</button>
@@ -6041,7 +6089,7 @@
 <div class="proment-preview-head"><b>Prompt / 注入诊断</b><div class="proment-preview-actions"><button class="btn btn-small btn-secondary" id="proment-copy-preview" type="button">复制</button><button class="btn btn-small btn-secondary" id="proment-clear-runtime" type="button">清除快照</button></div></div>
 <pre id="proment-preview-content"></pre>
 </div>
-<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。所有诊断只读且不改变 Prompt；AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。向量记忆仍在独立页面管理。</p>
+<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。世界书开关与预算会作用于真实请求；其余诊断只读。AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。向量记忆仍在独立页面管理。</p>
 </div>
 <div style="margin-bottom: 15px; padding-top: 5px; padding-left: 8px;">
 <div class="kkt-item-label" style="font-weight: bold; color: var(--primary-color);">系统提示词自定义</div>
@@ -6834,6 +6882,40 @@
   未来修改代码时，请参考以下注释找到对应的文件：
 -->
 <!-- [1. 基础层] -->
+
+<div class="screen" id="unified-memory-screen">
+<header class="app-header">
+<button class="back-btn" id="unified-memory-back-btn" data-target="chat-settings-screen">‹</button>
+<div class="title-container">
+<h1 class="title">统一记忆</h1>
+<div id="unified-memory-character" style="font-size:11px;color:#999;margin-top:2px;">当前角色</div>
+</div>
+</header>
+<main class="content">
+<div class="um-tabs">
+<button class="um-tab active" data-tab="overview" type="button">总览</button>
+<button class="um-tab" data-tab="doorplates" type="button">门牌</button>
+<button class="um-tab" data-tab="impressions" type="button">印象</button>
+<button class="um-tab" data-tab="working" type="button">临时记忆</button>
+<button class="um-tab" data-tab="events" type="button">事件</button>
+<button class="um-tab" data-tab="eventBoxes" type="button">事件盒</button>
+<button class="um-tab" data-tab="topics" type="button">主题</button>
+<button class="um-tab" data-tab="versions" type="button">版本</button>
+<button class="um-tab" data-tab="jobs" type="button">任务</button>
+<button class="um-tab" data-tab="vector" type="button">向量辅助</button>
+<button class="um-tab" data-tab="debug" type="button">检索调试</button>
+<button class="um-tab" data-tab="settings" type="button">设置</button>
+</div>
+<div id="unified-memory-content"></div>
+</main>
+</div>
+<div class="modal-overlay" id="unified-memory-editor-modal">
+<div class="um-modal-card">
+<h3 id="unified-memory-editor-title">编辑记忆</h3>
+<form class="um-editor-form" id="unified-memory-editor-form"></form>
+</div>
+</div>
+
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
 <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <!-- [2. 核心交互层] -->
@@ -6850,6 +6932,7 @@
 <script src="js/chat.js"></script> <!-- 聊天核心入口 -->
 <script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
 <script src="js/settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
+<script src="js/modules/api_settings_ui.js"></script> <!-- API 管理界面增强 -->
 <script src="js/modules/block_system.js"></script> <!-- 拉黑与好友申请 -->
 <!-- [3. 独立功能模块 (Plugins)] -->
 <script src="js/modules/sticker.js"></script> <!-- 表情包管理系统 -->
@@ -6858,6 +6941,7 @@
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
 <script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
 <script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
+<script src="js/modules/unified_memory.js"></script> <!-- 统一记忆 V5.4.1 -->
 <script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
 <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->

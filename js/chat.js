@@ -259,15 +259,14 @@ function setupChatRoom() {
     if (vectorMemoryBtn) {
         vectorMemoryBtn.addEventListener('click', () => {
             if (currentChatType !== 'private') {
-                showToast('向量记忆暂时只支持单角色私聊');
+                showToast('统一记忆暂时只支持单角色私聊');
                 showPanel('none');
                 return;
             }
-            if (typeof renderVectorMemoryScreen === 'function') {
-                renderVectorMemoryScreen();
-                switchScreen('vector-memory-screen');
+            if (typeof openUnifiedMemoryCenter === 'function') {
+                openUnifiedMemoryCenter();
             } else {
-                showToast('向量记忆模块未加载');
+                showToast('统一记忆模块未加载');
             }
             showPanel('none');
         });

@@ -2827,7 +2827,8 @@ ${section.content}`).join('\n\n');
             return `- ${item.name}\n  范围：${scope} · 位置：${item.position || 'after'} · 权重：${item.weight ?? 100} · 内容：${item.chars || 0} 字符\n  结果：${item.included ? '已注入' : '未注入'} · 原因：${item.reason || '未知'}${matched}${keywords}`;
         };
         const sectionLines = diag.sections || {};
-        pre.textContent = `# 世界书真实命中诊断\n角色：${diag.characterName || '未命名角色'}\n时间：${diag.capturedAt ? new Date(diag.capturedAt).toLocaleString() : '未知'}\n模式：${diag.mode === 'offline' ? '线下' : '线上'}\n最近消息：${diag.recentMessageCount || 0} 条 · 匹配文本：${diag.recentTextChars || 0} 字符\n候选：${diag.candidateCount || items.length} · 注入：${diag.includedCount || included.length} · 排除：${diag.excludedCount || excluded.length}\n实际输出：${diag.outputChars || 0} 字符（前 ${sectionLines.before || 0} / 中 ${sectionLines.middle || 0} / 后 ${sectionLines.after || 0}）\n\n## 已注入\n${included.length ? included.map(format).join('\n\n') : '[没有条目被注入]'}\n\n## 未注入\n${excluded.length ? excluded.map(format).join('\n\n') : '[没有被排除的候选条目]'}\n\n说明：这是 getActiveWorldBooksContents 的真实运行记录，只读展示，不改变世界书选择、顺序或 Prompt。`;
+        pre.textContent = `# 世界书真实命中诊断\n角色：${diag.characterName || '未命名角色'}\n时间：${diag.capturedAt ? new Date(diag.capturedAt).toLocaleString() : '未知'}\n模式：${diag.mode === 'offline' ? '线下' : '线上'}\n最近消息：${diag.recentMessageCount || 0} 条 · 匹配文本：${diag.recentTextChars || 0} 字符\n候选：${diag.candidateCount || items.length} · 注入：${diag.includedCount || included.length} · 排除：${diag.excludedCount || excluded.length}\n策略：预算 ${diag.budget ?? '未记录'} · 优先级 ${diag.priority ?? '未记录'} · 剩余预算 ${diag.remainingBudget ?? '未记录'}
+实际输出：${diag.outputChars || 0} 字符（前 ${sectionLines.before || 0} / 中 ${sectionLines.middle || 0} / 后 ${sectionLines.after || 0}）\n\n## 已注入\n${included.length ? included.map(format).join('\n\n') : '[没有条目被注入]'}\n\n## 未注入\n${excluded.length ? excluded.map(format).join('\n\n') : '[没有被排除的候选条目]'}\n\n说明：这是 getActiveWorldBooksContents 的真实运行记录，只读展示，不改变世界书选择、顺序或 Prompt。`;
         box.hidden = false;
     }
 
@@ -2906,8 +2907,38 @@ ${recentLines.length ? recentLines.join('\n') : '无'}
         box.hidden = false;
     }
 
+    function renderPromentRuntimeComparison() {
+        const box = document.getElementById('proment-preview-box');
+        const pre = document.getElementById('proment-preview-content');
+        const snapshot = getLastPromptSnapshot();
+        const char = getActivePromentCharacter();
+        if (!box || !pre) return;
+        if (!snapshot || !snapshot.systemPrompt) {
+            pre.textContent = '# 设计 / 真实对照\n\n尚无真实请求快照。请先完成一次私聊 AI 请求。';
+            box.hidden = false; return;
+        }
+        const policy = readPromentPolicy();
+        let diag = window.__ovoLastWorldBookDiagnostic;
+        if (!diag) { try { const raw=sessionStorage.getItem('ovo_last_worldbook_diagnostic'); diag=raw?JSON.parse(raw):null; } catch (_) {} }
+        const sections = extractPromptSections(snapshot.systemPrompt);
+        const lines = [
+            '# Proment 设计 / 真实对照',
+            `角色：${snapshot.characterName || char?.remarkName || char?.name || '未命名'}`,
+            `模型：${snapshot.model || '未知'} · System Prompt：${snapshot.systemPromptChars || String(snapshot.systemPrompt).length} 字符`,
+            '', '## 世界书策略（已接入真实运行）',
+            `开关：${policy.worldBookEnabled ? '开启':'关闭'} · 预算：${policy.worldBookBudget} · 优先级：${policy.worldBookPriority}`,
+            diag ? `实际候选：${diag.candidateCount || 0} · 命中资格：${diag.eligibleCount || 0} · 实际注入：${diag.includedCount || 0} · 注入字符：${diag.outputChars || 0} · 剩余预算：${diag.remainingBudget ?? '-'} ` : '尚无世界书运行诊断',
+            '', '## 真实 Prompt 区块'
+        ];
+        if (sections.length) sections.forEach(sec => lines.push(`- ${sec.name}：${String(sec.content || '').length} 字符`));
+        else lines.push('- 未识别到标准区块，完整 Prompt 仍可在“最近真实 Prompt”查看');
+        lines.push('', '## 当前生效边界', '- 世界书：开关与预算已实际生效；命中规则与 before/middle/after 位置保持原逻辑。', '- 世界书优先级：当前用于诊断和后续统一 Context Runtime 的排序元数据，不改变 before/middle/after 语义。', '- 结构化档案：不做字段级控制，保持原有独立数据与注入逻辑。', '- 向量记忆：继续独立管理，Proment 只读显示最近注入结果。');
+        pre.textContent = lines.join('\n'); box.hidden=false;
+    }
+
     document.getElementById('proment-preview-context')?.addEventListener('click', renderPromentInjectionPreview);
     document.getElementById('proment-preview-runtime')?.addEventListener('click', renderLastRuntimePrompt);
+    document.getElementById('proment-compare-runtime')?.addEventListener('click', renderPromentRuntimeComparison);
     document.getElementById('proment-preview-worldbook')?.addEventListener('click', renderWorldBookDiagnostic);
     document.getElementById('proment-preview-ai-request')?.addEventListener('click', renderAIRequestDiagnostic);
     document.getElementById('proment-cancel-ai-requests')?.addEventListener('click', () => {
