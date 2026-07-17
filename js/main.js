@@ -14,9 +14,7 @@ if ((location.protocol === 'http:' || location.protocol === 'https:') && 'servic
 }
 
 const init = async () => {
-    if (window.__OVO_BOOT__) window.__OVO_BOOT__.mark('读取本地数据库');
     await loadData();
-    if (window.__OVO_BOOT__) window.__OVO_BOOT__.mark('初始化界面模块');
 
     // V12.3: desktop widgets were retired; no widget-state migration is required.
 
@@ -227,16 +225,14 @@ async function startApplication() {
     }
 
     try {
-        if (window.__OVO_BOOT__) window.__OVO_BOOT__.mark('初始化 IndexedDB');
         initDatabase();
         await init();
         console.log('[Startup] 单用户模式初始化完成');
-        if (window.__OVO_BOOT__) window.__OVO_BOOT__.success();
     } catch (error) {
         console.error('[Startup] 应用初始化失败:', error);
-        if (window.__OVO_BOOT__) window.__OVO_BOOT__.fail(error);
+        // 不恢复已删除的登录界面；保留页面和控制台错误供排查。
         if (typeof showToast === 'function') {
-            showToast('应用初始化失败，错误已显示在页面上');
+            showToast('应用初始化失败，请查看控制台错误');
         }
     }
 }

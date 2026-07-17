@@ -1555,11 +1555,6 @@
         }
     }
 
-    window.VectorMemoryTools = Object.assign(window.VectorMemoryTools || {}, {
-        fetchEmbeddings,
-        cosineSimilarity,
-        getVectorApiConfig
-    });
     window.setupVectorMemoryScreen = setupVectorMemoryScreen;
     window.renderVectorMemoryScreen = renderVectorMemoryScreen;
     window.ensureVectorMemoryState = ensureVectorMemoryState;

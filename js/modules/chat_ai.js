@@ -1,13 +1,5 @@
 // --- AI 交互模块 ---
 
-function shouldUseLegacyMemory(character) {
-    try {
-        return !(typeof window.isUnifiedMemoryExclusiveMode === 'function' && window.isUnifiedMemoryExclusiveMode(character));
-    } catch (_) {
-        return false;
-    }
-}
-
 // 检查角色是否在免打扰时段内
 function isInQuietHours(charId) {
     const char = db.characters.find(c => c.id === charId);
@@ -458,18 +450,11 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
         let systemPrompt;
         if (chatType === 'private') {
-            if (shouldUseLegacyMemory(chat) && chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
+            if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
                 try {
                     await prepareVectorMemoryContext(chat);
                 } catch (error) {
                     console.warn('[VectorMemory] failed to prepare prompt context:', error);
-                }
-            }
-            if (typeof prepareUnifiedMemoryContext === 'function') {
-                try {
-                    await prepareUnifiedMemoryContext(chat, historySlice);
-                } catch (error) {
-                    console.warn('[UnifiedMemory] failed to prepare prompt context:', error);
                 }
             }
             systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText });
@@ -1888,19 +1873,14 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         }
 
         // 回复全部结束后检查是否达到自动总结间隔，若达到则静默总结到完整区间（如 1-100）
-        if (shouldUseLegacyMemory(chat)) {
-            if (typeof checkAndTriggerAutoJournal === 'function') {
-                setTimeout(() => checkAndTriggerAutoJournal(chat), 500);
-            }
-            if (typeof checkAndTriggerAutoTableUpdate === 'function') {
-                setTimeout(() => checkAndTriggerAutoTableUpdate(chat), 650);
-            }
-            if (typeof checkAndTriggerVectorMemory === 'function') {
-                setTimeout(() => checkAndTriggerVectorMemory(chat), 800);
-            }
+        if (typeof checkAndTriggerAutoJournal === 'function') {
+            setTimeout(() => checkAndTriggerAutoJournal(chat), 500);
         }
-        if (typeof checkAndTriggerUnifiedMemoryJobs === 'function') {
-            setTimeout(() => checkAndTriggerUnifiedMemoryJobs(chat), 950);
+        if (typeof checkAndTriggerAutoTableUpdate === 'function') {
+            setTimeout(() => checkAndTriggerAutoTableUpdate(chat), 650);
+        }
+        if (typeof checkAndTriggerVectorMemory === 'function') {
+            setTimeout(() => checkAndTriggerVectorMemory(chat), 800);
         }
 
         // 角色主动生成小剧场（仅私聊，按概率触发）
@@ -2297,31 +2277,22 @@ function generatePrivateSystemPrompt(character, opts) {
         
         // 构建共同回忆字符串
         let commonMemories = '';
-        if (shouldUseLegacyMemory(character) && character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
+        if (character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
             commonMemories = getMemoryTableContextBlock(character) || '';
-        } else if (shouldUseLegacyMemory(character) && character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
+        } else if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
             commonMemories = getVectorMemoryContextBlock(character) || '';
         } else {
-            let favoritedJournals = shouldUseLegacyMemory(character) ? (character.memoryJournals || [])
+            let favoritedJournals = (character.memoryJournals || [])
                 .filter(j => j.isFavorited)
                 .map(j => `标题：${j.title}\n内容：${j.content}`)
-                .join('\n\n---\n\n') : '';
+                .join('\n\n---\n\n');
             if (favoritedJournals) {
                 commonMemories = `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}`;
             }
         }
         
-        const unifiedMemoryText = typeof getUnifiedMemoryContextBlock === 'function'
-            ? getUnifiedMemoryContextBlock(character)
-            : '';
-        if (unifiedMemoryText) {
-            commonMemories = commonMemories
-                ? `${commonMemories}\n\n${unifiedMemoryText}`
-                : unifiedMemoryText;
-        }
-        
         // 构建群聊记忆互通字符串
-        if (shouldUseLegacyMemory(character) && character.syncGroupMemory) {
+        if (character.syncGroupMemory) {
             let groupsWithCharacter = db.groups.filter(group => 
                 group.members && group.members.some(member => member.originalCharId === character.id)
             );
@@ -2502,18 +2473,18 @@ function generatePrivateSystemPrompt(character, opts) {
         
         if (activeNode.readMemory) {
             nodePrompt += `<memoir>\n`;
-            const tableMemoryText = shouldUseLegacyMemory(character) && character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
+            const tableMemoryText = character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
                 ? getMemoryTableContextBlock(character)
-                : (shouldUseLegacyMemory(character) && character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
+                : (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
                     ? getVectorMemoryContextBlock(character)
                     : '');
             if (tableMemoryText) {
                 nodePrompt += `${tableMemoryText}\n`;
             } else {
-                const favoritedJournals = shouldUseLegacyMemory(character) ? (character.memoryJournals || [])
+                const favoritedJournals = (character.memoryJournals || [])
                     .filter(j => j.isFavorited)
                     .map(j => `标题：${j.title}\n内容：${j.content}`)
-                    .join('\n\n---\n\n') : '';
+                    .join('\n\n---\n\n');
                 if (favoritedJournals) {
                     nodePrompt += `<journal_memories>\n【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n</journal_memories>\n\n`;
                 }
@@ -2550,7 +2521,7 @@ function generatePrivateSystemPrompt(character, opts) {
                 }
 
                 // 群聊记忆互通功能
-                if (shouldUseLegacyMemory(character) && character.syncGroupMemory) {
+                if (character.syncGroupMemory) {
                     let groupsWithCharacter = db.groups.filter(group => 
                         group.members && group.members.some(member => member.originalCharId === character.id)
                     );
@@ -2594,8 +2565,6 @@ function generatePrivateSystemPrompt(character, opts) {
                     }
                 }
             }
-            const unifiedMemoryText = typeof getUnifiedMemoryContextBlock === 'function' ? getUnifiedMemoryContextBlock(character) : '';
-            if (unifiedMemoryText) nodePrompt += `${unifiedMemoryText}\n`;
             nodePrompt += `</memoir>\n\n`;
         }
         
@@ -2982,25 +2951,25 @@ function generatePrivateSystemPrompt(character, opts) {
     }
 
     prompt += `<memoir>\n`
-    const tableMemoryText = shouldUseLegacyMemory(character) && character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
+    const tableMemoryText = character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
         ? getMemoryTableContextBlock(character)
-        : (shouldUseLegacyMemory(character) && character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
+        : (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
             ? getVectorMemoryContextBlock(character)
             : '');
     if (tableMemoryText) {
         prompt += `${tableMemoryText}\n`;
     } else {
-        const favoritedJournals = shouldUseLegacyMemory(character) ? (character.memoryJournals || [])
+        const favoritedJournals = (character.memoryJournals || [])
             .filter(j => j.isFavorited)
             .map(j => `标题：${j.title}\n内容：${j.content}`)
-            .join('\n\n---\n\n') : '';
+            .join('\n\n---\n\n');
 
         if (favoritedJournals) {
             prompt += `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n\n`;
         }
         
         // 群聊记忆互通功能
-        if (shouldUseLegacyMemory(character) && character.syncGroupMemory) {
+        if (character.syncGroupMemory) {
             // 查找该角色所在的所有群聊
             let groupsWithCharacter = db.groups.filter(group => 
                 group.members && group.members.some(member => member.originalCharId === character.id)
@@ -3074,8 +3043,6 @@ function generatePrivateSystemPrompt(character, opts) {
             }
         }
     }
-    const unifiedMemoryText = typeof getUnifiedMemoryContextBlock === 'function' ? getUnifiedMemoryContextBlock(character) : '';
-    if (unifiedMemoryText) prompt += `${unifiedMemoryText}\n`;
     prompt += `</memoir>\n\n`
 
     prompt += `<logic_rules>\n`
@@ -3235,10 +3202,10 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
     const stickerTokens = estimateTokenFromText(stickerText);
 
     // 5) 长期记忆（共同回忆 / 收藏日记）
-    const favoritedJournals = shouldUseLegacyMemory(character) ? (character.memoryJournals || [])
+    const favoritedJournals = (character.memoryJournals || [])
         .filter(j => j.isFavorited)
         .map(j => `标题：${j.title}\n内容：${j.content}`)
-        .join('\n\n---\n\n') : '';
+        .join('\n\n---\n\n');
     const memoirTokens = estimateTokenFromText(favoritedJournals);
 
     // 6) 窥屏知晓 + 代发消息（冒充）知晓
@@ -3302,7 +3269,7 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
 
     // 9) 群聊记忆互通
     let groupMemoryText = '';
-    if (shouldUseLegacyMemory(character) && character.syncGroupMemory) {
+    if (character.syncGroupMemory) {
         let groupsWithCharacter = (db.groups || []).filter(group =>
             group.members && group.members.some(member => member.originalCharId === character.id)
         );
@@ -3526,25 +3493,23 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
     }
 
     systemPrompt += `<memoir>\n`
-    const tableMemoryText = shouldUseLegacyMemory(chat) && chat.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
+    const tableMemoryText = chat.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
         ? getMemoryTableContextBlock(chat)
-        : (shouldUseLegacyMemory(chat) && chat.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
+        : (chat.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
             ? getVectorMemoryContextBlock(chat)
             : '');
     if (tableMemoryText) {
         systemPrompt += `${tableMemoryText}\n`;
     } else {
-        const favoritedJournals = shouldUseLegacyMemory(chat) ? (chat.memoryJournals || [])
+        const favoritedJournals = (chat.memoryJournals || [])
             .filter(j => j.isFavorited)
             .map(j => `标题：${j.title}\n内容：${j.content}`)
-            .join('\n\n---\n\n') : '';
+            .join('\n\n---\n\n');
 
         if (favoritedJournals) {
             systemPrompt += `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n\n`;
         }
     }
-    const unifiedMemoryText = typeof getUnifiedMemoryContextBlock === 'function' ? getUnifiedMemoryContextBlock(chat) : '';
-    if (unifiedMemoryText) systemPrompt += `${unifiedMemoryText}\n`;
     systemPrompt += `</memoir>\n\n`
 
     // --- 注入最近聊天记录 ---
@@ -3910,10 +3875,10 @@ async function generateCallSummary(chat, callContext) {
     const { before: worldBooksBefore, middle: worldBooksMiddle, after: worldBooksAfter } = getActiveWorldBooksContents(chat);
 
     // 获取回忆日记
-    const favoritedJournals = shouldUseLegacyMemory(chat) ? (chat.memoryJournals || [])
+    const favoritedJournals = (chat.memoryJournals || [])
         .filter(j => j.isFavorited)
         .map(j => `标题：${j.title}\n内容：${j.content}`)
-        .join('\n\n---\n\n') : '';
+        .join('\n\n---\n\n');
 
     let prompt = `请根据以下背景信息和通话记录，生成一段简短的聊天记录总结。\n\n`;
 
@@ -3930,11 +3895,9 @@ async function generateCallSummary(chat, callContext) {
     prompt += `用户人设：${chat.myPersona || "无"}\n`;
     prompt += `</user_settings>\n\n`;
 
-    const unifiedMemoryText = typeof getUnifiedMemoryContextBlock === 'function' ? getUnifiedMemoryContextBlock(chat) : '';
-    if (favoritedJournals || unifiedMemoryText) {
+    if (favoritedJournals) {
         prompt += `<memoir>\n`;
-        if (favoritedJournals) prompt += `【共同回忆】\n${favoritedJournals}\n`;
-        if (unifiedMemoryText) prompt += `${unifiedMemoryText}\n`;
+        prompt += `【共同回忆】\n${favoritedJournals}\n`;
         prompt += `</memoir>\n\n`;
     }
 

@@ -34,11 +34,3 @@ V15.7-V15.9
 - Proment remains diagnostic/control-only; it does not manage vector-memory data or structured-profile fields.
 
 V16.0: 世界书开关/预算接入真实请求；Proment新增设计/真实对照；结构化档案和向量记忆边界保持不变。
-
-[V16.6.0 / 统一记忆 V5]
-- 事件 Embedding 与模型签名/文本哈希校验
-- 关键词 + 向量混合事件检索
-- 事件向量生成任务与分批重建
-- 高相似重复事件候选（用户确认合并）
-- EventBox 向量中心关联候选（用户确认归盒）
-- 检索调试显示向量来源与相似度

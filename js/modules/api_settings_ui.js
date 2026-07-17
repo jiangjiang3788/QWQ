@@ -157,12 +157,6 @@
     container.appendChild(footnote);
   }
 
-  function setTextIfChanged(element, value) {
-    if (!element) return;
-    const next = String(value == null ? '' : value);
-    if (element.textContent !== next) element.textContent = next;
-  }
-
   function updateHero() {
     const main = SECTION_CONFIG[0];
     const values = valuesFor(main);
@@ -173,16 +167,16 @@
     if (mainChip) {
       mainChip.classList.toggle('ready', ready);
       mainChip.classList.toggle('partial', !ready && Boolean(values.url || values.key));
-      setTextIfChanged(mainChip.querySelector('strong'), ready ? (values.provider || '已配置') : '未完成');
+      mainChip.querySelector('strong').textContent = ready ? (values.provider || '已配置') : '未完成';
     }
     if (modelChip) {
       modelChip.classList.toggle('ready', Boolean(values.model));
-      setTextIfChanged(modelChip.querySelector('strong'), values.model || '未选择');
+      modelChip.querySelector('strong').textContent = values.model || '未选择';
     }
     if (specialChip) {
       const count = SECTION_CONFIG.slice(1).filter(isConfigured).length;
       specialChip.classList.toggle('ready', count > 0);
-      setTextIfChanged(specialChip.querySelector('strong'), `${count} 个已配置`);
+      specialChip.querySelector('strong').textContent = `${count} 个已配置`;
     }
   }
 
@@ -199,15 +193,7 @@
     SECTION_CONFIG.forEach(addSectionStatus);
     screen.addEventListener('input', updateHero);
     screen.addEventListener('change', updateHero);
-    let heroUpdateQueued = false;
-    const observer = new MutationObserver(() => {
-      if (heroUpdateQueued) return;
-      heroUpdateQueued = true;
-      queueMicrotask(() => {
-        heroUpdateQueued = false;
-        updateHero();
-      });
-    });
+    const observer = new MutationObserver(updateHero);
     observer.observe(screen, { subtree: true, childList: true });
     updateHero();
   }
