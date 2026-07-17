@@ -1,0 +1,128 @@
+/* 长期记忆模式清晰化 UI：只处理显示与选择同步，不改变底层 memoryMode 数据结构。 */
+.memory-mode-card {
+    margin: 12px 0;
+    padding: 14px;
+    border: 1px solid rgba(95, 74, 203, 0.16);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(116, 87, 255, 0.07), rgba(255, 255, 255, 0.96));
+}
+.memory-mode-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.memory-mode-card-title {
+    color: #2d2d35;
+    font-size: 15px;
+    font-weight: 700;
+}
+.memory-mode-card-head p,
+.memory-mode-save-note,
+.memory-mode-inline-hint {
+    margin: 4px 0 0;
+    color: #8a8a94;
+    font-size: 11px;
+    line-height: 1.55;
+}
+.memory-mode-current {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(116, 87, 255, 0.12);
+    color: #5a38d6;
+    font-size: 11px;
+    font-weight: 700;
+}
+.memory-mode-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+.memory-mode-option {
+    display: flex;
+    min-width: 0;
+    min-height: 76px;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid #e8e8ee;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #4f4f58;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease;
+}
+.memory-mode-option:active { transform: scale(.98); }
+.memory-mode-option.is-active {
+    border-color: rgba(116, 87, 255, 0.7);
+    background: rgba(116, 87, 255, 0.1);
+    box-shadow: 0 0 0 2px rgba(116, 87, 255, 0.08);
+    color: #4f2bc8;
+}
+.memory-mode-option-icon { font-size: 20px; line-height: 1; }
+.memory-mode-option span:last-child { min-width: 0; }
+.memory-mode-option b,
+.memory-mode-option small { display: block; }
+.memory-mode-option b { font-size: 12px; white-space: nowrap; }
+.memory-mode-option small {
+    margin-top: 4px;
+    color: #92929b;
+    font-size: 10px;
+    line-height: 1.35;
+}
+.memory-mode-explanation {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.035);
+}
+.memory-mode-explanation strong { color: #3c3c45; font-size: 12px; }
+.memory-mode-explanation span { color: #85858e; font-size: 10px; line-height: 1.5; }
+.memory-mode-manage-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+}
+.memory-mode-manage-row .btn {
+    min-width: 0;
+    padding-left: 7px;
+    padding-right: 7px;
+    white-space: normal;
+    line-height: 1.25;
+}
+.memory-mode-manage-row .btn.is-related-mode {
+    border-color: rgba(116, 87, 255, 0.42);
+    background: rgba(116, 87, 255, 0.08);
+    color: #5a38d6;
+}
+.memory-generation-setting .kkt-item-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+.memory-generation-setting .kkt-item-label small {
+    color: #a0a0a8;
+    font-size: 10px;
+    font-weight: 400;
+}
+.memory-mode-inline-hint {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(116, 87, 255, 0.07);
+    color: #6c5ab0;
+}
+@media (max-width: 620px) {
+    .memory-mode-card-head { flex-direction: column; }
+    .memory-mode-options { grid-template-columns: 1fr; }
+    .memory-mode-option { min-height: 58px; }
+    .memory-mode-manage-row { grid-template-columns: 1fr; }
+}

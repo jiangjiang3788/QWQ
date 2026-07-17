@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>OVO 启动诊断</title>
+<style>
+:root{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#202228;background:#f4f5f7}*{box-sizing:border-box}body{margin:0;padding:18px}.wrap{max-width:860px;margin:auto}.card{background:#fff;border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 5px 24px rgba(0,0,0,.07)}h1{font-size:22px;margin:0 0 8px}h2{font-size:16px;margin:0 0 12px}.muted{color:#737780;font-size:13px;line-height:1.6}.status{font-weight:700}.ok{color:#16833f}.bad{color:#ba1a1a}.wait{color:#936000}.row{padding:10px 0;border-bottom:1px solid #eceef1}.row:last-child{border-bottom:0}.name{font-weight:650;word-break:break-all}.detail{font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#666;white-space:pre-wrap;word-break:break-all;margin-top:4px}button,a.btn{appearance:none;border:0;border-radius:10px;padding:10px 13px;background:#25272d;color:#fff;text-decoration:none;font-size:14px;cursor:pointer;display:inline-block;margin:4px 6px 4px 0}.secondary{background:#e9ebef!important;color:#25272d!important}pre{white-space:pre-wrap;word-break:break-all;background:#101216;color:#e9eef5;border-radius:12px;padding:13px;max-height:320px;overflow:auto;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card"><h1>OVO 启动诊断</h1><div class="muted">此页面不依赖任何第三方脚本。它会直接检查部署服务器返回的 JS/CSS 内容、MIME 类型、浏览器存储能力和 Service Worker 状态。</div></div>
+  <div class="card"><h2>环境</h2><div id="environment" class="detail"></div></div>
+  <div class="card"><h2>资源检测 <span id="summary" class="status wait">检测中…</span></h2><div id="results"></div></div>
+  <div class="card"><h2>浏览器能力</h2><div id="capabilities"></div></div>
+  <div class="card"><h2>操作</h2>
+    <button id="rerun">重新检测</button><button id="copy">复制报告</button><button id="clear" class="secondary">清除网页缓存并注销 SW</button><a class="btn secondary" href="index.html?ovo_debug=1">返回主页</a>
+    <div class="muted">“清除网页缓存”不会删除 IndexedDB 聊天数据。</div>
+  </div>
+  <div class="card"><h2>报告</h2><pre id="report">等待检测…</pre></div>
+</div>
+<script>
+(function(){
+'use strict';
+const assets=[
+ ['vendor/dexie.js','script','Dexie'],['vendor/purify.min.js','script','DOMPurify'],['vendor/echarts.min.js','script','echarts'],['vendor/html2canvas.min.js','script','html2canvas'],['vendor/mammoth.browser.min.js','script','mammoth'],['vendor/jszip.min.js','script','JSZip'],['vendor/Sortable.min.js','script','Sortable'],['vendor/crypto-js.min.js','script','CryptoJS'],
+ ['css/base.css','css'],['css/layout.css','css'],['js/utils.js','script-text'],['js/db.js','script-text'],['js/main.js','script-text'],['manifest.json','json']
+];
+let records=[];
+const $=id=>document.getElementById(id);
+function row(name,status,detail){const d=document.createElement('div');d.className='row';d.innerHTML='<div class="name">'+escapeHtml(name)+' — <span class="status '+(status==='通过'?'ok':status==='失败'?'bad':'wait')+'">'+status+'</span></div><div class="detail">'+escapeHtml(detail||'')+'</div>';return d}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function fetchCheck(item){const [url,type,globalName]=item;const started=performance.now();let res,text='';try{const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),12000);res=await fetch(url+(url.includes('?')?'&':'?')+'diag='+Date.now(),{cache:'no-store',signal:ctrl.signal,redirect:'follow'});clearTimeout(timer);text=await res.text();const ct=(res.headers.get('content-type')||'').toLowerCase();const head=text.slice(0,120).replace(/\s+/g,' ');const htmlLike=/^\s*(<!doctype\s+html|<html|<head|<body)/i.test(text);let ok=res.ok&&!htmlLike;if(type==='script'||type==='script-text') ok=ok&&(ct.includes('javascript')||ct.includes('text/plain')||ct.includes('application/octet-stream')||/\.js($|\?)/.test(res.url));if(type==='css') ok=ok&&(ct.includes('text/css')||ct.includes('text/plain'));if(type==='json') ok=ok&&(ct.includes('json')||ct.includes('text/plain'));
+ const detail=['HTTP '+res.status,'Content-Type: '+(ct||'(空)'),'大小: '+text.length+' bytes','最终地址: '+res.url,'开头: '+head].join('\n')+(htmlLike?'\n危险：服务器把该资源返回成了 HTML/index.html。通常是 _redirects 的 SPA 回退或文件未上传。':'');
+ return {url,type,globalName,ok,detail,text,ms:Math.round(performance.now()-started)};
+}catch(e){return {url,type,globalName,ok:false,detail:(e.name||'Error')+': '+e.message,text:'',ms:Math.round(performance.now()-started)}}}
+function loadScript(url,globalName){return new Promise(resolve=>{const s=document.createElement('script');const timer=setTimeout(()=>{s.remove();resolve({ok:false,detail:'脚本加载超过 12 秒'});},12000);s.src=url+(url.includes('?')?'&':'?')+'exec='+Date.now();s.onload=()=>{clearTimeout(timer);const ok=typeof window[globalName]!=='undefined';resolve({ok,detail:ok?'已生成全局对象 '+globalName:'文件加载完成，但未生成 '+globalName});};s.onerror=()=>{clearTimeout(timer);resolve({ok:false,detail:'script.onerror：浏览器拒绝执行'});};document.head.appendChild(s);});}
+async function indexedDbTest(){return new Promise(resolve=>{if(!('indexedDB'in window))return resolve({ok:false,detail:'window.indexedDB 不存在'});let done=false;const finish=(ok,detail)=>{if(done)return;done=true;resolve({ok,detail})};try{const name='__ovo_diagnostic_'+Date.now();const req=indexedDB.open(name,1);const timer=setTimeout(()=>finish(false,'打开 IndexedDB 超过 8 秒，可能被隐私模式/内嵌浏览器阻止'),8000);req.onupgradeneeded=()=>req.result.createObjectStore('probe');req.onerror=()=>{clearTimeout(timer);finish(false,(req.error&&req.error.name)+': '+(req.error&&req.error.message))};req.onsuccess=()=>{clearTimeout(timer);req.result.close();indexedDB.deleteDatabase(name);finish(true,'IndexedDB 可正常创建和打开')};req.onblocked=()=>{clearTimeout(timer);finish(false,'IndexedDB 被其他页面或旧连接阻塞')};}catch(e){finish(false,e.name+': '+e.message)}})}
+async function capabilityChecks(){const out=[];try{localStorage.setItem('__ovo_probe__','1');localStorage.removeItem('__ovo_probe__');out.push({name:'localStorage',ok:true,detail:'可写入'})}catch(e){out.push({name:'localStorage',ok:false,detail:e.name+': '+e.message})}out.push({name:'IndexedDB',...(await indexedDbTest())});if('serviceWorker'in navigator){try{const regs=await navigator.serviceWorker.getRegistrations();out.push({name:'Service Worker',ok:true,detail:'注册数量: '+regs.length+'\n'+regs.map(r=>r.scope).join('\n')})}catch(e){out.push({name:'Service Worker',ok:false,detail:e.name+': '+e.message})}}else out.push({name:'Service Worker',ok:false,detail:'浏览器不支持'});if('caches'in window){try{const keys=await caches.keys();out.push({name:'Cache Storage',ok:true,detail:'缓存数量: '+keys.length+'\n'+keys.join('\n')})}catch(e){out.push({name:'Cache Storage',ok:false,detail:e.name+': '+e.message})}}return out}
+async function run(){records=[];$('results').innerHTML='';$('capabilities').innerHTML='';$('summary').className='status wait';$('summary').textContent='检测中…';$('environment').textContent=['URL: '+location.href,'Origin: '+location.origin,'Protocol: '+location.protocol,'Online: '+navigator.onLine,'UserAgent: '+navigator.userAgent,'时间: '+new Date().toISOString()].join('\n');
+ const fetched=[];for(const item of assets){const r=await fetchCheck(item);fetched.push(r);records.push({name:r.url,ok:r.ok,detail:r.detail});$('results').appendChild(row(r.url,r.ok?'通过':'失败',r.detail+'\n耗时: '+r.ms+'ms'));}
+ for(const r of fetched.filter(x=>x.type==='script'&&x.ok)){const ex=await loadScript(r.url,r.globalName);records.push({name:r.url+' 执行',ok:ex.ok,detail:ex.detail});$('results').appendChild(row(r.url+' 执行测试',ex.ok?'通过':'失败',ex.detail));}
+ const caps=await capabilityChecks();for(const c of caps){records.push({name:c.name,ok:c.ok,detail:c.detail});$('capabilities').appendChild(row(c.name,c.ok?'通过':'失败',c.detail));}
+ const failed=records.filter(r=>!r.ok);$('summary').className='status '+(failed.length?'bad':'ok');$('summary').textContent=failed.length?'发现 '+failed.length+' 项异常':'全部通过';const report=['OVO 启动诊断报告','时间: '+new Date().toISOString(),$('environment').textContent,'',...records.map(r=>(r.ok?'[OK] ':'[FAIL] ')+r.name+'\n'+r.detail)].join('\n');$('report').textContent=report;}
+$('rerun').onclick=run;$('copy').onclick=async()=>{const t=$('report').textContent;try{await navigator.clipboard.writeText(t)}catch(_){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}$('copy').textContent='已复制'};$('clear').onclick=async()=>{try{if('serviceWorker'in navigator){for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister()}if('caches'in window){for(const k of await caches.keys())await caches.delete(k)}alert('网页缓存和 Service Worker 已清除。聊天数据未删除。');location.reload()}catch(e){alert('清除失败：'+e.message)}};window.addEventListener('error',e=>{records.push({name:'页面脚本错误',ok:false,detail:e.message||'未知错误'});$('report').textContent+='\n[FAIL] 页面脚本错误\n'+(e.message||'未知错误')});run();
+})();
+</script>
+</body>
+</html>

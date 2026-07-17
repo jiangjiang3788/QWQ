@@ -12,13 +12,113 @@
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <meta content="no-referrer" name="referrer"/>
-<script src="https://unpkg.com/dexie/dist/dexie.js"></script>
-<script src="https://unpkg.com/dompurify@2.3.8/dist/purify.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-<script src="https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style id="ovo-startup-diagnostic-style">
+#ovo-startup-mask{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;background:#f7f7f9;color:#24262b;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:24px;box-sizing:border-box}
+#ovo-startup-mask .ovo-startup-card{width:min(92vw,430px);padding:22px;border-radius:18px;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.12);text-align:center}
+#ovo-startup-mask .ovo-startup-spinner{width:32px;height:32px;margin:0 auto 14px;border:3px solid #e4e6eb;border-top-color:#333;border-radius:50%;animation:ovo-spin .85s linear infinite}
+#ovo-startup-mask .ovo-startup-title{font-weight:700;font-size:17px;margin-bottom:8px}
+#ovo-startup-mask .ovo-startup-detail{font-size:13px;line-height:1.65;color:#70747c;word-break:break-word}
+#ovo-startup-mask .ovo-startup-actions{display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+#ovo-startup-mask button,#ovo-startup-mask a{border:0;border-radius:10px;padding:9px 12px;font-size:13px;text-decoration:none;cursor:pointer;background:#24262b;color:#fff}
+#ovo-startup-mask a.secondary,#ovo-startup-mask button.secondary{background:#eceef2;color:#24262b}
+#ovo-diagnostic-badge{position:fixed;right:10px;bottom:10px;z-index:2147483645;border:0;border-radius:999px;padding:7px 10px;background:rgba(20,22,27,.78);color:#fff;font:12px system-ui;display:none}
+@keyframes ovo-spin{to{transform:rotate(360deg)}}
+</style>
+<script id="ovo-startup-diagnostic-bootstrap">
+(function () {
+  'use strict';
+  var state = { startedAt: Date.now(), ready: false, phases: [], assets: [], errors: [] };
+  function text(value) {
+    if (value == null) return '';
+    if (value instanceof Error) return (value.name || 'Error') + ': ' + (value.message || String(value)) + (value.stack ? '\n' + value.stack : '');
+    if (typeof value === 'object') { try { return JSON.stringify(value, null, 2); } catch (_) {} }
+    return String(value);
+  }
+  function getMask() { return document.getElementById('ovo-startup-mask'); }
+  function setDetail(message) {
+    var el = document.getElementById('ovo-startup-detail');
+    if (el) el.textContent = message;
+  }
+  function showFailure(title, detail) {
+    var mask = getMask();
+    if (!mask) return;
+    var spinner = mask.querySelector('.ovo-startup-spinner');
+    if (spinner) spinner.style.display = 'none';
+    var titleEl = document.getElementById('ovo-startup-title');
+    if (titleEl) titleEl.textContent = title || '应用启动失败';
+    setDetail(detail || '未知错误');
+    var actions = document.getElementById('ovo-startup-actions');
+    if (actions) actions.style.display = 'flex';
+    var copy = document.getElementById('ovo-copy-diagnostic');
+    if (copy && !copy.dataset.bound) {
+      copy.dataset.bound = '1';
+      copy.addEventListener('click', function () {
+        var report = window.__OVO_DIAG__.report();
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(report).catch(function () {});
+        else { var ta=document.createElement('textarea'); ta.value=report; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(_){} ta.remove(); }
+        copy.textContent = '已复制';
+      });
+    }
+    var reload = document.getElementById('ovo-reload-page');
+    if (reload && !reload.dataset.bound) { reload.dataset.bound='1'; reload.addEventListener('click', function(){ location.reload(); }); }
+  }
+  function report() {
+    return [
+      'OVO 启动诊断',
+      'URL: ' + location.href,
+      '时间: ' + new Date().toISOString(),
+      'UserAgent: ' + navigator.userAgent,
+      'online: ' + navigator.onLine,
+      '耗时: ' + (Date.now() - state.startedAt) + 'ms',
+      '', '阶段:', state.phases.map(function(x){return '- '+x.t+'ms '+x.name;}).join('\n') || '- 无',
+      '', '资源:', state.assets.map(function(x){return '- '+(x.ok?'OK ':'FAIL ') + x.name + (x.detail?' | '+x.detail:'');}).join('\n') || '- 无',
+      '', '错误:', state.errors.map(function(x){return '- '+x;}).join('\n') || '- 无'
+    ].join('\n');
+  }
+  window.__OVO_DIAG__ = {
+    state: state,
+    phase: function (name) { state.phases.push({ t: Date.now() - state.startedAt, name: text(name) }); setDetail(text(name)); },
+    asset: function (name, ok, detail) { state.assets.push({ name:text(name), ok:!!ok, detail:text(detail) }); if (!ok) showFailure('资源加载失败', text(name) + (detail ? '\n' + text(detail) : '')); },
+    error: function (err) { var msg=text(err); state.errors.push(msg); showFailure('应用启动失败', msg); },
+    fail: function (err) { this.error(err); },
+    ready: function () { state.ready=true; this.phase('应用初始化完成'); var mask=getMask(); if(mask) mask.remove(); var badge=document.getElementById('ovo-diagnostic-badge'); if(badge) badge.style.display='block'; },
+    show: function () { showFailure(state.ready ? '诊断信息' : '应用尚未完成启动', report()); },
+    report: report
+  };
+  window.addEventListener('error', function (event) {
+    if (event.target && event.target !== window) {
+      var url = event.target.src || event.target.href || event.target.currentSrc || event.target.tagName;
+      window.__OVO_DIAG__.asset(url, false, '浏览器未能加载该资源');
+      return;
+    }
+    window.__OVO_DIAG__.error(event.error || event.message || '未知脚本错误');
+  }, true);
+  window.addEventListener('unhandledrejection', function (event) { window.__OVO_DIAG__.error(event.reason || '未处理的 Promise 错误'); });
+  document.addEventListener('DOMContentLoaded', function () {
+    window.__OVO_DIAG__.phase('HTML 已解析，等待应用初始化');
+    if (state.errors.length) showFailure('应用启动失败', state.errors[state.errors.length - 1]);
+    var badge=document.getElementById('ovo-diagnostic-badge');
+    if(badge) badge.addEventListener('click', function(){ window.__OVO_DIAG__.show(); });
+    setTimeout(function () {
+      if (state.ready) return;
+      var missing=[];
+      [['Dexie',window.Dexie],['DOMPurify',window.DOMPurify],['echarts',window.echarts],['html2canvas',window.html2canvas],['mammoth',window.mammoth],['JSZip',window.JSZip],['Sortable',window.Sortable],['CryptoJS',window.CryptoJS]].forEach(function(pair){ if(typeof pair[1]==='undefined') missing.push(pair[0]); });
+      var last = state.phases.length ? state.phases[state.phases.length-1].name : '没有启动阶段记录';
+      var message='超过 10 秒仍未完成启动。\n最后阶段：'+last;
+      if(missing.length) message+='\n缺少依赖：'+missing.join(', ');
+      message+='\n请点击“打开完整诊断”检查服务器是否把 JS 文件错误地返回成 index.html。';
+      showFailure('启动超时', message);
+    }, 10000);
+  }, { once:true });
+})();
+</script>
+<script defer src="vendor/dexie.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/purify.min.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/echarts.min.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/html2canvas.min.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/mammoth.browser.min.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/jszip.min.js?v=16.1.3-startup-fix"></script>
+<script defer src="vendor/Sortable.min.js?v=16.1.3-startup-fix"></script>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
@@ -40,13 +140,14 @@
 <link href="css/settings.css" rel="stylesheet"/>
 <link href="css/api_settings_v161.css" rel="stylesheet"/>
 <!-- Weather Module -->
-<script src="js/modules/weather.js"></script>
+<script defer src="js/modules/weather.js?v=16.1.3-startup-fix"></script>
 <!-- CSS Split: Modules -->
 <link href="css/modules/search.css" rel="stylesheet"/>
 <link href="css/modules/theater.css" rel="stylesheet"/>
 <link href="css/modules/worldbook.css" rel="stylesheet"/>
 <link href="css/modules/journal.css" rel="stylesheet"/>
 <link href="css/modules/vector_memory.css" rel="stylesheet"/>
+<link href="css/modules/memory_mode_ui.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
 <link href="css/modules/more.css" rel="stylesheet"/>
@@ -62,7 +163,7 @@
 <!-- Other Styles -->
 <link href="contacts.css" rel="stylesheet"/>
 <link href="more_menu.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<script defer src="vendor/crypto-js.min.js?v=16.1.3-startup-fix"></script>
 <!-- CSS Split: Extracted from inline <style> -->
 <link href="css/modules/block_system.css" rel="stylesheet"/>
 <link href="css/modules/voice_selector.css" rel="stylesheet"/>
@@ -73,6 +174,20 @@
     </style>
 </meta></meta></head>
 <body>
+<div id="ovo-startup-mask" role="status" aria-live="polite">
+  <div class="ovo-startup-card">
+    <div class="ovo-startup-spinner"></div>
+    <div class="ovo-startup-title" id="ovo-startup-title">正在启动 OVO</div>
+    <div class="ovo-startup-detail" id="ovo-startup-detail">HTML 已打开，正在加载本地脚本…</div>
+    <div class="ovo-startup-actions" id="ovo-startup-actions">
+      <a href="diagnose.html" class="secondary">打开完整诊断</a>
+      <button type="button" id="ovo-copy-diagnostic">复制错误</button>
+      <button type="button" class="secondary" id="ovo-reload-page">重新加载</button>
+    </div>
+    <noscript><div style="margin-top:12px;color:#b00020">浏览器已禁用 JavaScript，应用无法启动。</div></noscript>
+  </div>
+</div>
+<button id="ovo-diagnostic-badge" type="button">启动诊断</button>
 <svg height="0" style="position:absolute;" width="0">
 <defs>
 <clippath clippathunits="objectBoundingBox" id="heart-clip">
@@ -3510,8 +3625,49 @@
 <input id="setting-reply-count-max" min="1" style="width:30px; text-align:center; border:none; background: rgba(0,0,0,0.05); border-radius: 4px;" type="number" value="8"/>
 </div>
 </div>
-<div class="kkt-item">
-<div class="kkt-item-label">自动生成日记总结</div>
+<section class="memory-mode-card" id="setting-memory-mode-card" aria-labelledby="setting-memory-mode-title">
+<div class="memory-mode-card-head">
+<div>
+<div class="memory-mode-card-title" id="setting-memory-mode-title">聊天实际使用的长期记忆</div>
+<p>三选一：每次聊天只读取下面一种长期记忆来源。</p>
+</div>
+<span class="memory-mode-current" id="setting-memory-mode-current">当前：回忆日记</span>
+</div>
+<div class="memory-mode-options" role="radiogroup" aria-label="长期记忆读取模式">
+<button class="memory-mode-option" data-setting-memory-mode="journal" type="button" role="radio" aria-checked="false">
+<span class="memory-mode-option-icon">📖</span>
+<span><b>回忆日记</b><small>读取已收藏的日记</small></span>
+</button>
+<button class="memory-mode-option" data-setting-memory-mode="table" type="button" role="radio" aria-checked="false">
+<span class="memory-mode-option-icon">🗂️</span>
+<span><b>结构化档案</b><small>读取绑定的表格字段</small></span>
+</button>
+<button class="memory-mode-option" data-setting-memory-mode="vector" type="button" role="radio" aria-checked="false">
+<span class="memory-mode-option-icon">🧭</span>
+<span><b>向量记忆</b><small>按语义检索相关记忆</small></span>
+</button>
+</div>
+<select id="setting-memory-mode" hidden aria-hidden="true" tabindex="-1">
+<option value="journal">回忆日记</option>
+<option value="table">结构化档案</option>
+<option value="vector">向量记忆</option>
+</select>
+<div class="memory-mode-explanation" id="setting-memory-mode-explanation">
+<strong id="setting-memory-mode-injection">聊天将注入：已收藏的回忆日记</strong>
+<span id="setting-memory-mode-help">自动生成日记只负责创建日记，不代表聊天正在使用日记。</span>
+</div>
+<div class="memory-mode-manage-row">
+<button class="btn btn-small btn-secondary" id="setting-open-journal-memory-btn" type="button">管理回忆日记</button>
+<button class="btn btn-small btn-secondary" id="setting-open-memory-table-btn" type="button">管理结构化档案</button>
+<button class="btn btn-small btn-secondary" id="setting-open-vector-memory-btn" type="button">管理向量记忆</button>
+</div>
+<p class="memory-mode-save-note">选择后请点击本页底部“保存所有更改”。</p>
+</section>
+<div class="kkt-item memory-generation-setting">
+<div class="kkt-item-label">
+<div>自动生成回忆日记（独立开关）</div>
+<small>只负责生成，不决定聊天读取哪种记忆</small>
+</div>
 <div class="kkt-item-control">
 <label class="kkt-switch">
 <input id="setting-auto-journal-enabled" type="checkbox"/>
@@ -3519,45 +3675,22 @@
 </label>
 </div>
 </div>
-<div class="kkt-item">
-<div class="kkt-item-label">长期记忆模式</div>
-<div class="kkt-item-control">
-<select id="setting-memory-mode" style="border:none; background:transparent; text-align:right;">
-<option value="journal">日记模式</option>
-<option value="table">表格模式</option>
-<option value="vector">向量模式</option>
-</select>
-<span class="kkt-arrow">›</span>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">向量记忆面板</div>
-<div class="kkt-item-control">
-<button class="btn btn-small btn-secondary" id="setting-open-vector-memory-btn" style="min-width: 132px;" type="button">打开向量记忆</button>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">结构化记忆面板</div>
-<div class="kkt-item-control">
-<button class="btn btn-small btn-secondary" id="setting-open-memory-table-btn" style="min-width: 132px;" type="button">打开结构记忆</button>
-</div>
-</div>
 <div class="kkt-item" id="setting-auto-journal-interval-container" style="display: none;">
-<div class="kkt-item-label">自动总结间隔(条)</div>
+<div class="kkt-item-label">日记自动生成间隔（条）</div>
 <div class="kkt-item-control">
 <input id="setting-auto-journal-interval" min="10" style="width:60px; text-align:right; border:none; background: rgba(0,0,0,0.05); border-radius: 4px;" type="number" value="100"/>
 </div>
 </div>
 <div class="kkt-item">
-<div class="kkt-item-label">自动总结补救</div>
+<div class="kkt-item-label">日记生成失败重试</div>
 <div class="kkt-item-control">
-<button class="btn btn-small btn-secondary" id="setting-auto-journal-retry-btn" style="min-width: 132px;" type="button">重试自动总结</button>
+<button class="btn btn-small btn-secondary" id="setting-auto-journal-retry-btn" style="min-width: 132px;" type="button">重试生成日记</button>
 </div>
 </div>
 <div class="kkt-item">
-<div class="kkt-item-label">总结到最新</div>
+<div class="kkt-item-label">立即生成日记到最新</div>
 <div class="kkt-item-control">
-<button class="btn btn-small btn-secondary" id="setting-summarize-latest-btn" style="min-width: 132px;" type="button">总结到最新</button>
+<button class="btn btn-small btn-secondary" id="setting-summarize-latest-btn" style="min-width: 132px;" type="button">生成到最新</button>
 </div>
 </div>
 <div class="kkt-item">
@@ -3835,7 +3968,10 @@
 <!-- 记忆存档库 -->
 <div class="kkt-group" style="margin-top:15px;">
 <div class="kkt-item">
-<div class="kkt-item-label">记忆存档</div>
+<div class="kkt-item-label">
+<div>聊天快照存档</div>
+<small>用于备份/回档，不是长期记忆读取模式</small>
+</div>
 <div class="kkt-item-control">
 <button class="btn btn-small btn-secondary" id="open-archive-library-btn" style="margin: 0; padding: 4px 12px;" type="button">管理存档</button>
 <span class="kkt-arrow">›</span>
@@ -4807,7 +4943,7 @@
 <header class="app-header">
 <button class="back-btn" data-target="chat-settings-screen">‹</button>
 <div class="title-container">
-<h1 class="title">记忆存档</h1>
+<h1 class="title">聊天快照存档</h1>
 </div>
 <div class="action-btn-group">
 <button class="action-btn" id="archive-multi-select-btn" title="多选" type="button">多选</button>
@@ -5627,11 +5763,12 @@
 <div id="memory-table-mode-pill" style="display:inline-flex; margin-top:8px; padding:5px 10px; border-radius:999px; font-size:12px;">日记模式</div>
 </div>
 <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="journal" type="button">用日记</button>
-<button class="btn btn-small btn-primary" data-memory-mode-switch="table" type="button">用表格</button>
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="vector" type="button">用向量</button>
+<button class="btn btn-small btn-secondary" data-memory-mode-switch="journal" type="button">回忆日记</button>
+<button class="btn btn-small btn-primary" data-memory-mode-switch="table" type="button">结构化档案</button>
+<button class="btn btn-small btn-secondary" data-memory-mode-switch="vector" type="button">向量记忆</button>
 </div>
 </div>
+<p class="memory-mode-inline-hint">这是同一个“三选一”读取模式；高亮项才会进入真实聊天 Prompt。</p>
 <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
 <div style="flex:1; min-width:170px;">
 <input id="memory-table-search-input" placeholder="搜索字段、值、模板..." style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px 12px; font-size:14px;" type="text"/>
@@ -5717,11 +5854,12 @@
 <div class="vector-memory-pill" id="vector-memory-mode-pill">未选择角色</div>
 </div>
 <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="journal" type="button">用日记</button>
-<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="table" type="button">用表格</button>
-<button class="btn btn-small btn-primary" data-vector-memory-mode-switch="vector" type="button">用向量</button>
+<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="journal" type="button">回忆日记</button>
+<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="table" type="button">结构化档案</button>
+<button class="btn btn-small btn-primary" data-vector-memory-mode-switch="vector" type="button">向量记忆</button>
 </div>
 </div>
+<p class="memory-mode-inline-hint">这是同一个“三选一”读取模式；高亮项才会进入真实聊天 Prompt。</p>
 <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
 <button class="btn btn-small btn-secondary" id="vector-memory-import-btn" type="button">导入模板/记忆包</button>
 <button class="btn btn-small btn-secondary" id="vector-memory-export-all-btn" type="button">导出模板</button>
@@ -6020,14 +6158,14 @@
 <label class="proment-policy-card"><span><b>世界书</b><small>关键词与固定条目</small></span><input id="proment-worldbook-enabled" type="checkbox" checked></label>
 <label class="proment-policy-card proment-policy-number"><span><b>世界书预算</b><small>最大字符数</small></span><input id="proment-worldbook-budget" min="0" step="100" type="number" value="2400"></label>
 <label class="proment-policy-card proment-policy-number"><span><b>世界书优先级</b><small>数值越小越优先</small></span><input id="proment-worldbook-priority" min="1" max="99" type="number" value="20"></label>
-<label class="proment-policy-card"><span><b>结构化档案</b><small>表格与字段资料</small></span><input id="proment-structured-enabled" type="checkbox" checked></label>
+<label class="proment-policy-card"><span><b>预览结构化档案</b><small>仅控制本页设计预览，不切换真实聊天模式</small></span><input id="proment-structured-enabled" type="checkbox" checked></label>
 <label class="proment-policy-card proment-policy-number"><span><b>档案预算</b><small>最大字符数</small></span><input id="proment-structured-budget" min="0" step="100" type="number" value="1800"></label>
 <label class="proment-policy-card proment-policy-number"><span><b>档案优先级</b><small>数值越小越优先</small></span><input id="proment-structured-priority" min="1" max="99" type="number" value="30"></label>
 <label class="proment-policy-card"><span><b>最近聊天</b><small>作为短期上下文</small></span><input id="proment-history-enabled" type="checkbox" checked></label>
 <label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>最多读取</small></span><input id="proment-history-count" min="1" max="200" type="number" value="30"></label>
 <label class="proment-policy-card"><span><b>状态栏</b><small>注入当前角色状态</small></span><input id="proment-status-enabled" type="checkbox" checked></label>
 </div>
-<div class="proment-independent-note"><b>向量记忆保持独立</b><span>向量条目、模板、检索与自动总结仍在“向量记忆”页面管理；Proment 不接管这些设置。</span></div>
+<div class="proment-independent-note"><b>真实长期记忆由角色设置里的“三选一模式”决定</b><span>本页的结构化档案开关只影响设计预览；向量条目、模板、检索与自动总结仍在“向量记忆”页面管理。</span></div>
 <div class="proment-quick-links">
 <button class="btn btn-secondary" id="proment-open-worldbook" type="button">世界书</button>
 <button class="btn btn-secondary" id="proment-open-structured" type="button">结构化档案</button>
@@ -6043,7 +6181,7 @@
 <div class="proment-preview-head"><b>Prompt / 注入诊断</b><div class="proment-preview-actions"><button class="btn btn-small btn-secondary" id="proment-copy-preview" type="button">复制</button><button class="btn btn-small btn-secondary" id="proment-clear-runtime" type="button">清除快照</button></div></div>
 <pre id="proment-preview-content"></pre>
 </div>
-<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。世界书开关与预算会作用于真实请求；其余诊断只读。AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。向量记忆仍在独立页面管理。</p>
+<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。世界书开关与预算会作用于真实请求；结构化档案、最近聊天和状态栏在此处仅用于设计预览，不会替代角色设置中的长期记忆三选一模式。AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。</p>
 </div>
 <div style="margin-bottom: 15px; padding-top: 5px; padding-left: 8px;">
 <div class="kkt-item-label" style="font-weight: bold; color: var(--primary-color);">系统提示词自定义</div>
@@ -6836,51 +6974,52 @@
   未来修改代码时，请参考以下注释找到对应的文件：
 -->
 <!-- [1. 基础层] -->
-<script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
-<script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+<script defer src="js/utils.js?v=16.1.3-startup-fix"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
+<script defer src="js/db.js?v=16.1.3-startup-fix"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <!-- [2. 核心交互层] -->
-<script src="js/ui.js"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
+<script defer src="js/ui.js?v=16.1.3-startup-fix"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
 <!-- Chat Modules -->
-<script src="js/modules/chat_list.js"></script>
-<script src="js/modules/character_create.js"></script>
-<script src="js/modules/chat_render.js"></script>
-<script src="js/modules/ai_request_runtime.js"></script>
-    <script src="js/modules/chat_ai.js"></script>
-<script src="js/modules/chat_features.js"></script>
-<script src="js/modules/avatar_recognition.js"></script>
-<script src="js/modules/chat_ops.js"></script>
-<script src="js/chat.js"></script> <!-- 聊天核心入口 -->
-<script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
-<script src="js/settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
-<script src="js/modules/api_settings_ui.js"></script> <!-- API 管理界面增强 -->
-<script src="js/modules/block_system.js"></script> <!-- 拉黑与好友申请 -->
+<script defer src="js/modules/chat_list.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/character_create.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/chat_render.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/ai_request_runtime.js?v=16.1.3-startup-fix"></script>
+    <script defer src="js/modules/chat_ai.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/chat_features.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/avatar_recognition.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/modules/chat_ops.js?v=16.1.3-startup-fix"></script>
+<script defer src="js/chat.js?v=16.1.3-startup-fix"></script> <!-- 聊天核心入口 -->
+<script defer src="js/contacts.js?v=16.1.3-startup-fix"></script> <!-- 联系人：好友列表、名片 -->
+<script defer src="js/settings.js?v=16.1.3-startup-fix"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
+<script defer src="js/modules/api_settings_ui.js?v=16.1.3-startup-fix"></script> <!-- API 管理界面增强 -->
+<script defer src="js/modules/block_system.js?v=16.1.3-startup-fix"></script> <!-- 拉黑与好友申请 -->
 <!-- [3. 独立功能模块 (Plugins)] -->
-<script src="js/modules/sticker.js"></script> <!-- 表情包管理系统 -->
-<script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
-<script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
-<script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
-<script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
-<script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
-<script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
+<script defer src="js/modules/sticker.js?v=16.1.3-startup-fix"></script> <!-- 表情包管理系统 -->
+<script defer src="js/modules/theater.js?v=16.1.3-startup-fix"></script> <!-- 小剧场功能 -->
+<script defer src="js/modules/worldbook.js?v=16.1.3-startup-fix"></script> <!-- 世界书设定集 -->
+<script defer src="js/modules/journal.js?v=16.1.3-startup-fix"></script> <!-- 回忆日记生成 -->
+<script defer src="js/modules/memory_table.js?v=16.1.3-startup-fix"></script> <!-- 结构化记忆 -->
+<script defer src="js/modules/vector_memory.js?v=16.1.3-startup-fix"></script> <!-- 向量记忆 -->
+<script defer src="js/modules/memory_mode_ui.js?v=16.1.3-startup-fix"></script> <!-- 长期记忆模式清晰化 UI -->
+<script defer src="js/modules/reminder.js?v=16.1.3-startup-fix"></script> <!-- 提醒事项 -->
+<script defer src="js/modules/storage.js?v=16.1.3-startup-fix"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->
-<script src="js/modules/tutorial.js"></script> <!-- 教程与 GitHub 备份 -->
-<script src="js/modules/more_menu.js"></script> <!-- 更多菜单与状态栏管理 -->
-<script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
-<script src="js/modules/favorites.js"></script> <!-- 消息收藏 -->
-<script src="js/modules/search.js"></script> <!-- 聊天记录搜索模块 -->
-<script src="js/modules/battery_interaction.js"></script> <!-- 电量交互模块 -->
+<script defer src="js/modules/tutorial.js?v=16.1.3-startup-fix"></script> <!-- 教程与 GitHub 备份 -->
+<script defer src="js/modules/more_menu.js?v=16.1.3-startup-fix"></script> <!-- 更多菜单与状态栏管理 -->
+<script defer src="js/modules/regex_filter.js?v=16.1.3-startup-fix"></script> <!-- 正则过滤模块 -->
+<script defer src="js/modules/favorites.js?v=16.1.3-startup-fix"></script> <!-- 消息收藏 -->
+<script defer src="js/modules/search.js?v=16.1.3-startup-fix"></script> <!-- 聊天记录搜索模块 -->
+<script defer src="js/modules/battery_interaction.js?v=16.1.3-startup-fix"></script> <!-- 电量交互模块 -->
 <!-- 角色相册管理模块 -->
-<script src="js/modules/cot_settings.js"></script> <!-- 思维链设置模块 -->
-<script src="js/modules/tts_service.js"></script> <!-- TTS 语音合成代理服务 -->
-<script src="js/modules/voice_selector.js"></script> <!-- 音色选择器 -->
-<script src="js/modules/tts_settings.js"></script> <!-- TTS 设置管理 -->
-<script src="js/modules/archive.js"></script> <!-- 记忆存档库模块 -->
-<script src="js/modules/appearance_settings.js"></script> <!-- 外观设置：整体 UI 切换 -->
-<script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
-<script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
-<script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
+<script defer src="js/modules/cot_settings.js?v=16.1.3-startup-fix"></script> <!-- 思维链设置模块 -->
+<script defer src="js/modules/tts_service.js?v=16.1.3-startup-fix"></script> <!-- TTS 语音合成代理服务 -->
+<script defer src="js/modules/voice_selector.js?v=16.1.3-startup-fix"></script> <!-- 音色选择器 -->
+<script defer src="js/modules/tts_settings.js?v=16.1.3-startup-fix"></script> <!-- TTS 设置管理 -->
+<script defer src="js/modules/archive.js?v=16.1.3-startup-fix"></script> <!-- 记忆存档库模块 -->
+<script defer src="js/modules/appearance_settings.js?v=16.1.3-startup-fix"></script> <!-- 外观设置：整体 UI 切换 -->
+<script defer src="js/modules/msg_version.js?v=16.1.3-startup-fix"></script> <!-- 消息版本管理 -->
+<script defer src="js/modules/keep_alive.js?v=16.1.3-startup-fix"></script> <!-- 后台保活 -->
+<script defer src="js/modules/floating_ball.js?v=16.1.3-startup-fix"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
-<script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
+<script defer src="js/main.js?v=16.1.3-startup-fix"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>
 </html>

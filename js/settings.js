@@ -1512,6 +1512,7 @@ function loadSettingsToSidebar() {
         document.getElementById('setting-auto-journal-enabled').checked = e.autoJournalEnabled || false;
         const memoryModeEl = document.getElementById('setting-memory-mode');
         if (memoryModeEl) memoryModeEl.value = e.memoryMode || 'journal';
+        if (typeof refreshMemoryModeUI === 'function') refreshMemoryModeUI();
         const autoJournalIntervalContainer = document.getElementById('setting-auto-journal-interval-container');
         if (autoJournalIntervalContainer) {
             autoJournalIntervalContainer.style.display = e.autoJournalEnabled ? 'flex' : 'none';
@@ -2327,6 +2328,7 @@ async function saveSettingsFromSidebar() {
         e.autoJournalEnabled = document.getElementById('setting-auto-journal-enabled').checked;
         const memoryModeElSave = document.getElementById('setting-memory-mode');
         e.memoryMode = memoryModeElSave ? memoryModeElSave.value : 'journal';
+        if (typeof refreshMemoryModeUI === 'function') refreshMemoryModeUI();
         const autoJournalIntervalInput = parseInt(document.getElementById('setting-auto-journal-interval').value, 10);
         e.autoJournalInterval = (isNaN(autoJournalIntervalInput) || autoJournalIntervalInput < 10) ? 100 : autoJournalIntervalInput;
         const charAutoFavEl = document.getElementById('setting-char-auto-favorite');

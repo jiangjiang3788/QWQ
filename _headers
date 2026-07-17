@@ -1,5 +1,22 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+/diagnose.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/*.js
+  Cache-Control: no-cache, max-age=0, must-revalidate
+
+/vendor/*
+  Cache-Control: no-cache, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+
+/css/*
+  Cache-Control: no-cache, max-age=0, must-revalidate
 
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate

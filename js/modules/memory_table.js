@@ -851,7 +851,7 @@
         ensureMemoryTableState(chat);
         const boundTemplates = getBoundTemplates(chat);
         const modeLabel = chat.memoryMode === 'table'
-            ? '表格记忆模式'
+            ? '结构化档案模式'
             : (chat.memoryMode === 'vector' ? '向量记忆模式' : '日记模式');
         summary.textContent = `${chat.remarkName || chat.realName || '当前角色'} · 已绑定 ${boundTemplates.length} 个模板`;
         modePill.textContent = modeLabel;
@@ -2885,7 +2885,7 @@ ${tableContext}`;
                 await saveCharacter(chat.id);
                 renderMemoryTableScreen();
                 showToast(chat.memoryMode === 'table'
-                    ? '已切换为表格记忆模式'
+                    ? '已切换为结构化档案模式'
                     : (chat.memoryMode === 'vector' ? '已切换为向量记忆模式' : '已切换为日记模式'));
             });
         });

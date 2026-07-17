@@ -1110,7 +1110,7 @@
         summary.textContent = `${chat.remarkName || chat.realName || '当前角色'} · ${chat.vectorMemory.entries.length} 条向量记忆 · 模板 ${template ? template.name : '未绑定'}`;
         const map = {
             journal: { label: '日记模式', bg: 'rgba(255, 181, 71, 0.12)', color: '#b26a00' },
-            table: { label: '表格模式', bg: 'rgba(73, 129, 255, 0.12)', color: '#335eea' },
+            table: { label: '结构化档案模式', bg: 'rgba(73, 129, 255, 0.12)', color: '#335eea' },
             vector: { label: '向量模式', bg: 'rgba(116, 87, 255, 0.12)', color: '#5a38d6' }
         };
         const meta = map[chat.memoryMode] || map.journal;

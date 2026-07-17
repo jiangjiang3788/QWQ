@@ -1,0 +1,14 @@
+V16.1 启动白屏诊断修复
+
+主要修改：
+1. 所有外部 JS 标签加入 defer，保持原执行顺序，但不再阻塞 HTML/body 首屏渲染。
+2. 页面最早阶段加入可视化启动状态。脚本、Promise、资源或初始化失败会直接显示在页面上，不再只依赖控制台。
+3. 新增 diagnose.html。访问 https://你的域名/diagnose.html 可检测每个关键 JS/CSS 的 HTTP 状态、Content-Type、文件开头、脚本全局对象、IndexedDB、localStorage、Service Worker 和 Cache Storage。
+4. 移除“/* /index.html 200”全路径回退。旧规则会把缺失的 JS/CSS 伪装成 index.html（HTTP 200），导致浏览器拒绝执行但难以定位。
+5. JS/CSS/vendor 增加重新验证缓存头和版本参数，避免新旧部署文件混用。
+
+排查方法：
+- 部署完整 ZIP 后，先打开 /diagnose.html。
+- 若某个 JS 显示“服务器把资源返回成 HTML”，说明部署缺文件、目录层级错误，或仍存在其他 SPA 回退规则。
+- 若 IndexedDB 失败，说明当前浏览器/内嵌 WebView/隐私模式阻止本地数据库。
+- 将诊断页的“报告”复制出来即可定位具体问题。
