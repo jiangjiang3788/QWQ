@@ -335,6 +335,10 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
     if (!chat) return;
 
+    const memoryRoundToken = (chatType === 'private' && window.MemoryTablePolicy)
+        ? window.MemoryTablePolicy.beginRound(chat, { isBackground, isSummary })
+        : null;
+
     if (!isBackground) {
         currentReplyAbortController = new AbortController();
         isGenerating = true;
@@ -450,6 +454,13 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
         let systemPrompt;
         if (chatType === 'private') {
+            if (chat.memoryMode === 'table' && typeof prepareMemoryTableContext === 'function') {
+                try {
+                    await prepareMemoryTableContext(chat);
+                } catch (error) {
+                    console.warn('[MemoryTable] failed to prepare relevant prompt context:', error);
+                }
+            }
             if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
                 try {
                     await prepareVectorMemoryContext(chat);
@@ -952,7 +963,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         }
         
         if (streamEnabled) {
-            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue);
+            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
         } else {
             let result;
             try {
@@ -1005,10 +1016,13 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             // ===================================
             
             
-            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue);
+            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
         }
 
     } catch (error) {
+        if (memoryRoundToken && window.MemoryTablePolicy) {
+            window.MemoryTablePolicy.cancelRound(chat, memoryRoundToken);
+        }
         if (error.name === 'AbortError') {
             if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
         } else {
@@ -1029,7 +1043,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     }
 }
 
-async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
+async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let fullResponse = "", accumulatedChunk = "";
     for (; ;) {
@@ -1096,7 +1110,7 @@ async function processStream(response, chat, apiType, targetChatId, targetChatTy
     }
 
     // ===================
-    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue);
+    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
 }
 
 /** 返回该角色在手机掌控下可见的角色与群聊（未开启角色过滤则返回全部，开启则只返回指定的角色及所在群聊） */
@@ -1277,7 +1291,7 @@ function executePhoneControlCommands(text, controllingChar) {
     return { cleaned, executed };
 }
 
-async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false) {
+async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null) {
     const rawResponse = fullResponse;
     if (fullResponse) {
         // 1. 移除 [incipere] 标签
@@ -1858,6 +1872,9 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             addMessageBubble(summaryMsg, targetChatId, targetChatType);
         }
 
+        if (targetChatType === 'private' && memoryRoundToken && window.MemoryTablePolicy) {
+            window.MemoryTablePolicy.finishRound(chat, memoryRoundToken);
+        }
         await saveCurrentChat();
         renderChatList();
 

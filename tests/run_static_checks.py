@@ -34,6 +34,25 @@ if len(render_editor_defs)!=1:
 if 'rowId = ''' not in memory_table_js or 'data-row-id="${rowId}"' not in memory_table_js:
     errors.append('memory rows editor does not preserve rowId')
 
+
+# 结构化记忆 V2 回归检查。
+for rel in ['js/modules/memory_table_policy.js','css/modules/memory_table_v2.css','memory_templates/章鱼机_分层可检索记忆模板V2_含原数据.json']:
+    if not (root/rel).exists(): errors.append('missing memory v2 asset: '+rel)
+for rid in ['memory-table-normal-mode-btn','memory-table-json-mode-btn','memory-table-trigger-mode','memory-table-round-interval','memory-table-cursor-table-select','memory-table-cursor-position','memory-table-update-selected-btn']:
+    if rid not in ids: errors.append('missing memory v2 id: '+rid)
+policy_js=(root/'js/modules/memory_table_policy.js').read_text(encoding='utf-8') if (root/'js/modules/memory_table_policy.js').exists() else ''
+chat_ai_js=(root/'js/modules/chat_ai.js').read_text(encoding='utf-8')
+if 'beginRound' not in policy_js or 'finishRound' not in policy_js: errors.append('memory v2 round tracker missing')
+if 'memoryRoundToken' not in chat_ai_js: errors.append('chat ai not integrated with memory rounds')
+if 'prepareMemoryTableContext' not in chat_ai_js or 'window.prepareMemoryTableContext' not in memory_table_js: errors.append('relevant table context preparation missing')
+try:
+    import json
+    pkg=json.loads((root/'memory_templates/章鱼机_分层可检索记忆模板V2_含原数据.json').read_text(encoding='utf-8'))
+    if pkg.get('version') != 2: errors.append('memory v2 package version mismatch')
+    if pkg.get('migration',{}).get('preservedOriginalRowCount') != 206: errors.append('memory v2 original row migration count mismatch')
+except Exception as exc:
+    errors.append('invalid memory v2 package: '+str(exc))
+
 required=['proment-compare-runtime','proment-preview-worldbook','proment-preview-ai-request']
 for rid in required:
     if rid not in ids: errors.append('missing required id: '+rid)

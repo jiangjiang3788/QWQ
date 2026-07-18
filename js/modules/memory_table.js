@@ -1,7 +1,8 @@
 // --- 结构化记忆 / 表格记忆 (js/modules/memory_table.js) ---
 (function () {
     const MEMORY_TABLE_HISTORY_LIMIT = 20;
-    const MEMORY_TABLE_MAX_CONTEXT_MESSAGES = 60;
+    const MEMORY_TABLE_MAX_CONTEXT_MESSAGES = 60; // V1 兼容默认值；V2 可由角色设置覆盖
+    const MemoryPolicy = window.MemoryTablePolicy || null;
 
     const uiState = {
         tab: 'tables',
@@ -11,7 +12,9 @@
         templateDraft: null,
         conversionState: null,
         designerCollapsedFieldIds: {},
-        designerDrag: null
+        designerDrag: null,
+        viewMode: 'normal',
+        activeTableId: null
     };
 
     function deepClone(obj) {
@@ -53,6 +56,16 @@
         if (chat.memoryTables.lastUpdateMsgTimestamp === undefined) chat.memoryTables.lastUpdateMsgTimestamp = null;
         if (!chat.memoryTables.autoUpdateState) chat.memoryTables.autoUpdateState = 'idle';
         if (chat.memoryTables.autoUpdatePending === undefined) chat.memoryTables.autoUpdatePending = false;
+        if (MemoryPolicy) {
+            const runtime = MemoryPolicy.ensureRuntimeState(chat);
+            uiState.viewMode = runtime.viewMode || 'normal';
+            uiState.activeTableId = runtime.activeTableId || null;
+            // 旧设置继续作为 V2 的消息量兜底，保证旧 UI / 旧存档可用。
+            if (Number.isFinite(parseInt(chat.memoryTables.autoUpdateInterval, 10))) {
+                runtime.engineSettings.messageInterval = Math.max(10, parseInt(chat.memoryTables.autoUpdateInterval, 10));
+            }
+            runtime.engineSettings.enabled = chat.memoryTables.autoUpdateEnabled !== false;
+        }
     }
 
     function getCurrentMemoryTableChat() {
@@ -132,6 +145,8 @@
             aiEditable: true,
             aiHint: '',
             displayFormat: '{value}',
+            important: true,
+            summaryLabel: '',
             conditionalRules: []
         };
     }
@@ -141,6 +156,9 @@
             id: createMemoryId('memory_table'),
             name: '新表格',
             mode: 'keyValue',
+            memoryLayer: 'short',
+            updatePolicy: MemoryPolicy ? MemoryPolicy.normalizeUpdatePolicy({}, 'short') : {},
+            injectionPolicy: MemoryPolicy ? MemoryPolicy.normalizeInjectionPolicy({}, 'short') : {},
             extractPrompt: '',
             columns: [createEmptyFieldDraft()]
         };
@@ -166,6 +184,7 @@
             id: rawTemplate.id || fallbackId || createMemoryId('memory_tpl'),
             name: (rawTemplate.name || '').trim() || '未命名模板',
             description: typeof rawTemplate.description === 'string' ? rawTemplate.description : '',
+            engineDefaults: MemoryPolicy ? MemoryPolicy.normalizeEngineSettings(rawTemplate.engineDefaults || {}) : (rawTemplate.engineDefaults || {}),
             tables: Array.isArray(rawTemplate.tables) ? rawTemplate.tables : []
         };
 
@@ -174,10 +193,16 @@
         }
 
         template.tables = template.tables.map((table, tableIndex) => {
+            const tablePolicy = MemoryPolicy
+                ? MemoryPolicy.normalizeTablePolicy(table)
+                : { memoryLayer: table.memoryLayer || 'long', updatePolicy: table.updatePolicy || {}, injectionPolicy: table.injectionPolicy || {} };
             const normalizedTable = {
                 id: table.id || createMemoryId('memory_table'),
                 name: (table.name || '').trim() || `表格 ${tableIndex + 1}`,
                 mode: table.mode === 'rows' ? 'rows' : 'keyValue',
+                memoryLayer: tablePolicy.memoryLayer,
+                updatePolicy: tablePolicy.updatePolicy,
+                injectionPolicy: tablePolicy.injectionPolicy,
                 extractPrompt: typeof table.extractPrompt === 'string' ? table.extractPrompt : '',
                 columns: Array.isArray(table.columns) ? table.columns : []
             };
@@ -205,6 +230,8 @@
                 aiEditable: field.aiEditable !== false,
                 aiHint: typeof field.aiHint === 'string' ? field.aiHint : '',
                 displayFormat: typeof field.displayFormat === 'string' ? field.displayFormat : '{value}',
+                important: field.important !== false,
+                summaryLabel: typeof field.summaryLabel === 'string' ? field.summaryLabel : '',
                 conditionalRules: Array.isArray(field.conditionalRules)
                     ? field.conditionalRules.map(normalizeConditionalRule).filter(Boolean)
                     : []
@@ -281,9 +308,22 @@
     }
 
     function createEmptyRow(table) {
+        const now = Date.now();
         const row = {
             id: createMemoryId('memory_row'),
-            cells: {}
+            cells: {},
+            meta: {
+                createdAt: now,
+                updatedAt: now,
+                lastMentionedAt: now,
+                expiresAt: null,
+                status: 'active',
+                importance: 50,
+                confidence: 70,
+                pinned: false,
+                tags: [],
+                sourceMessageIds: []
+            }
         };
         (table.columns || []).forEach(field => {
             row.cells[field.id] = getFieldDefaultValue(field);
@@ -292,9 +332,23 @@
     }
 
     function normalizeRowShape(table, rawRow) {
+        const now = Date.now();
+        const rawMeta = rawRow && rawRow.meta && typeof rawRow.meta === 'object' ? rawRow.meta : {};
         const row = {
             id: rawRow && rawRow.id ? rawRow.id : createMemoryId('memory_row'),
-            cells: {}
+            cells: {},
+            meta: {
+                createdAt: Number(rawMeta.createdAt) || now,
+                updatedAt: Number(rawMeta.updatedAt) || Number(rawMeta.createdAt) || now,
+                lastMentionedAt: Number(rawMeta.lastMentionedAt) || Number(rawMeta.updatedAt) || Number(rawMeta.createdAt) || now,
+                expiresAt: rawMeta.expiresAt || null,
+                status: typeof rawMeta.status === 'string' ? rawMeta.status : 'active',
+                importance: Number.isFinite(Number(rawMeta.importance)) ? Number(rawMeta.importance) : 50,
+                confidence: Number.isFinite(Number(rawMeta.confidence)) ? Number(rawMeta.confidence) : 70,
+                pinned: !!rawMeta.pinned,
+                tags: Array.isArray(rawMeta.tags) ? rawMeta.tags.map(String).filter(Boolean) : [],
+                sourceMessageIds: Array.isArray(rawMeta.sourceMessageIds) ? rawMeta.sourceMessageIds.map(String).filter(Boolean) : []
+            }
         };
         (table.columns || []).forEach(field => {
             const rawValue = rawRow && rawRow.cells && rawRow.cells[field.id] !== undefined
@@ -439,6 +493,7 @@
         chat.memoryTables.data[templateId][tableId][field.id] = normalized;
 
         if (!isSameMemoryValue(oldValue, normalized)) {
+            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
             pushMemoryHistory(chat, [{
                 templateId,
                 tableId,
@@ -467,6 +522,7 @@
             }
         });
         rows.push(row);
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         pushMemoryHistory(chat, (table.columns || []).map(field => ({
             templateId,
             tableId: table.id,
@@ -485,6 +541,10 @@
         const oldValue = row.cells[field.id];
         const normalized = normalizeFieldValue(field, value);
         row.cells[field.id] = normalized;
+        row.meta ||= {};
+        row.meta.updatedAt = Date.now();
+        row.meta.lastMentionedAt = Date.now();
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         if (isSameMemoryValue(oldValue, normalized)) {
             return false;
         }
@@ -505,6 +565,7 @@
         const index = rows.findIndex(row => row.id === rowId);
         if (index < 0) return false;
         const [removed] = rows.splice(index, 1);
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         pushMemoryHistory(chat, (table.columns || []).map(field => ({
             templateId,
             tableId: table.id,
@@ -717,108 +778,134 @@
         chat.memoryTables.autoUpdatePending = false;
     }
 
+    function getBoundTableDescriptors(chat) {
+        const result = [];
+        getBoundTemplates(chat).forEach(template => {
+            (template.tables || []).forEach(table => result.push({ template, table }));
+        });
+        return result;
+    }
+
     function refreshMemoryTableAutoUpdateControls(chat, hasTemplates = true) {
         const toggle = document.getElementById('memory-table-auto-update-toggle');
         const intervalInput = document.getElementById('memory-table-auto-update-interval');
+        const roundInput = document.getElementById('memory-table-round-interval');
+        const triggerSelect = document.getElementById('memory-table-trigger-mode');
+        const maxSourceInput = document.getElementById('memory-table-max-source-messages');
         const latestBtn = document.getElementById('memory-table-update-latest-btn');
         const retryBtn = document.getElementById('memory-table-retry-btn');
         const statusEl = document.getElementById('memory-table-auto-update-status');
+        const roundStatus = document.getElementById('memory-table-round-status');
+        const cursorSelect = document.getElementById('memory-table-cursor-table-select');
+        const cursorInput = document.getElementById('memory-table-cursor-position');
+        const saveCursorBtn = document.getElementById('memory-table-save-cursor-btn');
+        const updateSelectedBtn = document.getElementById('memory-table-update-selected-btn');
+        const cursorLatestBtn = document.getElementById('memory-table-cursor-latest-btn');
+        const cursorStartBtn = document.getElementById('memory-table-cursor-start-btn');
 
         if (!toggle || !intervalInput || !latestBtn || !retryBtn || !statusEl) return;
 
+        const allControls = [toggle, intervalInput, roundInput, triggerSelect, maxSourceInput, latestBtn, retryBtn, cursorSelect, cursorInput, saveCursorBtn, updateSelectedBtn, cursorLatestBtn, cursorStartBtn].filter(Boolean);
         if (!chat) {
             toggle.checked = false;
-            toggle.disabled = true;
-            intervalInput.disabled = true;
-            latestBtn.disabled = true;
-            retryBtn.disabled = true;
+            allControls.forEach(control => control.disabled = true);
             statusEl.textContent = '请先进入一个私聊角色';
+            if (roundStatus) roundStatus.textContent = '轮次尚未统计';
+            if (cursorSelect) cursorSelect.innerHTML = '<option>暂无表格</option>';
             return;
         }
 
         ensureMemoryTableAutoUpdateState(chat);
-        const info = getMemoryTableAutoUpdateCursorInfo(chat);
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        const descriptors = getBoundTableDescriptors(chat);
         const isRunning = chat.memoryTables.autoUpdateState === 'running';
         const hasFailed = chat.memoryTables.autoUpdateState === 'failed';
-        const hasPendingBatch = !!getNextMemoryTableAutoUpdateRange(chat);
+        const engine = runtime?.engineSettings || {
+            triggerMode: 'messages',
+            roundInterval: 2,
+            messageInterval: chat.memoryTables.autoUpdateInterval || 100,
+            maxSourceMessages: MEMORY_TABLE_MAX_CONTEXT_MESSAGES
+        };
 
-        toggle.checked = !!chat.memoryTables.autoUpdateEnabled;
+        toggle.checked = !!chat.memoryTables.autoUpdateEnabled && engine.enabled !== false;
         toggle.disabled = !hasTemplates;
-        intervalInput.value = String(chat.memoryTables.autoUpdateInterval || 100);
+        intervalInput.value = String(engine.messageInterval || chat.memoryTables.autoUpdateInterval || 140);
         intervalInput.disabled = !hasTemplates || isRunning;
-        latestBtn.disabled = !hasTemplates || isRunning || info.unsyncedCount <= 0;
-        retryBtn.disabled = !hasTemplates || isRunning || (!hasPendingBatch && !hasFailed && info.unsyncedCount <= 0);
-        retryBtn.textContent = hasFailed ? '重试补救（上次失败）' : (hasPendingBatch ? '补救待更新批次' : '重试补救');
+        if (roundInput) {
+            roundInput.value = String(engine.roundInterval || 2);
+            roundInput.disabled = !hasTemplates || isRunning;
+        }
+        if (triggerSelect) {
+            triggerSelect.value = engine.triggerMode || 'either';
+            triggerSelect.disabled = !hasTemplates || isRunning;
+        }
+        if (maxSourceInput) {
+            maxSourceInput.value = String(engine.maxSourceMessages || 180);
+            maxSourceInput.disabled = !hasTemplates || isRunning;
+        }
+
+        let dueCount = 0;
+        let totalUnsyncedMessages = 0;
+        let totalUnsyncedRounds = 0;
+        descriptors.forEach(({ template, table }) => {
+            if (!MemoryPolicy) return;
+            const info = MemoryPolicy.getUnprocessedInfo(chat, template.id, table.id);
+            totalUnsyncedMessages = Math.max(totalUnsyncedMessages, info.unsyncedMessages);
+            totalUnsyncedRounds = Math.max(totalUnsyncedRounds, info.unsyncedRounds);
+            if (MemoryPolicy.isTableDue(chat, template.id, table)) dueCount += 1;
+        });
+
+        if (cursorSelect) {
+            const previous = cursorSelect.value || uiState.activeTableId || runtime?.activeTableId || '';
+            cursorSelect.innerHTML = descriptors.map(({ template, table }) => `<option value="${escapeAttribute(`${template.id}::${table.id}`)}">${escapeHtml(template.name)} / ${escapeHtml(table.name)}</option>`).join('') || '<option value="">暂无表格</option>';
+            const desired = descriptors.some(({ template, table }) => `${template.id}::${table.id}` === previous)
+                ? previous
+                : (descriptors[0] ? `${descriptors[0].template.id}::${descriptors[0].table.id}` : '');
+            cursorSelect.value = desired;
+            const [templateId, tableId] = desired.split('::');
+            if (MemoryPolicy && templateId && tableId && cursorInput) {
+                const info = MemoryPolicy.getUnprocessedInfo(chat, templateId, tableId);
+                cursorInput.max = String(info.history.length);
+                cursorInput.value = String(Math.max(0, info.cursorIndex + 1));
+            }
+        }
+
+        latestBtn.disabled = !hasTemplates || isRunning || dueCount <= 0;
+        retryBtn.disabled = !hasTemplates || isRunning || (!hasFailed && dueCount <= 0);
+        if (updateSelectedBtn) updateSelectedBtn.disabled = !hasTemplates || isRunning || descriptors.length === 0;
+        [saveCursorBtn, cursorLatestBtn, cursorStartBtn].filter(Boolean).forEach(button => button.disabled = !hasTemplates || isRunning || descriptors.length === 0);
+        retryBtn.textContent = hasFailed ? '重试补救（上次失败）' : '重试补救';
         retryBtn.style.background = hasFailed ? '#ffe7e7' : '';
         retryBtn.style.color = hasFailed ? '#c62828' : '';
         retryBtn.style.borderColor = hasFailed ? '#f2b8b5' : '';
-        latestBtn.textContent = isRunning ? '更新中...' : '更新到最新';
+        latestBtn.textContent = isRunning ? '更新中...' : '更新所有到期表';
+        if (roundStatus) {
+            const latestRound = runtime?.rounds?.[runtime.rounds.length - 1];
+            roundStatus.textContent = `已记录 ${runtime?.rounds?.length || 0} 轮${latestRound ? ` · 最近一轮 ${latestRound.messageCount} 条` : ''}`;
+        }
         statusEl.textContent = hasTemplates
-            ? `独立自动更新：${chat.memoryTables.autoUpdateEnabled ? '已开启' : '已关闭'} · 未处理消息 ${info.unsyncedCount} 条`
-            : '先绑定模板后才能使用自动更新';
+            ? `自动更新：${toggle.checked ? '已开启' : '已关闭'} · 到期表 ${dueCount} 张 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息`
+            : '先绑定模板后才能使用更新调度';
     }
 
     async function applyMemoryTableAutoUpdateToggle(chat, enabled) {
         if (!chat) return { status: 'noop' };
         ensureMemoryTableAutoUpdateState(chat);
         chat.memoryTables.autoUpdateEnabled = enabled;
-
+        if (MemoryPolicy) {
+            MemoryPolicy.ensureRuntimeState(chat).engineSettings.enabled = enabled;
+        }
         if (!enabled) {
             chat.memoryTables.autoUpdatePending = false;
-            if (chat.memoryTables.autoUpdateState === 'running') {
-                chat.memoryTables.autoUpdateState = 'idle';
-            }
+            if (chat.memoryTables.autoUpdateState === 'running') chat.memoryTables.autoUpdateState = 'idle';
+            await saveCharacter(chat.id);
             refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
             return { status: 'disabled' };
         }
-
         chat.memoryTables.autoUpdateState = 'idle';
-        const info = getMemoryTableAutoUpdateCursorInfo(chat);
-        if (info.unsyncedCount <= 0) {
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'enabled' };
-        }
-
-        const batchCount = info.completedBatchCount;
-        const message = batchCount > 0
-            ? `检测到当前表格记忆有 ${info.unsyncedCount} 条消息未参与自动更新。\n\n是否立即补做已满 ${info.interval} 条的批次？这会执行 ${batchCount} 次自动更新。`
-            : `检测到当前表格记忆有 ${info.unsyncedCount} 条消息未参与自动更新。\n\n是否继续累计这些旧消息？选择“取消”将从当前最新消息重新开始计数。`;
-
-        let decision = 'confirm';
-        if (typeof showAppConfirmDialog === 'function') {
-            decision = await showAppConfirmDialog({
-                title: '检测到未更新消息',
-                message,
-                confirmText: batchCount > 0 ? '立即补做' : '继续累计',
-                cancelText: '从最新开始',
-                dismissText: '稍后再说'
-            });
-        } else if (!window.confirm(message)) {
-            decision = 'cancel';
-        }
-
-        if (decision === 'dismiss') {
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'dismissed_keep_backlog' };
-        }
-
-        if (decision !== 'confirm') {
-            resetMemoryTableAutoUpdateCursorToLatest(chat);
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'baseline_reset' };
-        }
-
-        if (batchCount <= 0) {
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'enabled_keep_backlog' };
-        }
-
-        return processMemoryTableAutoUpdate(chat, {
-            force: true,
-            processAllAvailable: true,
-            showNoPendingToast: true,
-            showSuccessToast: true
-        });
+        await saveCharacter(chat.id);
+        refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+        return checkAndTriggerAutoTableUpdate(chat, { showNoPendingToast: true });
     }
 
     function renderMemoryTableScreen() {
@@ -849,6 +936,19 @@
         }
 
         ensureMemoryTableState(chat);
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        if (uiState.viewMode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
+            uiState.viewMode = 'normal';
+            if (runtime) runtime.viewMode = 'normal';
+        }
+        screen.classList.toggle('memory-json-mode', uiState.viewMode === 'json');
+        const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
+        const jsonModeBtn = document.getElementById('memory-table-json-mode-btn');
+        if (normalModeBtn) normalModeBtn.classList.toggle('active', uiState.viewMode === 'normal');
+        if (jsonModeBtn) {
+            jsonModeBtn.classList.toggle('active', uiState.viewMode === 'json');
+            jsonModeBtn.disabled = !!(MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable());
+        }
         const boundTemplates = getBoundTemplates(chat);
         const modeLabel = chat.memoryMode === 'table'
             ? '结构化档案模式'
@@ -976,12 +1076,18 @@
 
     function renderDesignerTableCard(table, tableIndex) {
         const groups = getFieldGroups(table.columns || []);
+        const policy = MemoryPolicy
+            ? MemoryPolicy.normalizeTablePolicy(table)
+            : { memoryLayer: table.memoryLayer || 'short', updatePolicy: table.updatePolicy || {}, injectionPolicy: table.injectionPolicy || {} };
+        const update = policy.updatePolicy;
+        const inject = policy.injectionPolicy;
         return `
             <div draggable="true" data-designer-draggable="table" data-table-index="${tableIndex}" style="background:#fff; border:1px solid #ececec; border-radius:16px; padding:14px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
                     <div style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:#333;">
                         <span style="cursor:grab; color:#999;">拖拽</span>
                         <span>表格 ${tableIndex + 1}</span>
+                        <span style="font-size:11px;color:#667085;background:#f2f4f7;border-radius:999px;padding:2px 8px;">${escapeHtml(policy.memoryLayer)}</span>
                     </div>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
                         <button type="button" class="btn btn-small btn-neutral" data-action="designer-move-table-up" data-table-index="${tableIndex}">上移</button>
@@ -993,18 +1099,85 @@
                     <label>表格名称</label>
                     <input type="text" data-designer-role="table-name" data-table-index="${tableIndex}" value="${escapeAttribute(table.name || '')}">
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <div class="form-group" style="flex:1; min-width:150px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+                    <div class="form-group">
                         <label>表格模式</label>
                         <select data-designer-role="table-mode" data-table-index="${tableIndex}">
                             <option value="keyValue" ${table.mode !== 'rows' ? 'selected' : ''}>键值表</option>
                             <option value="rows" ${table.mode === 'rows' ? 'selected' : ''}>列表行</option>
                         </select>
                     </div>
-                    <div class="form-group" style="flex:2; min-width:220px;">
-                        <label>提取规则</label>
-                        <textarea rows="2" data-designer-role="table-extract-prompt" data-table-index="${tableIndex}" placeholder="给 API 的表级提取要求">${escapeHtml(table.extractPrompt || '')}</textarea>
+                    <div class="form-group">
+                        <label>记忆层级</label>
+                        <select data-designer-role="table-memory-layer" data-table-index="${tableIndex}">
+                            ${[['core','核心'],['short','短期'],['medium','中期'],['long','长期'],['review','审核队列']].map(([value,label]) => `<option value="${value}" ${policy.memoryLayer === value ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
                     </div>
+                    <div class="form-group">
+                        <label>自动更新</label>
+                        <select data-designer-role="table-update-enabled" data-table-index="${tableIndex}">
+                            <option value="true" ${update.enabled ? 'selected' : ''}>开启</option>
+                            <option value="false" ${!update.enabled ? 'selected' : ''}>关闭/手动</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>触发方式</label>
+                        <select data-designer-role="table-trigger-mode" data-table-index="${tableIndex}">
+                            ${[['rounds','按轮'],['messages','按消息'],['either','先到者'],['manual','仅手动']].map(([value,label]) => `<option value="${value}" ${update.triggerMode === value ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>每几轮</label>
+                        <input type="number" min="0" data-designer-role="table-round-interval" data-table-index="${tableIndex}" value="${escapeAttribute(update.roundInterval ?? 0)}">
+                    </div>
+                    <div class="form-group">
+                        <label>每几条消息</label>
+                        <input type="number" min="0" data-designer-role="table-message-interval" data-table-index="${tableIndex}" value="${escapeAttribute(update.messageInterval ?? 0)}">
+                    </div>
+                    <div class="form-group">
+                        <label>单次最多读取</label>
+                        <input type="number" min="10" max="1000" data-designer-role="table-max-source-messages" data-table-index="${tableIndex}" value="${escapeAttribute(update.maxSourceMessages ?? 180)}">
+                    </div>
+                    <div class="form-group">
+                        <label>允许删除行</label>
+                        <select data-designer-role="table-allow-delete" data-table-index="${tableIndex}">
+                            <option value="false" ${update.allowDelete !== true ? 'selected' : ''}>否</option>
+                            <option value="true" ${update.allowDelete === true ? 'selected' : ''}>是</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>更新使用 API</label>
+                        <select data-designer-role="table-use-summary-api" data-table-index="${tableIndex}">
+                            <option value="false" ${update.useSummaryApi === false ? 'selected' : ''}>主聊天 API</option>
+                            <option value="true" ${update.useSummaryApi !== false ? 'selected' : ''}>总结 API</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>聊天注入</label>
+                        <select data-designer-role="table-injection-mode" data-table-index="${tableIndex}">
+                            ${[['always','始终'],['active','有效项'],['relevant','相关检索'],['never','不注入']].map(([value,label]) => `<option value="${value}" ${inject.mode === value ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>相关条目 Top-K</label>
+                        <input type="number" min="0" max="50" data-designer-role="table-injection-top-k" data-table-index="${tableIndex}" value="${escapeAttribute(inject.topK ?? 0)}">
+                    </div>
+                    <div class="form-group">
+                        <label>注入字符预算</label>
+                        <input type="number" min="0" max="20000" data-designer-role="table-injection-budget" data-table-index="${tableIndex}" value="${escapeAttribute(inject.budget ?? 0)}">
+                    </div>
+                    <div class="form-group">
+                        <label>有效期（天，0=不限）</label>
+                        <input type="number" min="0" data-designer-role="table-max-age-days" data-table-index="${tableIndex}" value="${escapeAttribute(inject.maxAgeDays ?? 0)}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>提取规则</label>
+                    <textarea rows="3" data-designer-role="table-extract-prompt" data-table-index="${tableIndex}" placeholder="给总结 API 的表级提取要求">${escapeHtml(table.extractPrompt || '')}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>更新附加规则</label>
+                    <textarea rows="2" data-designer-role="table-update-instructions" data-table-index="${tableIndex}" placeholder="例如：只从明确陈述更新；不得从一次情绪推断长期人格。">${escapeHtml(update.instructions || '')}</textarea>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 8px;">
                     <div style="font-size:13px; font-weight:700; color:#555;">字段</div>
@@ -1028,7 +1201,8 @@
         const summaryTags = [
             field.type || 'text',
             field.group ? `分组:${field.group}` : '',
-            field.aiEditable === false ? 'AI只读' : 'AI可编辑'
+            field.aiEditable === false ? 'AI只读' : 'AI可编辑',
+            field.important === false ? '仅JSON' : '普通模式显示'
         ].filter(Boolean).join(' · ');
         return `
             <div draggable="true" data-designer-draggable="field" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" style="border:1px dashed #e6e6e6; border-radius:14px; padding:12px; margin-top:10px; background:#fcfcfc;">
@@ -1074,6 +1248,17 @@
                             <option value="true" ${field.aiEditable !== false ? 'selected' : ''}>是</option>
                             <option value="false" ${field.aiEditable === false ? 'selected' : ''}>否</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label>普通模式重要字段</label>
+                        <select data-designer-role="field-important" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">
+                            <option value="true" ${field.important !== false ? 'selected' : ''}>显示</option>
+                            <option value="false" ${field.important === false ? 'selected' : ''}>仅 JSON 模式</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>摘要标签</label>
+                        <input type="text" data-designer-role="field-summary-label" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.summaryLabel || '')}" placeholder="可选的简短显示名">
                     </div>
                     <div class="form-group">
                         <label>最小值</label>
@@ -1256,40 +1441,169 @@
         `;
     }
 
-    function renderTableView(chat) {
-        const templates = getBoundTemplates(chat);
-        let html = '';
-
-        templates.forEach(template => {
+    function getActiveTableDescriptor(chat) {
+        const descriptors = [];
+        getBoundTemplates(chat).forEach(template => {
             ensureTemplateDataForChat(chat, template);
-            (template.tables || []).forEach(table => {
-                if (isRowsTable(table)) {
-                    const card = renderRowsTableCard(chat, template, table);
-                    if (card) {
-                        html += card;
-                    }
-                    return;
-                }
-
-                const items = getDisplayFieldItems(chat, template, table);
-                if (items.length === 0) return;
-                html += `
-                    <div style="margin:18px 0 10px;">
-                        <div style="font-size:15px; font-weight:700; color:#333;">${escapeHtml(template.name)} / ${escapeHtml(table.name)}</div>
-                        ${table.extractPrompt ? `<div style="font-size:12px; color:#999; margin-top:4px;">${escapeHtml(table.extractPrompt)}</div>` : ''}
-                    </div>
-                `;
-                getFieldGroups(items.map(item => item.field)).forEach(group => {
-                    const groupItems = items.filter(item => ((item.field.group || '').trim() || '未分组') === group.name);
-                    if (!group.ungrouped) {
-                        html += `<div style="font-size:12px; color:#666; font-weight:700; margin:10px 0 8px;">${escapeHtml(group.name)}</div>`;
-                    }
-                    html += groupItems.map(renderKeyValueFieldCard).join('');
-                });
-            });
+            (template.tables || []).forEach(table => descriptors.push({ template, table }));
         });
+        if (!descriptors.length) return { descriptors, active: null };
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        const requestedId = uiState.activeTableId || runtime?.activeTableId;
+        const active = descriptors.find(item => item.table.id === requestedId) || descriptors[0];
+        uiState.activeTableId = active.table.id;
+        if (runtime) runtime.activeTableId = active.table.id;
+        return { descriptors, active };
+    }
 
-        return html;
+    function getVisibleColumnsForMode(table) {
+        const jsonMode = uiState.viewMode === 'json' && (!MemoryPolicy || MemoryPolicy.isDesktopJsonAvailable());
+        return (table.columns || []).filter(field => jsonMode || field.important !== false);
+    }
+
+    function renderV2PolicySummary(table) {
+        const policy = getTableRuntimePolicy(table);
+        const update = policy.updatePolicy;
+        const inject = policy.injectionPolicy;
+        return `
+            <div class="memory-v2-policy-summary memory-v2-json-only">
+                <span>layer: ${escapeHtml(policy.memoryLayer)}</span>
+                <span>update: ${escapeHtml(update.enabled ? update.triggerMode : 'manual/off')}</span>
+                <span>rounds: ${escapeHtml(String(update.roundInterval || 0))}</span>
+                <span>messages: ${escapeHtml(String(update.messageInterval || 0))}</span>
+                <span>api: ${escapeHtml(update.useSummaryApi === false ? 'main' : 'summary')}</span>
+                <span>inject: ${escapeHtml(inject.mode)}</span>
+                <span>topK: ${escapeHtml(String(inject.topK || 0))}</span>
+                <span>budget: ${escapeHtml(String(inject.budget || 0))}</span>
+            </div>
+        `;
+    }
+
+    function renderV2KeyValueSheet(chat, template, table) {
+        const columns = getVisibleColumnsForMode(table).filter(field => matchesMemorySearch([
+            template.name,
+            table.name,
+            field.key,
+            field.group || '',
+            field.aiHint || '',
+            getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field))
+        ]));
+        const rowsHtml = columns.map(field => {
+            const value = getFieldValue(chat, template.id, table.id, field);
+            const locked = isFieldLocked(chat, template.id, table.id, field.id);
+            return `
+                <tr data-memory-important="${field.important !== false}">
+                    <th>
+                        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+                            <span>${escapeHtml(field.key)}</span>
+                            <button class="btn btn-small ${locked ? 'btn-secondary' : 'btn-neutral'} memory-v2-json-only" data-action="toggle-lock" data-template-id="${template.id}" data-table-id="${table.id}" data-field-id="${field.id}">${locked ? '解锁' : '锁定'}</button>
+                        </div>
+                        ${field.group ? `<div style="font-size:10px;color:#98a2b3;margin-top:3px;">${escapeHtml(field.group)}</div>` : ''}
+                        <div class="memory-v2-json-meta memory-v2-json-only">id=${escapeHtml(field.id)} · type=${escapeHtml(field.type)} · important=${field.important !== false}<br>${escapeHtml(field.aiHint || '')}</div>
+                    </th>
+                    <td><div class="memory-v2-inline-editor">${renderFieldEditor(template.id, table.id, field, value, locked)}</div></td>
+                </tr>
+            `;
+        }).join('');
+        return `<table class="memory-v2-kv"><tbody>${rowsHtml || '<tr><td class="memory-v2-empty">当前模式下没有匹配字段。</td></tr>'}</tbody></table>`;
+    }
+
+    function renderV2RowsSheet(chat, template, table) {
+        const columns = getVisibleColumnsForMode(table);
+        const allRows = getRows(chat, template.id, table);
+        const rows = allRows.filter(row => matchesMemorySearch([
+            template.name,
+            table.name,
+            ...(columns || []).map(field => `${field.key} ${getFieldDisplayValue(field, row.cells?.[field.id])}`)
+        ]));
+        const head = columns.map(field => `
+            <th data-memory-important="${field.important !== false}">
+                ${escapeHtml(field.key)}
+                <div class="memory-v2-json-meta memory-v2-json-only">${escapeHtml(field.id)}<br>${escapeHtml(field.type)}${field.aiHint ? `<br>${escapeHtml(field.aiHint)}` : ''}</div>
+            </th>
+        `).join('');
+        const body = rows.map((row, rowIndex) => {
+            const cells = columns.map(field => {
+                const locked = isFieldLocked(chat, template.id, table.id, field.id);
+                return `<td data-memory-important="${field.important !== false}"><div class="memory-v2-inline-editor">${renderFieldEditor(template.id, table.id, field, row.cells?.[field.id], locked, row.id)}</div></td>`;
+            }).join('');
+            return `
+                <tr>
+                    <td>
+                        <div>${rowIndex + 1}</div>
+                        <div class="memory-v2-row-actions">
+                            <button class="btn btn-small btn-neutral" data-action="move-row-up" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">↑</button>
+                            <button class="btn btn-small btn-neutral" data-action="move-row-down" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">↓</button>
+                            <button class="btn btn-small btn-danger" data-action="delete-row" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">×</button>
+                        </div>
+                        <div class="memory-v2-json-meta memory-v2-json-only">${escapeHtml(row.id)}</div>
+                    </td>
+                    ${cells}
+                </tr>
+            `;
+        }).join('');
+        return `
+            <div class="memory-v2-rows-wrap">
+                <table class="memory-v2-rows">
+                    <thead><tr><th>#</th>${head}</tr></thead>
+                    <tbody>${body || `<tr><td colspan="${columns.length + 1}" class="memory-v2-empty">暂无匹配记录。</td></tr>`}</tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function renderV2RawJson(chat, template, table) {
+        const tableData = deepClone(chat.memoryTables.data?.[template.id]?.[table.id] || {});
+        const payload = { schema: table, data: tableData, lockedFields: chat.memoryTables.lockedFields?.[template.id]?.[table.id] || [] };
+        return `<pre class="memory-v2-json-raw memory-v2-json-only">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
+    }
+
+    function renderTableView(chat) {
+        const { descriptors, active } = getActiveTableDescriptor(chat);
+        if (!active) return '';
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        if (uiState.viewMode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
+            uiState.viewMode = 'normal';
+            if (runtime) runtime.viewMode = 'normal';
+        }
+        const sidebar = descriptors.map(({ template, table }) => {
+            const policy = getTableRuntimePolicy(table);
+            const count = isRowsTable(table) ? `${getRows(chat, template.id, table).length} 行` : `${(table.columns || []).length} 字段`;
+            return `
+                <button type="button" class="memory-v2-table-item ${table.id === active.table.id ? 'active' : ''}" data-action="select-memory-table" data-table-id="${table.id}">
+                    <span class="name">${escapeHtml(table.name)}</span>
+                    <span class="meta">${escapeHtml(template.name)} · ${escapeHtml(policy.memoryLayer)} · ${count}</span>
+                </button>
+            `;
+        }).join('');
+        const policy = getTableRuntimePolicy(active.table);
+        const tableContent = isRowsTable(active.table)
+            ? renderV2RowsSheet(chat, active.template, active.table)
+            : renderV2KeyValueSheet(chat, active.template, active.table);
+        const rawJson = renderV2RawJson(chat, active.template, active.table);
+        return `
+            <div class="memory-v2-workspace">
+                <aside class="memory-v2-sidebar">${sidebar}</aside>
+                <section class="memory-v2-main">
+                    <div class="memory-v2-sheet">
+                        <div class="memory-v2-sheet-head">
+                            <div>
+                                <h2>${escapeHtml(active.table.name)}</h2>
+                                <div class="sub">${escapeHtml(active.template.name)} · ${isRowsTable(active.table) ? '多行记录' : '键值档案'}${uiState.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'}</div>
+                                ${renderV2PolicySummary(active.table)}
+                                ${active.table.extractPrompt ? `<div class="memory-v2-json-meta memory-v2-json-only">extractPrompt: ${escapeHtml(active.table.extractPrompt)}</div>` : ''}
+                            </div>
+                            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+                                <span class="memory-v2-layer-badge">${escapeHtml(policy.memoryLayer)}</span>
+                                ${isRowsTable(active.table) ? `<button type="button" class="btn btn-small btn-primary" data-action="add-row" data-template-id="${active.template.id}" data-table-id="${active.table.id}">新增行</button>` : ''}
+                            </div>
+                        </div>
+                        ${tableContent}
+                        ${rawJson}
+                    </div>
+                </section>
+            </div>
+        `;
     }
 
     function renderFieldEditor(templateId, tableId, field, value, locked, rowId = '') {
@@ -1477,6 +1791,151 @@
         return groups;
     }
 
+    function getTableRuntimePolicy(table) {
+        return MemoryPolicy
+            ? MemoryPolicy.normalizeTablePolicy(table)
+            : {
+                memoryLayer: table.memoryLayer || 'long',
+                updatePolicy: table.updatePolicy || {},
+                injectionPolicy: table.injectionPolicy || { mode: 'always', budget: 1200 }
+            };
+    }
+
+    function getRowSearchText(table, row) {
+        return (table.columns || []).map(field => {
+            const value = getFieldDisplayValue(field, row.cells?.[field.id]);
+            return `${field.key}: ${value || ''}`;
+        }).join('\n');
+    }
+
+    function getRowTimestamp(table, row) {
+        if (row?.meta?.lastMentionedAt || row?.meta?.updatedAt || row?.meta?.createdAt) {
+            return Number(row.meta.lastMentionedAt || row.meta.updatedAt || row.meta.createdAt) || 0;
+        }
+        let best = 0;
+        (table.columns || []).forEach(field => {
+            if (!/时间|日期|更新|发生|创建|完成/.test(field.key || '')) return;
+            const raw = row?.cells?.[field.id];
+            const ts = MemoryPolicy ? MemoryPolicy.parseDateLike(raw) : Date.parse(String(raw || ''));
+            if (Number.isFinite(ts) && ts > best) best = ts;
+        });
+        return best;
+    }
+
+    function getRowStatusText(table, row) {
+        return (table.columns || [])
+            .filter(field => /状态|进度|结果/.test(field.key || ''))
+            .map(field => getFieldDisplayValue(field, row.cells?.[field.id]))
+            .filter(Boolean)
+            .join(' ');
+    }
+
+    function rowToRetrievalItem(table, row, rowIndex) {
+        const searchText = getRowSearchText(table, row);
+        const statusText = getRowStatusText(table, row);
+        const expiresAt = Number(row?.meta?.expiresAt) || 0;
+        const expiredByMeta = expiresAt > 0 && expiresAt < Date.now();
+        const completed = MemoryPolicy ? MemoryPolicy.isCompletedText(statusText) : /已完成|已取消|已过期|已解决/.test(statusText);
+        return {
+            id: row.id,
+            row,
+            rowIndex,
+            searchText,
+            text: searchText,
+            updatedAt: getRowTimestamp(table, row),
+            createdAt: Number(row?.meta?.createdAt) || 0,
+            importance: Number(row?.meta?.importance) || 50,
+            confidence: Number(row?.meta?.confidence) || 70,
+            pinned: !!row?.meta?.pinned,
+            completed,
+            active: !completed && !expiredByMeta,
+            expiredByMeta
+        };
+    }
+
+    function isKeyValueTableActive(chat, template, table, policy) {
+        if (!policy.maxAgeDays) return true;
+        let newest = 0;
+        let explicitExpiry = 0;
+        (table.columns || []).forEach(field => {
+            const value = getFieldValue(chat, template.id, table.id, field);
+            if (/有效期|过期/.test(field.key || '')) {
+                explicitExpiry = Math.max(explicitExpiry, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
+            }
+            if (/记录时间|更新时间|日期|时间/.test(field.key || '')) {
+                newest = Math.max(newest, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
+            }
+        });
+        if (explicitExpiry && explicitExpiry < Date.now()) return false;
+        if (!newest) return true;
+        return (Date.now() - newest) <= policy.maxAgeDays * 86400000;
+    }
+
+    function selectRowsForInjection(chat, template, table, queryText, forceFull) {
+        const rows = getRows(chat, template.id, table);
+        if (forceFull) return rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
+        const tablePolicy = getTableRuntimePolicy(table);
+        const policy = tablePolicy.injectionPolicy;
+        if (policy.mode === 'never') return [];
+        const items = rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
+        if (policy.mode === 'always') {
+            return policy.topK > 0 ? items.slice(-policy.topK).reverse() : items;
+        }
+        if (policy.mode === 'active') {
+            const active = items.filter(item => item.active || item.pinned);
+            active.sort((a, b) => {
+                if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+                if (b.importance !== a.importance) return b.importance - a.importance;
+                return (b.updatedAt || 0) - (a.updatedAt || 0);
+            });
+            return policy.topK > 0 ? active.slice(0, policy.topK) : active;
+        }
+        return MemoryPolicy
+            ? MemoryPolicy.selectRelevantItems(items, queryText, policy)
+            : items.slice(0, policy.topK || 5);
+    }
+
+    function buildSingleTableContext(chat, template, table, queryText, options = {}) {
+        const tablePolicy = getTableRuntimePolicy(table);
+        const injectionPolicy = tablePolicy.injectionPolicy;
+        const forceFull = !!options.forceFull;
+        if (!forceFull && injectionPolicy.mode === 'never') return '';
+
+        let text = `- ${table.name}\n`;
+        if (isRowsTable(table)) {
+            const selected = selectRowsForInjection(chat, template, table, queryText, forceFull);
+            if (!selected.length) return '';
+            selected.forEach((item, selectedIndex) => {
+                text += `  - 记录 ${selectedIndex + 1}`;
+                if (item._score !== undefined) text += `（相关度 ${item._score.toFixed(2)}）`;
+                text += `\n`;
+                (table.columns || []).filter(field => forceFull || field.important !== false).forEach(field => {
+                    const value = getFieldDisplayValue(field, item.row.cells?.[field.id]);
+                    if (isEmptyMemoryValue(field, item.row.cells?.[field.id])) return;
+                    text += `    - ${field.summaryLabel || field.key}: ${value}\n`;
+                });
+            });
+        } else {
+            if (!forceFull && injectionPolicy.mode === 'active' && !isKeyValueTableActive(chat, template, table, injectionPolicy)) return '';
+            const fields = (table.columns || []).filter(field => {
+                if (!forceFull && field.important === false) return false;
+                const value = getFieldValue(chat, template.id, table.id, field);
+                return !isEmptyMemoryValue(field, value);
+            });
+            if (!fields.length) return '';
+            if (!forceFull && injectionPolicy.mode === 'relevant' && MemoryPolicy) {
+                const aggregate = fields.map(field => `${field.key}: ${getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field))}`).join('\n');
+                const score = MemoryPolicy.computeLexicalScore(aggregate, queryText);
+                if (score < injectionPolicy.threshold) return '';
+            }
+            fields.forEach(field => {
+                const value = getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field));
+                text += `  - ${field.summaryLabel || field.key}: ${value}\n`;
+            });
+        }
+        return MemoryPolicy ? MemoryPolicy.trimToBudget(text.trim(), injectionPolicy.budget, table.name) : text.trim();
+    }
+
     function getMemoryContextBlock(chat, options = {}) {
         ensureMemoryTableState(chat);
         if (chat.memoryMode !== 'table' && !options.force) return '';
@@ -1484,57 +1943,55 @@
         const templates = getBoundTemplates(chat).filter(template => !templateIds || templateIds.includes(template.id));
         if (templates.length === 0) return '';
 
-        let prompt = '【结构化长期记忆】\n以下是你与用户当前确认过的长期记忆表。这里比普通聊天记录更可靠，回答时应优先参考；若表格中未写明，请不要擅自脑补。\n\n';
+        const forceFull = !!options.force;
+        const queryText = options.queryText || (MemoryPolicy ? MemoryPolicy.buildQueryText(chat) : '');
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        if (!forceFull && runtime?.lastContextBlock && runtime.lastPreparedQuery === queryText) {
+            return runtime.lastContextBlock;
+        }
+
+        const sections = [];
         templates.forEach(template => {
             ensureTemplateDataForChat(chat, template);
-            prompt += `《${template.name}》\n`;
-            if (template.description) {
-                prompt += `说明：${template.description}\n`;
-            }
-            template.tables.forEach(table => {
-                prompt += `- ${table.name}\n`;
-                if (isRowsTable(table)) {
-                    const rows = getRows(chat, template.id, table);
-                    if (rows.length === 0) {
-                        prompt += '  - 暂无行数据\n';
-                    } else {
-                        rows.forEach((row, rowIndex) => {
-                            prompt += `  - 第 ${rowIndex + 1} 行\n`;
-                            table.columns.forEach(field => {
-                                const value = getFieldDisplayValue(field, row.cells[field.id]);
-                                prompt += `    - ${field.key}: ${value || '空'}\n`;
-                            });
-                        });
-                    }
-                } else {
-                    getFieldGroups(table.columns).forEach(group => {
-                        if (!group.ungrouped) {
-                            prompt += `  - 分组：${group.name}\n`;
-                        }
-                        group.fields.forEach(({ field }) => {
-                            const value = getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field));
-                            prompt += `${group.ungrouped ? '  ' : '    '}- ${field.key}: ${value || '空'}\n`;
-                        });
-                    });
-                }
-            });
-            prompt += '\n';
+            const tableSections = (template.tables || [])
+                .map(table => buildSingleTableContext(chat, template, table, queryText, { forceFull }))
+                .filter(Boolean);
+            if (!tableSections.length) return;
+            sections.push(`《${template.name}》\n${tableSections.join('\n')}`);
         });
-        return prompt.trim();
+        if (!sections.length) return '';
+        const header = forceFull
+            ? '【结构化记忆完整档案】\n以下是选中模板的完整结构化数据，仅用于整理或转换。'
+            : '【结构化记忆·按需检索】\n以下内容由固定、有效或与当前话题相关的档案条目组成。未出现的内容不要擅自补全。';
+        let block = `${header}\n\n${sections.join('\n\n')}`.trim();
+        if (!forceFull && MemoryPolicy) {
+            block = MemoryPolicy.trimToBudget(block, runtime.engineSettings.globalInjectionBudget, '结构化记忆');
+            runtime.lastContextBlock = block;
+            runtime.lastPreparedQuery = queryText;
+            runtime.lastPreparedAt = Date.now();
+        }
+        return block;
     }
 
-    function getSummaryApiConfig() {
-        const apiConfig = (db.summaryApiSettings && db.summaryApiSettings.url && db.summaryApiSettings.key && db.summaryApiSettings.model)
-            ? db.summaryApiSettings
-            : db.apiSettings;
+    async function prepareMemoryTableContext(chat, options = {}) {
+        ensureMemoryTableState(chat);
+        if (chat.memoryMode !== 'table' && !options.force) return '';
+        // MVP 使用关键词、时效、状态和重要度检索。接口保留为 async，后续可无缝接入 embedding。
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+        return getMemoryContextBlock(chat, { ...options, queryText: options.queryText || (MemoryPolicy ? MemoryPolicy.buildQueryText(chat) : '') });
+    }
+
+    function getMemoryApiConfig(preferSummaryApi = true) {
+        const summaryReady = db.summaryApiSettings && db.summaryApiSettings.url && db.summaryApiSettings.key && db.summaryApiSettings.model;
+        const apiConfig = preferSummaryApi && summaryReady ? db.summaryApiSettings : db.apiSettings;
         if (!apiConfig || !apiConfig.url || !apiConfig.key || !apiConfig.model) {
-            throw new Error('请先配置总结 API');
+            throw new Error(preferSummaryApi ? '请先配置总结 API 或主聊天 API' : '请先配置主聊天 API');
         }
         return apiConfig;
     }
 
-    async function requestSummaryContent(prompt, temperature = 0.2) {
-        const apiConfig = getSummaryApiConfig();
+    async function requestMemoryContent(prompt, temperature = 0.2, preferSummaryApi = true, task = 'memory-table-summary') {
+        const apiConfig = getMemoryApiConfig(preferSummaryApi);
         let { url, key, model } = apiConfig;
         if (url.endsWith('/')) url = url.slice(0, -1);
         const endpoint = `${url}/v1/chat/completions`;
@@ -1547,7 +2004,11 @@
             temperature,
             messages: [{ role: 'user', content: prompt }]
         };
-        return fetchAiResponse({ ...apiConfig, runtimeTask: 'memory-table-summary', runtimeSource: 'memory-table' }, requestBody, headers, endpoint);
+        return fetchAiResponse({ ...apiConfig, runtimeTask: task, runtimeSource: 'memory-table' }, requestBody, headers, endpoint);
+    }
+
+    async function requestSummaryContent(prompt, temperature = 0.2) {
+        return requestMemoryContent(prompt, temperature, true, 'memory-table-summary');
     }
 
     function getJournalCandidates(chat) {
@@ -1716,41 +2177,67 @@
         }
         history = history.filter(item => !item.isContextDisabled && !item.isThinking);
         if (!options.start && !options.end) {
-            history = history.slice(-MEMORY_TABLE_MAX_CONTEXT_MESSAGES);
+            const configuredMax = Math.max(10, parseInt(options.maxContextMessages, 10) || (MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat).engineSettings.maxSourceMessages : MEMORY_TABLE_MAX_CONTEXT_MESSAGES));
+            history = history.slice(-configuredMax);
         }
         return history;
     }
 
-    function buildTemplateDefinitionForPrompt(chat, templates) {
+    function buildTemplateDefinitionForPrompt(chat, templates, options = {}) {
+        const queryText = options.queryText || '';
+        const relevantRowsOnly = !!options.relevantRowsOnly;
+        const maxCandidateRows = Math.max(3, parseInt(options.maxCandidateRows, 10) || 12);
         return templates.map(template => {
             return [
                 `模板ID=${template.id} 名称=${template.name}`,
                 template.description ? `描述=${template.description}` : '',
                 ...(template.tables || []).map(table => {
+                    const tablePolicy = getTableRuntimePolicy(table);
                     const tableRowsText = isRowsTable(table)
                         ? (() => {
-                            const rows = getRows(chat, template.id, table);
-                            if (!rows.length) return '  现有行=空';
+                            let rows = getRows(chat, template.id, table);
+                            if (relevantRowsOnly && rows.length > maxCandidateRows && MemoryPolicy) {
+                                const candidates = rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
+                                const selected = MemoryPolicy.selectRelevantItems(candidates, queryText, {
+                                    ...tablePolicy.injectionPolicy,
+                                    mode: 'relevant',
+                                    topK: maxCandidateRows,
+                                    threshold: 0,
+                                    includeCompleted: true,
+                                    maxAgeDays: 0
+                                });
+                                rows = selected.map(item => item.row);
+                                const newest = getRows(chat, template.id, table)
+                                    .slice()
+                                    .sort((a, b) => getRowTimestamp(table, b) - getRowTimestamp(table, a))
+                                    .slice(0, Math.min(4, maxCandidateRows));
+                                const merged = new Map();
+                                [...rows, ...newest].forEach(row => merged.set(row.id, row));
+                                rows = Array.from(merged.values()).slice(0, maxCandidateRows);
+                            }
+                            if (!rows.length) return '  现有候选行=空';
                             return rows.map((row, rowIndex) => {
                                 const cells = (table.columns || []).map(field => `${field.key}=${getFieldDisplayValue(field, row.cells[field.id]) || '空'}`).join(' | ');
-                                return `  行ID=${row.id} 行号=${rowIndex + 1} ${cells}`;
+                                return `  候选行ID=${row.id} 候选号=${rowIndex + 1} ${cells}`;
                             }).join('\n');
                         })()
                         : '';
                     return [
-                        `  表格ID=${table.id} 名称=${table.name} 模式=${isRowsTable(table) ? 'rows' : 'keyValue'}`,
+                        `  表格ID=${table.id} 名称=${table.name} 层级=${tablePolicy.memoryLayer} 模式=${isRowsTable(table) ? 'rows' : 'keyValue'}`,
+                        `  更新策略=${tablePolicy.updatePolicy.enabled ? tablePolicy.updatePolicy.triggerMode : 'manual'}；允许新增=${tablePolicy.updatePolicy.allowAdd !== false ? '是' : '否'}；允许修改=${tablePolicy.updatePolicy.allowUpdate !== false ? '是' : '否'}；允许删除=${tablePolicy.updatePolicy.allowDelete === true ? '是' : '否'}`,
                         table.extractPrompt ? `  表格提取规则=${table.extractPrompt}` : '',
+                        tablePolicy.updatePolicy.instructions ? `  本表附加规则=${tablePolicy.updatePolicy.instructions}` : '',
                         ...(table.columns || []).map(field => {
                             const currentValue = isRowsTable(table)
-                                ? '见现有行'
+                                ? '见候选行'
                                 : getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field));
                             const locked = isFieldLocked(chat, template.id, table.id, field.id);
-                            const options = Array.isArray(field.options) && field.options.length > 0 ? ` 可选值=${field.options.join('|')}` : '';
+                            const optionsText = Array.isArray(field.options) && field.options.length > 0 ? ` 可选值=${field.options.join('|')}` : '';
                             const range = (typeof field.min === 'number' || typeof field.max === 'number')
                                 ? ` 范围=${field.min ?? ''}~${field.max ?? ''}`
                                 : '';
                             const group = field.group ? ` 分组=${field.group}` : '';
-                            return `    字段ID=${field.id} 字段名=${field.key}${group} 类型=${field.type}${options}${range} 当前值=${currentValue || '空'} 锁定=${locked ? '是' : '否'} AI可编辑=${field.aiEditable === false ? '否' : '是'} 说明=${field.aiHint || '无'}`;
+                            return `    字段ID=${field.id} 字段名=${field.key}${group} 类型=${field.type}${optionsText}${range} 当前值=${currentValue || '空'} 锁定=${locked ? '是' : '否'} AI可编辑=${field.aiEditable === false ? '否' : '是'} 重要字段=${field.important !== false ? '是' : '否'} 说明=${field.aiHint || '无'}`;
                         }),
                         tableRowsText
                     ].filter(Boolean).join('\n');
@@ -1773,9 +2260,17 @@
             return { status: 'noop', changedFields: [] };
         }
 
-        const templates = (Array.isArray(options.templateIds) && options.templateIds.length > 0
+        const targetTableKeys = new Set(Array.isArray(options.targetTableKeys) ? options.targetTableKeys : []);
+        const baseTemplates = (Array.isArray(options.templateIds) && options.templateIds.length > 0
             ? getBoundTemplates(chat).filter(item => options.templateIds.includes(item.id))
             : getBoundTemplates(chat));
+        const templates = baseTemplates.map(template => {
+            if (targetTableKeys.size === 0) return template;
+            return {
+                ...template,
+                tables: (template.tables || []).filter(table => targetTableKeys.has(`${template.id}::${table.id}`))
+            };
+        }).filter(template => (template.tables || []).length > 0);
         if (templates.length === 0) {
             showToast('请先绑定至少一个模板');
             return { status: 'noop', changedFields: [] };
@@ -1793,8 +2288,12 @@
 
         templates.forEach(template => ensureTemplateDataForChat(chat, template));
 
-        const templateText = buildTemplateDefinitionForPrompt(chat, templates);
         const historyText = buildHistoryTextForPrompt(chat, history);
+        const templateText = buildTemplateDefinitionForPrompt(chat, templates, {
+            queryText: historyText,
+            relevantRowsOnly: options.relevantRowsOnly !== false,
+            maxCandidateRows: options.maxCandidateRows || 12
+        });
         const prompt = `你现在要帮一个聊天角色更新“结构化记忆表”。请根据给定的模板、字段规则和最近聊天记录，只提取明确发生过的信息，并且只输出发生变化的字段。
 
 严格要求：
@@ -1834,8 +2333,16 @@ ${templateText}
 ${historyText}`;
 
         try {
-            const rawContent = await requestSummaryContent(prompt, 0.2);
-            const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, { source: options.source || 'api' });
+            const preferSummaryApi = templates.some(template => (template.tables || []).some(table => {
+                const policy = getTableRuntimePolicy(table);
+                return policy.memoryLayer === 'medium' || policy.memoryLayer === 'long' || policy.memoryLayer === 'review' || policy.updatePolicy.useSummaryApi !== false;
+            }));
+            const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update');
+            const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
+                source: options.source || 'api',
+                targetTableKeys: Array.from(targetTableKeys)
+            });
+            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
             if (!options.isAutoUpdate && !options.skipCursorSync) {
                 const endIndex = options.end || (Array.isArray(chat.history) ? chat.history.length : 0);
                 if (endIndex > 0) {
@@ -1862,82 +2369,112 @@ ${historyText}`;
         }
     }
 
+    async function updateSingleTableFromPolicy(chat, template, table, options = {}) {
+        if (!MemoryPolicy) {
+            return updateMemoryTablesFromApi({ chat, ...options });
+        }
+        const key = `${template.id}::${table.id}`;
+        const range = MemoryPolicy.getTableUpdateRange(chat, template.id, table, options);
+        if (!range || range.end < range.start) return { status: 'noop', changedFields: [], range: null };
+        const state = MemoryPolicy.ensureTableState(chat, template.id, table.id);
+        state.lastRunStatus = 'running';
+        state.lastError = '';
+        try {
+            const result = await updateMemoryTablesFromApi({
+                chat,
+                start: range.start,
+                end: range.end,
+                targetTableKeys: [key],
+                source: options.source || 'auto_v2',
+                isAutoUpdate: !!options.isAutoUpdate,
+                silent: true,
+                skipRender: true,
+                skipCursorSync: true,
+                suppressSuccessToast: true,
+                propagateError: true,
+                relevantRowsOnly: true,
+                maxCandidateRows: 12
+            });
+            MemoryPolicy.markTableProcessed(chat, template.id, table.id, range.end, 'success');
+            setMemoryTableAutoUpdateCursorByEndIndex(chat, range.end); // V1 兼容游标
+            return { ...result, range, templateId: template.id, tableId: table.id };
+        } catch (error) {
+            state.lastRunStatus = 'failed';
+            state.lastError = error.message || String(error);
+            state.lastRunAt = Date.now();
+            throw error;
+        }
+    }
+
+    function getDueMemoryTables(chat, options = {}) {
+        const descriptors = getBoundTableDescriptors(chat);
+        if (!MemoryPolicy) return descriptors;
+        if (Array.isArray(options.targetTableKeys) && options.targetTableKeys.length) {
+            const keys = new Set(options.targetTableKeys);
+            return descriptors.filter(({ template, table }) => keys.has(`${template.id}::${table.id}`));
+        }
+        return descriptors.filter(({ template, table }) => MemoryPolicy.isTableDue(chat, template.id, table));
+    }
+
     async function processMemoryTableAutoUpdate(chat, options = {}) {
         if (!chat) return { status: 'noop', updatedCount: 0 };
         ensureMemoryTableAutoUpdateState(chat);
-        if (getBoundTemplates(chat).length === 0) {
+        const descriptors = getBoundTableDescriptors(chat);
+        if (!descriptors.length) {
             refreshMemoryTableAutoUpdateControls(chat, false);
             return { status: 'noop', updatedCount: 0 };
         }
-
         if (!options.force && !chat.memoryTables.autoUpdateEnabled) {
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+            refreshMemoryTableAutoUpdateControls(chat, true);
             return { status: 'disabled', updatedCount: 0 };
         }
+        if (chat.memoryTables.autoUpdateState === 'running') return { status: 'running', updatedCount: 0 };
+        if (chat.memoryTables.autoUpdateState === 'failed' && !options.ignoreFailedState) return { status: 'failed', updatedCount: 0 };
 
-        if (chat.memoryTables.autoUpdateState === 'failed' && !options.ignoreFailedState) {
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'failed', updatedCount: 0 };
-        }
-
-        if (chat.memoryTables.autoUpdateState === 'running') {
-            return { status: 'running', updatedCount: 0 };
-        }
-
-        const nextRange = getNextMemoryTableAutoUpdateRange(chat);
-        if (!nextRange) {
+        const due = getDueMemoryTables(chat, options);
+        if (!due.length) {
             chat.memoryTables.autoUpdatePending = false;
             chat.memoryTables.autoUpdateState = 'idle';
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            if (!options.showNoPendingToast) {
-                showToast('当前没有可补的表格自动更新范围');
-            }
+            refreshMemoryTableAutoUpdateControls(chat, true);
+            if (options.showNoPendingToast) showToast('当前没有到期或待处理的表格');
             return { status: 'noop', updatedCount: 0 };
         }
 
-        let updatedCount = 0;
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+        const maxRuns = options.processAllAvailable
+            ? Math.max(due.length, runtime?.engineSettings?.maxAutoTablesPerRun || due.length)
+            : Math.min(due.length, runtime?.engineSettings?.maxAutoTablesPerRun || 2);
         chat.memoryTables.autoUpdateState = 'running';
         chat.memoryTables.autoUpdatePending = false;
-        refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-
+        refreshMemoryTableAutoUpdateControls(chat, true);
+        let updatedCount = 0;
+        const results = [];
         try {
-            do {
-                const currentRange = getNextMemoryTableAutoUpdateRange(chat);
-                if (!currentRange) break;
-                await updateMemoryTablesFromApi({
-                    chat,
-                    start: currentRange.start,
-                    end: currentRange.end,
-                    source: 'auto',
-                    isAutoUpdate: true,
-                    silent: true,
-                    skipRender: true,
-                    suppressSuccessToast: true,
-                    propagateError: true
+            for (const descriptor of due.slice(0, maxRuns)) {
+                const result = await updateSingleTableFromPolicy(chat, descriptor.template, descriptor.table, {
+                    source: options.source || 'auto_v2',
+                    isAutoUpdate: true
                 });
-                setMemoryTableAutoUpdateCursorByEndIndex(chat, currentRange.end);
-                updatedCount++;
+                if (result.status !== 'noop') updatedCount += 1;
+                results.push(result);
                 await saveCharacter(chat.id);
-            } while (options.processAllAvailable && getNextMemoryTableAutoUpdateRange(chat));
-
+            }
             chat.memoryTables.autoUpdateState = 'idle';
             chat.memoryTables.autoUpdatePending = false;
             await saveCharacter(chat.id);
             renderMemoryTableScreen();
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            if (options.showSuccessToast && updatedCount > 0) {
-                showToast(updatedCount > 1 ? `已补做 ${updatedCount} 次表格自动更新` : '表格自动更新已补做');
-            }
-            return { status: 'success', updatedCount };
+            refreshMemoryTableAutoUpdateControls(chat, true);
+            if (options.showSuccessToast && updatedCount > 0) showToast(`已更新 ${updatedCount} 张到期表格`);
+            return { status: 'success', updatedCount, results };
         } catch (error) {
-            console.error('[MemoryTable] auto update failed:', error);
+            console.error('[MemoryTable] V2 auto update failed:', error);
             chat.memoryTables.autoUpdateState = 'failed';
             chat.memoryTables.autoUpdatePending = false;
             await saveCharacter(chat.id);
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+            refreshMemoryTableAutoUpdateControls(chat, true);
             if (typeof showApiError === 'function') showApiError(error);
-            else showToast(error.message || '表格自动更新失败');
-            return { status: 'failed', updatedCount, error };
+            else showToast(error.message || '表格更新失败');
+            return { status: 'failed', updatedCount, results, error };
         }
     }
 
@@ -1945,79 +2482,78 @@ ${historyText}`;
         if (!chat) return { status: 'noop', updatedCount: 0 };
         ensureMemoryTableAutoUpdateState(chat);
         chat.memoryTables.autoUpdateState = 'idle';
+        if (MemoryPolicy) {
+            getBoundTableDescriptors(chat).forEach(({ template, table }) => {
+                const state = MemoryPolicy.ensureTableState(chat, template.id, table.id);
+                if (state.lastRunStatus === 'failed') state.lastRunStatus = 'idle';
+            });
+        }
         return processMemoryTableAutoUpdate(chat, {
             force: true,
             processAllAvailable: true,
-            showNoPendingToast: false,
+            showNoPendingToast: true,
             showSuccessToast: true,
-            ignoreFailedState: true
+            ignoreFailedState: true,
+            source: 'retry_v2'
         });
     }
 
     async function updateMemoryTableToLatest(chat) {
-        if (!chat) return { status: 'noop', changedFields: [] };
-        ensureMemoryTableAutoUpdateState(chat);
-        if (getBoundTemplates(chat).length === 0) {
-            showToast('请先绑定至少一个模板');
-            return { status: 'noop', changedFields: [] };
-        }
-        if (chat.memoryTables.autoUpdateState === 'running') {
-            showToast('表格自动更新进行中，请稍候...');
-            return { status: 'running', changedFields: [] };
-        }
-        const info = getMemoryTableAutoUpdateCursorInfo(chat);
-        if (info.unsyncedCount <= 0) {
-            showToast('当前没有新增消息需要更新表格');
-            return { status: 'noop', changedFields: [] };
-        }
+        return processMemoryTableAutoUpdate(chat, {
+            force: true,
+            processAllAvailable: true,
+            showNoPendingToast: true,
+            showSuccessToast: true,
+            ignoreFailedState: true,
+            source: 'manual_due_v2'
+        });
+    }
 
+    async function updateSelectedMemoryTable(chat, templateId, tableId) {
+        const template = getBoundTemplates(chat).find(item => item.id === templateId);
+        const table = template?.tables?.find(item => item.id === tableId);
+        if (!template || !table) {
+            showToast('没有找到选中的表格');
+            return { status: 'noop' };
+        }
+        const info = MemoryPolicy ? MemoryPolicy.getUnprocessedInfo(chat, templateId, tableId) : null;
+        if (info && info.unsyncedMessages <= 0) {
+            showToast('该表游标后没有新增消息；可以先调整游标位置');
+            return { status: 'noop' };
+        }
         chat.memoryTables.autoUpdateState = 'running';
-        chat.memoryTables.autoUpdatePending = false;
-        refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-
+        refreshMemoryTableAutoUpdateControls(chat, true);
         try {
-            const result = await updateMemoryTablesFromApi({
-                chat,
-                start: info.nextStartIndex + 1,
-                end: info.history.length,
-                source: 'auto_latest',
-                isAutoUpdate: true,
-                silent: true,
-                skipRender: true,
-                suppressSuccessToast: true,
-                propagateError: true
+            const result = await updateSingleTableFromPolicy(chat, template, table, {
+                source: 'manual_selected_v2',
+                isAutoUpdate: false
             });
-            setMemoryTableAutoUpdateCursorByEndIndex(chat, info.history.length);
             chat.memoryTables.autoUpdateState = 'idle';
-            chat.memoryTables.autoUpdatePending = false;
             await saveCharacter(chat.id);
             renderMemoryTableScreen();
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            showToast(`表格已更新到最新（处理 ${info.unsyncedCount} 条新消息）`);
+            showToast(result.changedFields?.length ? `已更新 ${table.name}，变更 ${result.changedFields.length} 项` : `${table.name} 没有检测到变化`);
             return result;
         } catch (error) {
-            console.error('[MemoryTable] update latest failed:', error);
             chat.memoryTables.autoUpdateState = 'failed';
-            chat.memoryTables.autoUpdatePending = false;
             await saveCharacter(chat.id);
-            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
             if (typeof showApiError === 'function') showApiError(error);
-            else showToast(error.message || '更新到最新失败');
-            return { status: 'failed', changedFields: [], error };
+            else showToast(error.message || '更新选中表失败');
+            return { status: 'failed', error };
         }
     }
 
-    async function checkAndTriggerAutoTableUpdate(chat) {
-        if (!chat || !chat.memoryTables || !chat.memoryTables.autoUpdateEnabled) return;
+    async function checkAndTriggerAutoTableUpdate(chat, options = {}) {
+        if (!chat || !chat.memoryTables || !chat.memoryTables.autoUpdateEnabled) return { status: 'disabled' };
         ensureMemoryTableAutoUpdateState(chat);
         if (chat.memoryTables.autoUpdateState === 'failed') {
             refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return;
+            return { status: 'failed' };
         }
-        await processMemoryTableAutoUpdate(chat, {
+        return processMemoryTableAutoUpdate(chat, {
             force: false,
-            processAllAvailable: true,
-            showNoPendingToast: true
+            processAllAvailable: false,
+            showNoPendingToast: !!options.showNoPendingToast,
+            source: 'auto_round_v2'
         });
     }
 
@@ -2193,6 +2729,8 @@ ${tableContext}`;
             const template = db.memoryTableTemplates.find(item => item.id === templateId);
             const table = template ? (template.tables || []).find(item => item.id === tableId) : null;
             if (!template || !table) return;
+            if (Array.isArray(options.targetTableKeys) && options.targetTableKeys.length > 0 && !options.targetTableKeys.includes(`${templateId}::${tableId}`)) return;
+            const updatePolicy = getTableRuntimePolicy(table).updatePolicy;
             ensureTemplateDataForChat(chat, template);
 
             if (isRowsTable(table)) {
@@ -2200,6 +2738,7 @@ ${tableContext}`;
                     const op = (rowNode.getAttribute('op') || 'update').trim().toLowerCase();
                     const rowId = rowNode.getAttribute('rowId') || '';
                     if (op === 'delete') {
+                        if (updatePolicy.allowDelete !== true) return;
                         const existingRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
                         if (!existingRow) return;
                         (table.columns || []).forEach(field => {
@@ -2218,6 +2757,7 @@ ${tableContext}`;
                     }
 
                     if (op === 'add') {
+                        if (updatePolicy.allowAdd === false) return;
                         const initialValues = {};
                         Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
                             const fieldId = fieldNode.getAttribute('fieldId');
@@ -2242,6 +2782,7 @@ ${tableContext}`;
                         return;
                     }
 
+                    if (updatePolicy.allowUpdate === false) return;
                     const targetRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
                     if (!targetRow) return;
                     Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
@@ -2253,6 +2794,9 @@ ${tableContext}`;
                         const newValue = normalizeFieldValue(field, fieldNode.textContent || '');
                         if (isSameMemoryValue(oldValue, newValue)) return;
                         targetRow.cells[field.id] = newValue;
+                        targetRow.meta ||= {};
+                        targetRow.meta.updatedAt = Date.now();
+                        targetRow.meta.lastMentionedAt = Date.now();
                         changedFields.push({
                             templateId,
                             tableId,
@@ -2267,6 +2811,7 @@ ${tableContext}`;
                 return;
             }
 
+            if (updatePolicy.allowUpdate === false) return;
             Array.from(updateNode.children)
                 .filter(node => node.tagName === 'field')
                 .forEach(fieldNode => {
@@ -2298,6 +2843,7 @@ ${tableContext}`;
         pushMemoryHistory(chat, changedFields, {
             source: options.source || 'api'
         });
+        if (changedFields.length && MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         return changedFields;
     }
 
@@ -2415,54 +2961,50 @@ ${tableContext}`;
         if (!draftTarget) return;
 
         const value = target.type === 'checkbox' ? target.checked : target.value;
+        const ensurePolicies = () => {
+            const layer = MemoryPolicy ? MemoryPolicy.normalizeLayer(draftTarget.memoryLayer, draftTarget.name) : (draftTarget.memoryLayer || 'short');
+            draftTarget.memoryLayer = layer;
+            draftTarget.updatePolicy = MemoryPolicy ? MemoryPolicy.normalizeUpdatePolicy(draftTarget.updatePolicy || {}, layer) : (draftTarget.updatePolicy || {});
+            draftTarget.injectionPolicy = MemoryPolicy ? MemoryPolicy.normalizeInjectionPolicy(draftTarget.injectionPolicy || {}, layer) : (draftTarget.injectionPolicy || {});
+        };
         switch (role) {
-            case 'template-name':
-                uiState.templateDraft.name = value;
+            case 'template-name': uiState.templateDraft.name = value; break;
+            case 'template-description': uiState.templateDraft.description = value; break;
+            case 'table-name': draftTarget.name = value; break;
+            case 'table-mode': draftTarget.mode = value === 'rows' ? 'rows' : 'keyValue'; break;
+            case 'table-memory-layer':
+                draftTarget.memoryLayer = value;
+                if (MemoryPolicy) {
+                    draftTarget.updatePolicy = MemoryPolicy.normalizeUpdatePolicy({}, value);
+                    draftTarget.injectionPolicy = MemoryPolicy.normalizeInjectionPolicy({}, value);
+                }
                 break;
-            case 'template-description':
-                uiState.templateDraft.description = value;
-                break;
-            case 'table-name':
-                draftTarget.name = value;
-                break;
-            case 'table-mode':
-                draftTarget.mode = value === 'rows' ? 'rows' : 'keyValue';
-                break;
-            case 'table-extract-prompt':
-                draftTarget.extractPrompt = value;
-                break;
-            case 'field-key':
-                draftTarget.key = value;
-                break;
-            case 'field-group':
-                draftTarget.group = value;
-                break;
-            case 'field-type':
-                draftTarget.type = normalizeFieldType(value);
-                break;
-            case 'field-default':
-                draftTarget.default = draftTarget.type === 'tags' ? parseOptionText(value) : value;
-                break;
-            case 'field-ai-editable':
-                draftTarget.aiEditable = value !== 'false';
-                break;
-            case 'field-min':
-                draftTarget.min = value === '' ? undefined : Number(value);
-                break;
-            case 'field-max':
-                draftTarget.max = value === '' ? undefined : Number(value);
-                break;
-            case 'field-options':
-                draftTarget.options = parseOptionText(value);
-                break;
-            case 'field-ai-hint':
-                draftTarget.aiHint = value;
-                break;
-            case 'field-conditional-rules':
-                draftTarget.conditionalRules = parseConditionalRulesText(value);
-                break;
-            default:
-                break;
+            case 'table-extract-prompt': draftTarget.extractPrompt = value; break;
+            case 'table-update-enabled': ensurePolicies(); draftTarget.updatePolicy.enabled = value !== 'false'; break;
+            case 'table-trigger-mode': ensurePolicies(); draftTarget.updatePolicy.triggerMode = value; break;
+            case 'table-round-interval': ensurePolicies(); draftTarget.updatePolicy.roundInterval = Math.max(0, Number(value) || 0); break;
+            case 'table-message-interval': ensurePolicies(); draftTarget.updatePolicy.messageInterval = Math.max(0, Number(value) || 0); break;
+            case 'table-max-source-messages': ensurePolicies(); draftTarget.updatePolicy.maxSourceMessages = Math.max(10, Number(value) || 10); break;
+            case 'table-allow-delete': ensurePolicies(); draftTarget.updatePolicy.allowDelete = value === 'true'; break;
+            case 'table-use-summary-api': ensurePolicies(); draftTarget.updatePolicy.useSummaryApi = value === 'true'; break;
+            case 'table-update-instructions': ensurePolicies(); draftTarget.updatePolicy.instructions = value; break;
+            case 'table-injection-mode': ensurePolicies(); draftTarget.injectionPolicy.mode = value; break;
+            case 'table-injection-top-k': ensurePolicies(); draftTarget.injectionPolicy.topK = Math.max(0, Number(value) || 0); break;
+            case 'table-injection-budget': ensurePolicies(); draftTarget.injectionPolicy.budget = Math.max(0, Number(value) || 0); break;
+            case 'table-max-age-days': ensurePolicies(); draftTarget.injectionPolicy.maxAgeDays = Math.max(0, Number(value) || 0); break;
+            case 'field-key': draftTarget.key = value; break;
+            case 'field-group': draftTarget.group = value; break;
+            case 'field-type': draftTarget.type = normalizeFieldType(value); break;
+            case 'field-default': draftTarget.default = draftTarget.type === 'tags' ? parseOptionText(value) : value; break;
+            case 'field-ai-editable': draftTarget.aiEditable = value !== 'false'; break;
+            case 'field-important': draftTarget.important = value !== 'false'; break;
+            case 'field-summary-label': draftTarget.summaryLabel = value; break;
+            case 'field-min': draftTarget.min = value === '' ? undefined : Number(value); break;
+            case 'field-max': draftTarget.max = value === '' ? undefined : Number(value); break;
+            case 'field-options': draftTarget.options = parseOptionText(value); break;
+            case 'field-ai-hint': draftTarget.aiHint = value; break;
+            case 'field-conditional-rules': draftTarget.conditionalRules = parseConditionalRulesText(value); break;
+            default: break;
         }
     }
 
@@ -2568,7 +3110,7 @@ ${tableContext}`;
                 const rows = Array.isArray(oldTableData?.__rows) ? oldTableData.__rows : [];
                 nextData[table.id] = {
                     __rows: rows.map(oldRow => {
-                        const row = { id: createMemoryId('memory_row'), cells: {} };
+                        const row = { id: createMemoryId('memory_row'), cells: {}, meta: deepClone(oldRow?.meta || {}) };
                         (table.columns || []).forEach(field => {
                             const sourceFieldId = Object.keys(idMap.fieldIds).find(key => idMap.fieldIds[key] === field.id)?.split('::')[1];
                             const raw = oldRow?.cells?.[sourceFieldId] !== undefined ? oldRow.cells[sourceFieldId] : oldRow?.[sourceFieldId];
@@ -2604,10 +3146,14 @@ ${tableContext}`;
         ensureMemoryTableState(chat);
         const boundTemplates = getBoundTemplates(chat).filter(template => templateIds.includes(template.id));
         if (boundTemplates.length === 0) return null;
+        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
         const binding = {
             memoryMode: chat.memoryMode,
             autoUpdateEnabled: !!chat.memoryTables.autoUpdateEnabled,
-            autoUpdateInterval: chat.memoryTables.autoUpdateInterval || 100,
+            autoUpdateInterval: chat.memoryTables.autoUpdateInterval || 140,
+            engineSettings: deepClone(runtime?.engineSettings || {}),
+            viewMode: runtime?.viewMode || 'normal',
+            tableStates: {},
             data: {},
             lockedFields: {}
         };
@@ -2616,11 +3162,12 @@ ${tableContext}`;
             ensureTemplateDataForChat(chat, template);
             binding.data[template.id] = deepClone(chat.memoryTables.data?.[template.id] || {});
             binding.lockedFields[template.id] = deepClone(chat.memoryTables.lockedFields?.[template.id] || {});
+            binding.tableStates[template.id] = deepClone(runtime?.tableStates?.[template.id] || {});
         });
 
         return {
             type: 'memory_table_package',
-            version: 1,
+            version: 2,
             templates: deepClone(boundTemplates),
             binding
         };
@@ -2631,7 +3178,7 @@ ${tableContext}`;
         if (!template) return;
         const payload = buildMemoryPackagePayload([templateId]) || {
             type: 'memory_table_package',
-            version: 1,
+            version: 2,
             templates: [deepClone(template)],
             binding: null
         };
@@ -2700,19 +3247,35 @@ ${tableContext}`;
             const shouldApply = window.confirm('检测到记忆包。是否把模板和已填好的表格数据一起导入到当前角色？');
             if (shouldApply) {
                 ensureMemoryTableState(chat);
-                importedMappings.forEach(({ template, idMap }) => {
+                const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+                importedMappings.forEach(({ template, idMap, originalTemplateId }) => {
                     if (!chat.memoryTables.boundTemplateIds.includes(template.id)) {
                         chat.memoryTables.boundTemplateIds.push(template.id);
                     }
                     const remapped = remapTableDataForImport(template, idMap, parsed.binding);
                     chat.memoryTables.data[template.id] = remapped.data;
                     chat.memoryTables.lockedFields[template.id] = remapped.lockedFields;
+                    if (runtime) {
+                        runtime.tableStates[template.id] = {};
+                        const sourceStates = parsed.binding.tableStates?.[originalTemplateId] || {};
+                        Object.entries(idMap.tableIds || {}).forEach(([oldTableId, newTableId]) => {
+                            if (sourceStates[oldTableId]) runtime.tableStates[template.id][newTableId] = deepClone(sourceStates[oldTableId]);
+                            else MemoryPolicy.ensureTableState(chat, template.id, newTableId);
+                        });
+                    }
                 });
                 if (parsed.binding.memoryMode) {
                     chat.memoryMode = parsed.binding.memoryMode;
                 }
-                chat.memoryTables.autoUpdateEnabled = !!parsed.binding.autoUpdateEnabled;
-                chat.memoryTables.autoUpdateInterval = Math.max(10, parseInt(parsed.binding.autoUpdateInterval, 10) || 100);
+                chat.memoryTables.autoUpdateEnabled = parsed.binding.autoUpdateEnabled !== false;
+                chat.memoryTables.autoUpdateInterval = Math.max(10, parseInt(parsed.binding.autoUpdateInterval, 10) || 140);
+                if (MemoryPolicy) {
+                    const runtime = MemoryPolicy.ensureRuntimeState(chat);
+                    runtime.engineSettings = MemoryPolicy.normalizeEngineSettings(parsed.binding.engineSettings || {
+                        messageInterval: chat.memoryTables.autoUpdateInterval
+                    });
+                    runtime.viewMode = parsed.binding.viewMode === 'json' && MemoryPolicy.isDesktopJsonAvailable() ? 'json' : 'normal';
+                }
                 await saveCharacter(chat.id);
             }
         }
@@ -2772,32 +3335,122 @@ ${tableContext}`;
         });
 
         const updateBtn = document.getElementById('memory-table-update-btn');
-        if (updateBtn) updateBtn.addEventListener('click', updateMemoryTablesFromApi);
+        if (updateBtn) {
+            updateBtn.addEventListener('click', async () => {
+                const chat = getCurrentMemoryTableChat();
+                if (!chat) return;
+                const { active } = getActiveTableDescriptor(chat);
+                if (!active) {
+                    showToast('请先绑定并选择一张表格');
+                    return;
+                }
+                await updateSelectedMemoryTable(chat, active.template.id, active.table.id);
+            });
+        }
+
+        const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
+        const jsonModeBtn = document.getElementById('memory-table-json-mode-btn');
+        const setViewMode = async mode => {
+            const chat = getCurrentMemoryTableChat();
+            if (!chat) return;
+            if (mode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
+                showToast('JSON 模式仅电脑端开放');
+                return;
+            }
+            uiState.viewMode = mode === 'json' ? 'json' : 'normal';
+            const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+            if (runtime) runtime.viewMode = uiState.viewMode;
+            await saveCharacter(chat.id);
+            renderMemoryTableScreen();
+        };
+        if (normalModeBtn) normalModeBtn.addEventListener('click', () => setViewMode('normal'));
+        if (jsonModeBtn) jsonModeBtn.addEventListener('click', () => setViewMode('json'));
+
+        const persistEngineControls = async () => {
+            const chat = getCurrentMemoryTableChat();
+            if (!chat) return null;
+            ensureMemoryTableState(chat);
+            const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+            const triggerSelect = document.getElementById('memory-table-trigger-mode');
+            const roundInput = document.getElementById('memory-table-round-interval');
+            const messageInput = document.getElementById('memory-table-auto-update-interval');
+            const maxSourceInput = document.getElementById('memory-table-max-source-messages');
+            const messageInterval = Math.max(10, parseInt(messageInput?.value, 10) || 140);
+            chat.memoryTables.autoUpdateInterval = messageInterval;
+            if (runtime) {
+                runtime.engineSettings = MemoryPolicy.normalizeEngineSettings({
+                    ...runtime.engineSettings,
+                    triggerMode: triggerSelect?.value || runtime.engineSettings.triggerMode,
+                    roundInterval: Math.max(1, parseInt(roundInput?.value, 10) || 2),
+                    messageInterval,
+                    maxSourceMessages: Math.max(10, parseInt(maxSourceInput?.value, 10) || 180)
+                });
+            }
+            await saveCharacter(chat.id);
+            refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+            return chat;
+        };
 
         const autoUpdateToggle = document.getElementById('memory-table-auto-update-toggle');
         if (autoUpdateToggle) {
             autoUpdateToggle.addEventListener('change', async () => {
-                const chat = getCurrentMemoryTableChat();
+                const chat = await persistEngineControls();
                 if (!chat) return;
-                const intervalInput = document.getElementById('memory-table-auto-update-interval');
-                const interval = parseInt(intervalInput?.value, 10);
-                chat.memoryTables.autoUpdateInterval = (isNaN(interval) || interval < 10) ? 100 : interval;
-                await saveCharacter(chat.id);
                 await applyMemoryTableAutoUpdateToggle(chat, autoUpdateToggle.checked);
-                await saveCharacter(chat.id);
                 renderMemoryTableScreen();
             });
         }
 
-        const autoUpdateIntervalInput = document.getElementById('memory-table-auto-update-interval');
-        if (autoUpdateIntervalInput) {
-            autoUpdateIntervalInput.addEventListener('blur', async () => {
+        ['memory-table-trigger-mode', 'memory-table-round-interval', 'memory-table-auto-update-interval', 'memory-table-max-source-messages'].forEach(id => {
+            const control = document.getElementById(id);
+            if (!control) return;
+            control.addEventListener(control.tagName === 'SELECT' ? 'change' : 'blur', persistEngineControls);
+        });
+
+        const cursorSelect = document.getElementById('memory-table-cursor-table-select');
+        const cursorInput = document.getElementById('memory-table-cursor-position');
+        const parseCursorKey = () => {
+            const raw = cursorSelect?.value || '';
+            const splitAt = raw.indexOf('::');
+            return splitAt > 0 ? [raw.slice(0, splitAt), raw.slice(splitAt + 2)] : ['', ''];
+        };
+        const syncCursorInput = () => {
+            const chat = getCurrentMemoryTableChat();
+            if (!chat || !MemoryPolicy || !cursorInput) return;
+            const [templateId, tableId] = parseCursorKey();
+            if (!templateId || !tableId) return;
+            const info = MemoryPolicy.getUnprocessedInfo(chat, templateId, tableId);
+            cursorInput.max = String(info.history.length);
+            cursorInput.value = String(Math.max(0, info.cursorIndex + 1));
+        };
+        if (cursorSelect) cursorSelect.addEventListener('change', syncCursorInput);
+
+        const saveCursorAt = async position => {
+            const chat = getCurrentMemoryTableChat();
+            if (!chat || !MemoryPolicy) return;
+            const [templateId, tableId] = parseCursorKey();
+            if (!templateId || !tableId) return;
+            MemoryPolicy.setTableCursorByPosition(chat, templateId, tableId, position);
+            await saveCharacter(chat.id);
+            refreshMemoryTableAutoUpdateControls(chat, true);
+            showToast(`游标已保存到第 ${Math.max(0, Number(position) || 0)} 条消息`);
+        };
+        const saveCursorBtn = document.getElementById('memory-table-save-cursor-btn');
+        if (saveCursorBtn) saveCursorBtn.addEventListener('click', () => saveCursorAt(cursorInput?.value || 0));
+        const cursorLatestBtn = document.getElementById('memory-table-cursor-latest-btn');
+        if (cursorLatestBtn) cursorLatestBtn.addEventListener('click', () => {
+            const chat = getCurrentMemoryTableChat();
+            saveCursorAt(Array.isArray(chat?.history) ? chat.history.length : 0);
+        });
+        const cursorStartBtn = document.getElementById('memory-table-cursor-start-btn');
+        if (cursorStartBtn) cursorStartBtn.addEventListener('click', () => saveCursorAt(0));
+        const updateSelectedBtn = document.getElementById('memory-table-update-selected-btn');
+        if (updateSelectedBtn) {
+            updateSelectedBtn.addEventListener('click', async () => {
                 const chat = getCurrentMemoryTableChat();
                 if (!chat) return;
-                const interval = parseInt(autoUpdateIntervalInput.value, 10);
-                chat.memoryTables.autoUpdateInterval = (isNaN(interval) || interval < 10) ? 100 : interval;
-                await saveCharacter(chat.id);
-                refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+                const [templateId, tableId] = parseCursorKey();
+                await updateSelectedMemoryTable(chat, templateId, tableId);
             });
         }
 
@@ -2865,7 +3518,15 @@ ${tableContext}`;
                 const actionEl = event.target.closest('[data-action]');
                 if (!actionEl) return;
                 const action = actionEl.dataset.action;
-                if (action === 'toggle-lock') {
+                if (action === 'select-memory-table') {
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat) return;
+                    uiState.activeTableId = actionEl.dataset.tableId || null;
+                    const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
+                    if (runtime) runtime.activeTableId = uiState.activeTableId;
+                    await saveCharacter(chat.id);
+                    renderMemoryTableScreen();
+                } else if (action === 'toggle-lock') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
                     toggleFieldLock(chat, actionEl.dataset.templateId, actionEl.dataset.tableId, actionEl.dataset.fieldId);
@@ -3204,6 +3865,7 @@ ${text}`;
     window.setupMemoryTableScreen = setupMemoryTableScreen;
     window.renderMemoryTableScreen = renderMemoryTableScreen;
     window.getMemoryTableContextBlock = getMemoryContextBlock;
+    window.prepareMemoryTableContext = prepareMemoryTableContext;
     window.exportMemoryTableContext = exportMemoryTableContext;
     window.getBoundMemoryTableTemplateIds = getBoundMemoryTableTemplateIds;
     window.convertTextToMemoryTable = convertTextToMemoryTable;

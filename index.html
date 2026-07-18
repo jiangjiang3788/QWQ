@@ -45,6 +45,7 @@
 <link href="css/modules/journal.css" rel="stylesheet"/>
 <link href="css/modules/vector_memory.css" rel="stylesheet"/>
 <link href="css/modules/memory_mode_ui.css" rel="stylesheet"/>
+<link href="css/modules/memory_table_v2.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
 <link href="css/modules/more.css" rel="stylesheet"/>
@@ -5652,6 +5653,13 @@
 </div>
 </div>
 <p class="memory-mode-inline-hint">这是同一个“三选一”读取模式；高亮项才会进入真实聊天 Prompt。</p>
+<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+  <div class="memory-v2-mode-switch" aria-label="档案查看模式">
+    <button type="button" id="memory-table-normal-mode-btn" class="active">普通模式</button>
+    <button type="button" id="memory-table-json-mode-btn">JSON 模式</button>
+  </div>
+  <div style="font-size:11px;color:#98a2b3;">普通模式只看重要字段；JSON 模式仅电脑端开放并显示完整结构。</div>
+</div>
 <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
 <div style="flex:1; min-width:170px;">
 <input id="memory-table-search-input" placeholder="搜索字段、值、模板..." style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px 12px; font-size:14px;" type="text"/>
@@ -5671,26 +5679,52 @@
 <button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转表格</button>
 <button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">表格转日记</button>
 </div>
-<div style="margin-top:12px; padding:12px; border:1px solid #ececec; border-radius:14px; background:#fafafa;">
-<div style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;">
-<div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#444;">
-<span>表格自动更新</span>
-<label class="kkt-switch">
-<input id="memory-table-auto-update-toggle" type="checkbox"/>
-<span class="kkt-slider"></span>
-</label>
-</div>
-<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-<span style="font-size:12px; color:#666;">每</span>
-<input id="memory-table-auto-update-interval" min="10" step="1" style="width:88px; border:1px solid #ececec; border-radius:10px; padding:8px 10px; font-size:13px;" type="number" value="100"/>
-<span style="font-size:12px; color:#666;">条消息自动更新一次</span>
-</div>
-</div>
-<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-<button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">更新到最新</button>
-<button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试补救</button>
-</div>
-<div id="memory-table-auto-update-status" style="font-size:12px; color:#888; margin-top:8px;">独立自动更新：未开启</div>
+<div class="memory-v2-policy-panel">
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#344054;font-weight:700;">
+      <span>记忆更新调度</span>
+      <label class="kkt-switch">
+        <input id="memory-table-auto-update-toggle" type="checkbox"/>
+        <span class="kkt-slider"></span>
+      </label>
+    </div>
+    <div id="memory-table-round-status" style="font-size:11px;color:#667085;">轮次尚未统计</div>
+  </div>
+  <div class="memory-v2-policy-grid">
+    <label>触发方式
+      <select id="memory-table-trigger-mode">
+        <option value="rounds">按轮数</option>
+        <option value="messages">按消息数</option>
+        <option value="either">轮数或消息数先到</option>
+      </select>
+    </label>
+    <label>默认每几轮
+      <input id="memory-table-round-interval" type="number" min="1" step="1" value="2"/>
+    </label>
+    <label>消息量兜底
+      <input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/>
+    </label>
+    <label>单次最多读取
+      <input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/>
+    </label>
+  </div>
+  <div class="memory-v2-cursor-row">
+    <label>目标表 / 独立游标
+      <select id="memory-table-cursor-table-select"></select>
+    </label>
+    <label>已处理到消息序号
+      <input id="memory-table-cursor-position" type="number" min="0" step="1" value="0"/>
+    </label>
+    <button class="btn btn-small btn-secondary" id="memory-table-save-cursor-btn" type="button">保存游标</button>
+    <button class="btn btn-small btn-primary" id="memory-table-update-selected-btn" type="button">更新选中表</button>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+    <button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">更新所有到期表</button>
+    <button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试补救</button>
+    <button class="btn btn-small btn-neutral" id="memory-table-cursor-latest-btn" type="button">游标设到最新</button>
+    <button class="btn btn-small btn-neutral" id="memory-table-cursor-start-btn" type="button">游标设到开头</button>
+  </div>
+  <div id="memory-table-auto-update-status" style="font-size:12px;color:#667085;margin-top:8px;">独立自动更新：未开启</div>
 </div>
 </div>
 </div>
@@ -6880,6 +6914,7 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
+<script src="js/modules/memory_table_policy.js"></script> <!-- 结构化记忆 V2 策略/轮次/检索 -->
 <script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
 <script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
 <script src="js/modules/memory_mode_ui.js"></script> <!-- 长期记忆模式清晰化 UI -->
