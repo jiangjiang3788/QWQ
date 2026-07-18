@@ -34,3 +34,7 @@ V15.7-V15.9
 - Proment remains diagnostic/control-only; it does not manage vector-memory data or structured-profile fields.
 
 V16.0: 世界书开关/预算接入真实请求；Proment新增设计/真实对照；结构化档案和向量记忆边界保持不变。
+
+V16.1.1:
+- 修复结构化档案多行表编辑：移除重复 renderFieldEditor，保留 rowId 透传。
+- 新增多行表静态回归检查，防止同名函数覆盖和 data-row-id 丢失。

@@ -26,6 +26,14 @@ for banned in ['saveCallOnInterruptEl','setupHeartPhotoModal','widgetWallpaperMo
     for p in root.rglob('*.js'):
         if banned in p.read_text(encoding='utf-8',errors='ignore'): hits.append(str(p.relative_to(root)))
     if hits: errors.append(f'retired symbol {banned}: '+', '.join(hits))
+# 多行结构化档案回归检查：renderFieldEditor 只能有一个实现，且必须透传 rowId。
+memory_table_js=(root/'js/modules/memory_table.js').read_text(encoding='utf-8')
+render_editor_defs=re.findall(r'function\s+renderFieldEditor\s*\(', memory_table_js)
+if len(render_editor_defs)!=1:
+    errors.append(f'memory rows editor duplicate definition count: {len(render_editor_defs)}')
+if 'rowId = ''' not in memory_table_js or 'data-row-id="${rowId}"' not in memory_table_js:
+    errors.append('memory rows editor does not preserve rowId')
+
 required=['proment-compare-runtime','proment-preview-worldbook','proment-preview-ai-request']
 for rid in required:
     if rid not in ids: errors.append('missing required id: '+rid)

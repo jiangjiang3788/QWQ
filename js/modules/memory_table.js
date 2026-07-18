@@ -1325,37 +1325,6 @@
         }
     }
 
-    function renderFieldEditor(templateId, tableId, field, value, locked) {
-        const disabled = locked ? 'disabled' : '';
-        const baseAttrs = `class="memory-table-input" data-template-id="${templateId}" data-table-id="${tableId}" data-field-id="${field.id}" ${disabled}`;
-        switch (normalizeFieldType(field.type)) {
-            case 'longtext':
-                return `<textarea ${baseAttrs} rows="3" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px; min-height:88px;">${escapeHtml(String(value || ''))}</textarea>`;
-            case 'number':
-            case 'progress':
-                return `<input ${baseAttrs} type="number" value="${escapeAttribute(String(value ?? ''))}" min="${field.min ?? ''}" max="${field.max ?? ''}" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
-            case 'enum':
-                return `<select ${baseAttrs} style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px; background:#fff;">
-                    ${(field.options || []).map(option => `<option value="${escapeAttribute(option)}" ${option === value ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-                </select>`;
-            case 'boolean':
-                return `
-                    <label style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid #ececec; border-radius:12px;">
-                        <span style="font-size:14px; color:#666;">${value ? '已开启' : '已关闭'}</span>
-                        <label class="kkt-switch">
-                            <input ${baseAttrs} type="checkbox" ${value ? 'checked' : ''}>
-                            <span class="kkt-slider"></span>
-                        </label>
-                    </label>
-                `;
-            case 'tags':
-                return `<input ${baseAttrs} type="text" value="${escapeAttribute(Array.isArray(value) ? value.join(', ') : String(value || ''))}" placeholder="用逗号分隔多个标签" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
-            case 'date':
-                return `<input ${baseAttrs} type="date" value="${escapeAttribute(String(value || ''))}" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
-            default:
-                return `<input ${baseAttrs} type="text" value="${escapeAttribute(String(value || ''))}" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
-        }
-    }
 
     function renderFieldChartContainer(templateId, tableId, field) {
         const type = normalizeFieldType(field.type);
