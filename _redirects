@@ -1,1 +1,1 @@
-# 本项目没有 URL 路由。不要使用 /* /index.html 200，避免缺失的 JS/CSS 被伪装成 HTML。
+/* /index.html 200

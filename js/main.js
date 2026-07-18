@@ -1,5 +1,4 @@
 // --- 主程序入口 (js/main.js) ---
-if (window.__OVO_DIAG__) window.__OVO_DIAG__.phase('main.js 已执行');
 
 // 注册 Service Worker。file:// 不支持 Service Worker，本地直接打开时主动跳过。
 if ((location.protocol === 'http:' || location.protocol === 'https:') && 'serviceWorker' in navigator) {
@@ -15,9 +14,7 @@ if ((location.protocol === 'http:' || location.protocol === 'https:') && 'servic
 }
 
 const init = async () => {
-    if (window.__OVO_DIAG__) window.__OVO_DIAG__.phase('正在读取 IndexedDB 数据');
     await loadData();
-    if (window.__OVO_DIAG__) window.__OVO_DIAG__.phase('数据库读取完成，正在初始化界面');
 
     // V12.3: desktop widgets were retired; no widget-state migration is required.
 
@@ -229,18 +226,11 @@ async function startApplication() {
     }
 
     try {
-        if (window.__OVO_DIAG__) window.__OVO_DIAG__.phase('正在检查第三方依赖');
-        const requiredGlobals = ['Dexie', 'DOMPurify', 'echarts', 'html2canvas', 'mammoth', 'JSZip', 'Sortable', 'CryptoJS'];
-        const missingGlobals = requiredGlobals.filter(name => typeof window[name] === 'undefined');
-        if (missingGlobals.length) throw new Error('缺少启动依赖：' + missingGlobals.join(', ') + '。请打开 diagnose.html 检查资源路径和 MIME 类型。');
-        if (window.__OVO_DIAG__) window.__OVO_DIAG__.phase('依赖检查通过，正在打开数据库');
         initDatabase();
         await init();
         console.log('[Startup] 单用户模式初始化完成');
-        if (window.__OVO_DIAG__) window.__OVO_DIAG__.ready();
     } catch (error) {
         console.error('[Startup] 应用初始化失败:', error);
-        if (window.__OVO_DIAG__) window.__OVO_DIAG__.fail(error);
         // 不恢复已删除的登录界面；保留页面和控制台错误供排查。
         if (typeof showToast === 'function') {
             showToast('应用初始化失败，请查看控制台错误');

@@ -12,116 +12,13 @@
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
 <meta content="no-referrer" name="referrer"/>
-<style id="ovo-startup-diagnostic-style">
-#ovo-startup-mask{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;background:#f7f7f9;color:#24262b;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:24px;box-sizing:border-box}
-#ovo-startup-mask .ovo-startup-card{width:min(92vw,430px);padding:22px;border-radius:18px;background:#fff;box-shadow:0 12px 40px rgba(0,0,0,.12);text-align:center}
-#ovo-startup-mask .ovo-startup-spinner{width:32px;height:32px;margin:0 auto 14px;border:3px solid #e4e6eb;border-top-color:#333;border-radius:50%;animation:ovo-spin .85s linear infinite}
-#ovo-startup-mask .ovo-startup-title{font-weight:700;font-size:17px;margin-bottom:8px}
-#ovo-startup-mask .ovo-startup-detail{font-size:13px;line-height:1.65;color:#70747c;word-break:break-word}
-#ovo-startup-mask .ovo-startup-actions{display:none;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
-#ovo-startup-mask button,#ovo-startup-mask a{border:0;border-radius:10px;padding:9px 12px;font-size:13px;text-decoration:none;cursor:pointer;background:#24262b;color:#fff}
-#ovo-startup-mask a.secondary,#ovo-startup-mask button.secondary{background:#eceef2;color:#24262b}
-#ovo-diagnostic-badge{position:fixed;right:10px;bottom:10px;z-index:2147483645;border:0;border-radius:999px;padding:7px 10px;background:rgba(20,22,27,.78);color:#fff;font:12px system-ui;display:none}
-@keyframes ovo-spin{to{transform:rotate(360deg)}}
-</style>
-<script id="ovo-startup-diagnostic-bootstrap">
-(function () {
-  'use strict';
-  var state = { startedAt: Date.now(), ready: false, phases: [], assets: [], errors: [] };
-  function text(value) {
-    if (value == null) return '';
-    if (value instanceof Error) return (value.name || 'Error') + ': ' + (value.message || String(value)) + (value.stack ? '\n' + value.stack : '');
-    if (typeof value === 'object') { try { return JSON.stringify(value, null, 2); } catch (_) {} }
-    return String(value);
-  }
-  function getMask() { return document.getElementById('ovo-startup-mask'); }
-  function setDetail(message) {
-    var el = document.getElementById('ovo-startup-detail');
-    if (el) el.textContent = message;
-  }
-  function showFailure(title, detail) {
-    var mask = getMask();
-    if (!mask) return;
-    var spinner = mask.querySelector('.ovo-startup-spinner');
-    if (spinner) spinner.style.display = 'none';
-    var titleEl = document.getElementById('ovo-startup-title');
-    if (titleEl) titleEl.textContent = title || '应用启动失败';
-    setDetail(detail || '未知错误');
-    var actions = document.getElementById('ovo-startup-actions');
-    if (actions) actions.style.display = 'flex';
-    var copy = document.getElementById('ovo-copy-diagnostic');
-    if (copy && !copy.dataset.bound) {
-      copy.dataset.bound = '1';
-      copy.addEventListener('click', function () {
-        var report = window.__OVO_DIAG__.report();
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(report).catch(function () {});
-        else { var ta=document.createElement('textarea'); ta.value=report; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(_){} ta.remove(); }
-        copy.textContent = '已复制';
-      });
-    }
-    var reload = document.getElementById('ovo-reload-page');
-    if (reload && !reload.dataset.bound) { reload.dataset.bound='1'; reload.addEventListener('click', function(){ location.reload(); }); }
-  }
-  function report() {
-    return [
-      'OVO 启动诊断',
-      'URL: ' + location.href,
-      '时间: ' + new Date().toISOString(),
-      'UserAgent: ' + navigator.userAgent,
-      'online: ' + navigator.onLine,
-      '耗时: ' + (Date.now() - state.startedAt) + 'ms',
-      '', '阶段:', state.phases.map(function(x){return '- '+x.t+'ms '+x.name;}).join('\n') || '- 无',
-      '', '资源:', state.assets.map(function(x){return '- '+(x.ok?'OK ':'FAIL ') + x.name + (x.detail?' | '+x.detail:'');}).join('\n') || '- 无',
-      '', '错误:', state.errors.map(function(x){return '- '+x;}).join('\n') || '- 无'
-    ].join('\n');
-  }
-  window.__OVO_DIAG__ = {
-    state: state,
-    phase: function (name) { state.phases.push({ t: Date.now() - state.startedAt, name: text(name) }); setDetail(text(name)); },
-    asset: function (name, ok, detail) { state.assets.push({ name:text(name), ok:!!ok, detail:text(detail) }); if (!ok) showFailure('资源加载失败', text(name) + (detail ? '\n' + text(detail) : '')); },
-    error: function (err) { var msg=text(err); state.errors.push(msg); showFailure('应用启动失败', msg); },
-    fail: function (err) { this.error(err); },
-    ready: function () { state.ready=true; this.phase('应用初始化完成'); var mask=getMask(); if(mask) mask.remove(); var badge=document.getElementById('ovo-diagnostic-badge'); if(badge) badge.style.display='block'; },
-    show: function () { showFailure(state.ready ? '诊断信息' : '应用尚未完成启动', report()); },
-    report: report
-  };
-  window.addEventListener('error', function (event) {
-    if (event.target && event.target !== window) {
-      var url = event.target.src || event.target.href || event.target.currentSrc || event.target.tagName;
-      window.__OVO_DIAG__.asset(url, false, '浏览器未能加载该资源');
-      return;
-    }
-    window.__OVO_DIAG__.error(event.error || event.message || '未知脚本错误');
-  }, true);
-  window.addEventListener('unhandledrejection', function (event) { window.__OVO_DIAG__.error(event.reason || '未处理的 Promise 错误'); });
-  document.addEventListener('DOMContentLoaded', function () {
-    window.__OVO_DIAG__.phase('HTML 已解析，等待应用初始化');
-    if (state.errors.length) showFailure('应用启动失败', state.errors[state.errors.length - 1]);
-    var badge=document.getElementById('ovo-diagnostic-badge');
-    if(badge) badge.addEventListener('click', function(){ window.__OVO_DIAG__.show(); });
-    setTimeout(function () {
-      if (state.ready) return;
-      var missing=[];
-      [['Dexie',window.Dexie],['DOMPurify',window.DOMPurify],['echarts',window.echarts],['html2canvas',window.html2canvas],['mammoth',window.mammoth],['JSZip',window.JSZip],['Sortable',window.Sortable],['CryptoJS',window.CryptoJS]].forEach(function(pair){ if(typeof pair[1]==='undefined') missing.push(pair[0]); });
-      var last = state.phases.length ? state.phases[state.phases.length-1].name : '没有启动阶段记录';
-      var message='超过 10 秒仍未完成启动。\n最后阶段：'+last;
-      if(missing.length) message+='\n缺少依赖：'+missing.join(', ');
-      message+='\n请点击“打开完整诊断”检查服务器是否把 JS 文件错误地返回成 index.html。';
-      showFailure('启动超时', message);
-    }, 10000);
-  }, { once:true });
-})();
-</script>
-<script defer src="vendor/dexie.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/purify.min.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/echarts.min.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/html2canvas.min.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/mammoth.browser.min.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/jszip.min.js?v=16.1.3-startup-fix"></script>
-<script defer src="vendor/Sortable.min.js?v=16.1.3-startup-fix"></script>
-<link href="https://fonts.googleapis.com" rel="preconnect"/>
-<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script src="vendor/dexie.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/echarts.min.js"></script>
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/mammoth.browser.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/Sortable.min.js"></script>
 <script>
         // V11.2: file:// cannot fetch a web app manifest. Add it only on web origins.
         if (location.protocol === 'http:' || location.protocol === 'https:') {
@@ -140,7 +37,7 @@
 <link href="css/settings.css" rel="stylesheet"/>
 <link href="css/api_settings_v161.css" rel="stylesheet"/>
 <!-- Weather Module -->
-<script defer src="js/modules/weather.js?v=16.1.3-startup-fix"></script>
+<script src="js/modules/weather.js"></script>
 <!-- CSS Split: Modules -->
 <link href="css/modules/search.css" rel="stylesheet"/>
 <link href="css/modules/theater.css" rel="stylesheet"/>
@@ -163,7 +60,7 @@
 <!-- Other Styles -->
 <link href="contacts.css" rel="stylesheet"/>
 <link href="more_menu.css" rel="stylesheet"/>
-<script defer src="vendor/crypto-js.min.js?v=16.1.3-startup-fix"></script>
+<script src="vendor/crypto-js.min.js"></script>
 <!-- CSS Split: Extracted from inline <style> -->
 <link href="css/modules/block_system.css" rel="stylesheet"/>
 <link href="css/modules/voice_selector.css" rel="stylesheet"/>
@@ -174,20 +71,6 @@
     </style>
 </meta></meta></head>
 <body>
-<div id="ovo-startup-mask" role="status" aria-live="polite">
-  <div class="ovo-startup-card">
-    <div class="ovo-startup-spinner"></div>
-    <div class="ovo-startup-title" id="ovo-startup-title">正在启动 OVO</div>
-    <div class="ovo-startup-detail" id="ovo-startup-detail">HTML 已打开，正在加载本地脚本…</div>
-    <div class="ovo-startup-actions" id="ovo-startup-actions">
-      <a href="diagnose.html" class="secondary">打开完整诊断</a>
-      <button type="button" id="ovo-copy-diagnostic">复制错误</button>
-      <button type="button" class="secondary" id="ovo-reload-page">重新加载</button>
-    </div>
-    <noscript><div style="margin-top:12px;color:#b00020">浏览器已禁用 JavaScript，应用无法启动。</div></noscript>
-  </div>
-</div>
-<button id="ovo-diagnostic-badge" type="button">启动诊断</button>
 <svg height="0" style="position:absolute;" width="0">
 <defs>
 <clippath clippathunits="objectBoundingBox" id="heart-clip">
@@ -6974,52 +6857,52 @@
   未来修改代码时，请参考以下注释找到对应的文件：
 -->
 <!-- [1. 基础层] -->
-<script defer src="js/utils.js?v=16.1.3-startup-fix"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
-<script defer src="js/db.js?v=16.1.3-startup-fix"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+<script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
+<script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <!-- [2. 核心交互层] -->
-<script defer src="js/ui.js?v=16.1.3-startup-fix"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
+<script src="js/ui.js"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
 <!-- Chat Modules -->
-<script defer src="js/modules/chat_list.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/character_create.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/chat_render.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/ai_request_runtime.js?v=16.1.3-startup-fix"></script>
-    <script defer src="js/modules/chat_ai.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/chat_features.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/avatar_recognition.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/modules/chat_ops.js?v=16.1.3-startup-fix"></script>
-<script defer src="js/chat.js?v=16.1.3-startup-fix"></script> <!-- 聊天核心入口 -->
-<script defer src="js/contacts.js?v=16.1.3-startup-fix"></script> <!-- 联系人：好友列表、名片 -->
-<script defer src="js/settings.js?v=16.1.3-startup-fix"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
-<script defer src="js/modules/api_settings_ui.js?v=16.1.3-startup-fix"></script> <!-- API 管理界面增强 -->
-<script defer src="js/modules/block_system.js?v=16.1.3-startup-fix"></script> <!-- 拉黑与好友申请 -->
+<script src="js/modules/chat_list.js"></script>
+<script src="js/modules/character_create.js"></script>
+<script src="js/modules/chat_render.js"></script>
+<script src="js/modules/ai_request_runtime.js"></script>
+    <script src="js/modules/chat_ai.js"></script>
+<script src="js/modules/chat_features.js"></script>
+<script src="js/modules/avatar_recognition.js"></script>
+<script src="js/modules/chat_ops.js"></script>
+<script src="js/chat.js"></script> <!-- 聊天核心入口 -->
+<script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
+<script src="js/settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
+<script src="js/modules/api_settings_ui.js?v=161-coldstart1"></script> <!-- API 管理界面增强 -->
+<script src="js/modules/block_system.js"></script> <!-- 拉黑与好友申请 -->
 <!-- [3. 独立功能模块 (Plugins)] -->
-<script defer src="js/modules/sticker.js?v=16.1.3-startup-fix"></script> <!-- 表情包管理系统 -->
-<script defer src="js/modules/theater.js?v=16.1.3-startup-fix"></script> <!-- 小剧场功能 -->
-<script defer src="js/modules/worldbook.js?v=16.1.3-startup-fix"></script> <!-- 世界书设定集 -->
-<script defer src="js/modules/journal.js?v=16.1.3-startup-fix"></script> <!-- 回忆日记生成 -->
-<script defer src="js/modules/memory_table.js?v=16.1.3-startup-fix"></script> <!-- 结构化记忆 -->
-<script defer src="js/modules/vector_memory.js?v=16.1.3-startup-fix"></script> <!-- 向量记忆 -->
-<script defer src="js/modules/memory_mode_ui.js?v=16.1.3-startup-fix"></script> <!-- 长期记忆模式清晰化 UI -->
-<script defer src="js/modules/reminder.js?v=16.1.3-startup-fix"></script> <!-- 提醒事项 -->
-<script defer src="js/modules/storage.js?v=16.1.3-startup-fix"></script> <!-- 存储空间分析图表 -->
+<script src="js/modules/sticker.js"></script> <!-- 表情包管理系统 -->
+<script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
+<script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
+<script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
+<script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
+<script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
+<script src="js/modules/memory_mode_ui.js"></script> <!-- 长期记忆模式清晰化 UI -->
+<script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
+<script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->
-<script defer src="js/modules/tutorial.js?v=16.1.3-startup-fix"></script> <!-- 教程与 GitHub 备份 -->
-<script defer src="js/modules/more_menu.js?v=16.1.3-startup-fix"></script> <!-- 更多菜单与状态栏管理 -->
-<script defer src="js/modules/regex_filter.js?v=16.1.3-startup-fix"></script> <!-- 正则过滤模块 -->
-<script defer src="js/modules/favorites.js?v=16.1.3-startup-fix"></script> <!-- 消息收藏 -->
-<script defer src="js/modules/search.js?v=16.1.3-startup-fix"></script> <!-- 聊天记录搜索模块 -->
-<script defer src="js/modules/battery_interaction.js?v=16.1.3-startup-fix"></script> <!-- 电量交互模块 -->
+<script src="js/modules/tutorial.js"></script> <!-- 教程与 GitHub 备份 -->
+<script src="js/modules/more_menu.js"></script> <!-- 更多菜单与状态栏管理 -->
+<script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
+<script src="js/modules/favorites.js"></script> <!-- 消息收藏 -->
+<script src="js/modules/search.js"></script> <!-- 聊天记录搜索模块 -->
+<script src="js/modules/battery_interaction.js"></script> <!-- 电量交互模块 -->
 <!-- 角色相册管理模块 -->
-<script defer src="js/modules/cot_settings.js?v=16.1.3-startup-fix"></script> <!-- 思维链设置模块 -->
-<script defer src="js/modules/tts_service.js?v=16.1.3-startup-fix"></script> <!-- TTS 语音合成代理服务 -->
-<script defer src="js/modules/voice_selector.js?v=16.1.3-startup-fix"></script> <!-- 音色选择器 -->
-<script defer src="js/modules/tts_settings.js?v=16.1.3-startup-fix"></script> <!-- TTS 设置管理 -->
-<script defer src="js/modules/archive.js?v=16.1.3-startup-fix"></script> <!-- 记忆存档库模块 -->
-<script defer src="js/modules/appearance_settings.js?v=16.1.3-startup-fix"></script> <!-- 外观设置：整体 UI 切换 -->
-<script defer src="js/modules/msg_version.js?v=16.1.3-startup-fix"></script> <!-- 消息版本管理 -->
-<script defer src="js/modules/keep_alive.js?v=16.1.3-startup-fix"></script> <!-- 后台保活 -->
-<script defer src="js/modules/floating_ball.js?v=16.1.3-startup-fix"></script> <!-- 悬浮球快捷工具 -->
+<script src="js/modules/cot_settings.js"></script> <!-- 思维链设置模块 -->
+<script src="js/modules/tts_service.js"></script> <!-- TTS 语音合成代理服务 -->
+<script src="js/modules/voice_selector.js"></script> <!-- 音色选择器 -->
+<script src="js/modules/tts_settings.js"></script> <!-- TTS 设置管理 -->
+<script src="js/modules/archive.js"></script> <!-- 记忆存档库模块 -->
+<script src="js/modules/appearance_settings.js"></script> <!-- 外观设置：整体 UI 切换 -->
+<script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
+<script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
+<script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
-<script defer src="js/main.js?v=16.1.3-startup-fix"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
+<script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>
 </html>

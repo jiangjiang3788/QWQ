@@ -4,9 +4,8 @@ root=Path(__file__).resolve().parents[1]
 errors=[]
 html=(root/'index.html').read_text(encoding='utf-8')
 # 启动必需的第三方脚本必须随项目本地部署；在线图片和字体仍允许联网。
-script_srcs_raw=re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)', html, re.I)
-script_srcs=[src.split('?',1)[0] for src in script_srcs_raw]
-external_scripts=[src for src in script_srcs_raw if src.startswith(('http:','https:','//'))]
+script_srcs=re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)', html, re.I)
+external_scripts=[src for src in script_srcs if src.startswith(('http:','https:','//'))]
 if external_scripts: errors.append('external startup scripts: '+', '.join(external_scripts))
 required_vendor={
     'vendor/dexie.js','vendor/purify.min.js','vendor/echarts.min.js',

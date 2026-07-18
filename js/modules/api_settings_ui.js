@@ -12,6 +12,10 @@
 
   function byId(id) { return document.getElementById(id); }
 
+  function setTextIfChanged(element, value) {
+    if (element && element.textContent !== value) element.textContent = value;
+  }
+
   function findSection(config) {
     if (config.selector) return document.querySelector(config.selector);
     const provider = byId(`${config.prefix}-api-provider`);
@@ -167,16 +171,16 @@
     if (mainChip) {
       mainChip.classList.toggle('ready', ready);
       mainChip.classList.toggle('partial', !ready && Boolean(values.url || values.key));
-      mainChip.querySelector('strong').textContent = ready ? (values.provider || '已配置') : '未完成';
+      setTextIfChanged(mainChip.querySelector('strong'), ready ? (values.provider || '已配置') : '未完成');
     }
     if (modelChip) {
       modelChip.classList.toggle('ready', Boolean(values.model));
-      modelChip.querySelector('strong').textContent = values.model || '未选择';
+      setTextIfChanged(modelChip.querySelector('strong'), values.model || '未选择');
     }
     if (specialChip) {
       const count = SECTION_CONFIG.slice(1).filter(isConfigured).length;
       specialChip.classList.toggle('ready', count > 0);
-      specialChip.querySelector('strong').textContent = `${count} 个已配置`;
+      setTextIfChanged(specialChip.querySelector('strong'), `${count} 个已配置`);
     }
   }
 
@@ -193,7 +197,24 @@
     SECTION_CONFIG.forEach(addSectionStatus);
     screen.addEventListener('input', updateHero);
     screen.addEventListener('change', updateHero);
-    const observer = new MutationObserver(updateHero);
+    let heroUpdateQueued = false;
+    const scheduleHeroUpdate = () => {
+      if (heroUpdateQueued) return;
+      heroUpdateQueued = true;
+      requestAnimationFrame(() => {
+        heroUpdateQueued = false;
+        updateHero();
+      });
+    };
+    const observer = new MutationObserver((mutations) => {
+      const hasRelevantChange = mutations.some((mutation) => {
+        const target = mutation.target.nodeType === Node.ELEMENT_NODE
+          ? mutation.target
+          : mutation.target.parentElement;
+        return !target?.closest?.('.api-ui-hero');
+      });
+      if (hasRelevantChange) scheduleHeroUpdate();
+    });
     observer.observe(screen, { subtree: true, childList: true });
     updateHero();
   }
