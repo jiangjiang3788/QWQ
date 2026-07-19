@@ -30,6 +30,8 @@
     </script>
 <!-- CSS Split: Base & Layout -->
 <link href="css/base.css" rel="stylesheet"/>
+<link href="css/core/ui_tokens.css" rel="stylesheet"/>
+<link href="css/components/settings_components.css" rel="stylesheet"/>
 <link href="css/layout.css" rel="stylesheet"/>
 <link href="css/modules/quick_dock.css" rel="stylesheet"/>
 <!-- CSS Split: Core Features -->
@@ -46,6 +48,8 @@
 <link href="css/modules/vector_memory.css" rel="stylesheet"/>
 <link href="css/modules/memory_mode_ui.css" rel="stylesheet"/>
 <link href="css/modules/memory_table_v2.css" rel="stylesheet"/>
+<link href="css/modules/memory_workspace.css" rel="stylesheet"/>
+<link href="css/modules/app_workspace.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
 <link href="css/modules/more.css" rel="stylesheet"/>
@@ -55,6 +59,7 @@
 <link href="css/modules/archive.css" rel="stylesheet"/>
 <link href="css/modules/favorites.css" rel="stylesheet"/>
 <link href="css/modules/appearance_settings.css" rel="stylesheet"/>
+<link href="css/modules/app_launcher.css" rel="stylesheet"/>
 <link href="css/modules/avatar_recognition.css" rel="stylesheet"/>
 <link href="css/modules/msg_version.css" rel="stylesheet"/>
 <link href="css/modules/keep_alive.css" rel="stylesheet"/>
@@ -105,14 +110,7 @@
 </svg>
 </button>
 <!-- 创建群聊 -->
-<button aria-hidden="true" class="action-btn" id="create-group-btn-kkt" style="display:none !important" tabindex="-1" title="创建群聊">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24">
-<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-<circle cx="9" cy="7" r="4"></circle>
-<path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-</svg>
-</button>
+
 <!-- 设置/导入 -->
 </div>
 </header>
@@ -182,16 +180,7 @@
 </div>
 </main>
 </div>
-<div class="screen" id="phone-screen">
-<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; color: #999; gap: 20px;">
-<div style="font-size: 16px; letter-spacing: 1px;">燃尽了，这里没有任何功能<br/>点这里↓</div>
-<div id="burnout-bubble" style="cursor: pointer; opacity: 0.6; transition: opacity 0.3s;">
-<svg fill="currentColor" height="32" viewbox="0 0 24 24" width="32">
-<path d="M20,2H4A2,2,0,0,0,2,4V22L6,18H20A2,2,0,0,0,22,16V4A2,2,0,0,0,20,2M20,16H6L4,18V4H20V16M6,9H18V11H6V9M6,12H12V14H6V12Z"></path>
-</svg>
-</div>
-</div>
-</div>
+
 <!-- 直播间 Screen -->
 <!-- 全局底部导航栏 -->
 <nav class="bottom-nav" id="global-bottom-nav" style="display: none;">
@@ -208,13 +197,8 @@
 <img alt="icon" class="nav-icon-img" src=""/>
 <span class="nav-badge" id="nav-chat-badge" style="display: none;">0</span>
 </button>
-<button class="nav-item" data-nav-id="2" data-target="phone-screen" title="电话">
-<svg class="bi bi-telephone-fill" fill="currentColor" height="26" viewbox="0 0 16 16" width="26" xmlns="http://www.w3.org/2000/svg">
-<path d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.315 1.494l-.547 2.19a.678.678 0 0 0 .178.643l2.457 2.457a.678.678 0 0 0 .644.178l2.189-.547a1.745 1.745 0 0 1 1.494.315l2.306 1.794c.829.645.905 1.87.163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.634 18.634 0 0 1-7.01-4.42 18.634 18.634 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877L1.885.511z" fill-rule="evenodd"></path>
-</svg>
-<img alt="icon" class="nav-icon-img" src=""/>
-</button>
-<button class="nav-item" data-nav-id="3" data-target="more-screen" title="更多">
+
+<button class="nav-item" data-nav-id="2" data-target="home-screen" title="Apps">
 <svg class="bi bi-three-dots" fill="currentColor" height="26" viewbox="0 0 16 16" width="26" xmlns="http://www.w3.org/2000/svg">
 <path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"></path>
 </svg>
@@ -253,6 +237,7 @@
 </button>
 </div>
 </header>
+<div id="memory-live-state-bar" class="memory-live-state-bar" style="display:none;"></div>
 <header class="app-header" id="chat-room-header-select" style="display: none;">
 <button class="action-btn" id="cancel-multi-select-btn">取消</button>
 <div class="title-container">
@@ -2341,7 +2326,7 @@
 <div class="screen" id="more-screen">
 <header class="app-header chat-list-header">
 <div class="header-left">
-<h1 class="title">Menu</h1>
+<h1 class="title">Apps</h1>
 <button class="back-btn hidden-back-btn" data-target="home-screen">‹</button>
 </div>
 <div class="action-btn-group">
@@ -5619,128 +5604,127 @@
 </div>
 <div class="screen" id="memory-table-screen">
 <header class="app-header">
-<button class="back-btn" data-target="chat-room-screen">‹</button>
-<div class="title-container">
-<h1 class="title">结构记忆</h1>
-</div>
+<button class="back-btn" data-target="more-screen">‹</button>
+<div class="title-container"><h1 class="title">记忆</h1></div>
 <div class="action-btn-group">
-<button class="action-btn" id="memory-table-update-btn" title="更新表格">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24">
-<path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-<polyline points="21 3 21 9 15 9"></polyline>
-</svg>
+<button class="action-btn" id="memory-table-update-btn" title="整理当前表">
+<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>
 </button>
 <button class="action-btn" id="memory-table-create-template-btn" title="新建模板">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24">
-<line x1="12" x2="12" y1="5" y2="19"></line>
-<line x1="5" x2="19" y1="12" y2="12"></line>
-</svg>
+<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
 </button>
 </div>
 </header>
-<main class="content" style="padding-top: 14px;">
-<div style="padding: 0 15px 14px;">
-<div style="background:#fff; border-radius:18px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,0.04); border:1px solid #f1f1f1;">
-<div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-<div>
-<div id="memory-table-chat-summary" style="font-size:15px; font-weight:700; color:#333;">未选择角色</div>
-<div id="memory-table-mode-pill" style="display:inline-flex; margin-top:8px; padding:5px 10px; border-radius:999px; font-size:12px;">日记模式</div>
+<main class="content memory-workbench-shell">
+<section class="memory-workbench-hero">
+<div class="memory-workbench-identity">
+<strong id="memory-table-chat-summary">未选择角色</strong>
+<small id="memory-table-mode-pill">日记模式</small>
 </div>
-<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="journal" type="button">回忆日记</button>
-<button class="btn btn-small btn-primary" data-memory-mode-switch="table" type="button">结构化档案</button>
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="vector" type="button">向量记忆</button>
+<div class="memory-workbench-mode-row" aria-label="记忆来源">
+<button class="btn btn-small btn-secondary" data-memory-mode-switch="journal" type="button">日记</button>
+<button class="btn btn-small btn-primary" data-memory-mode-switch="table" type="button">档案</button>
+<button class="btn btn-small btn-secondary" data-memory-mode-switch="vector" type="button">向量</button>
 </div>
-</div>
-<p class="memory-mode-inline-hint">这是同一个“三选一”读取模式；高亮项才会进入真实聊天 Prompt。</p>
-<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap;">
-  <div class="memory-v2-mode-switch" aria-label="档案查看模式">
-    <button type="button" id="memory-table-normal-mode-btn" class="active">普通模式</button>
-    <button type="button" id="memory-table-json-mode-btn">JSON 模式</button>
-  </div>
-  <div style="font-size:11px;color:#98a2b3;">普通模式只看重要字段；JSON 模式仅电脑端开放并显示完整结构。</div>
-</div>
-<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-<div style="flex:1; min-width:170px;">
-<input id="memory-table-search-input" placeholder="搜索字段、值、模板..." style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px 12px; font-size:14px;" type="text"/>
-</div>
-<select id="memory-table-sort-select" style="border:1px solid #ececec; border-radius:12px; padding:10px 12px; font-size:14px; background:#fff;">
-<option value="default">默认排序</option>
-<option value="name">按字段名</option>
-<option value="changed">最近变更优先</option>
-<option value="locked">已锁定优先</option>
+</section>
+<section class="memory-workbench-state">
+<div><strong id="memory-workbench-status-title">暂无当前状态</strong><small id="memory-workbench-status-detail">聊天中出现明确变化后会自动更新。</small></div>
+<b id="memory-workbench-task-summary">0 项待办</b>
+</section>
+<nav class="memory-workbench-nav" aria-label="记忆工作台">
+<button class="memory-workspace-tab-btn active" data-workspace="memory" type="button">记忆</button>
+<button class="memory-workspace-tab-btn" data-workspace="inbox" type="button">待处理<span class="memory-workspace-badge" id="memory-workbench-inbox-count">0</span></button>
+<button class="memory-workspace-tab-btn" data-workspace="manage" type="button">管理</button>
+</nav>
+<div class="memory-workbench-toolbar" id="memory-workbench-memory-toolbar">
+<input id="memory-table-search-input" placeholder="搜索记忆" type="search"/>
+<select id="memory-table-sort-select">
+<option value="default">默认排序</option><option value="name">名称</option><option value="changed">最近变更</option><option value="locked">已锁定</option>
 </select>
-<button class="btn btn-small btn-secondary" id="memory-table-import-btn" type="button">导入模板/记忆包</button>
+</div>
+<div class="memory-workbench-tools" id="memory-workbench-manage-tools" hidden>
+<button class="btn btn-small btn-secondary" id="memory-table-import-btn" type="button">导入</button>
 <button class="btn btn-small btn-secondary" id="memory-table-export-all-btn" type="button">导出模板</button>
 <button class="btn btn-small btn-secondary" id="memory-table-export-package-btn" type="button">导出记忆包</button>
-<input accept=".json,application/json" id="memory-table-import-input" style="display:none;" type="file"/>
+<button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转档案</button>
+<button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">档案转日记</button>
+<input accept=".json,application/json" id="memory-table-import-input" hidden type="file"/>
+<div class="memory-v2-mode-switch" aria-label="档案查看模式">
+<button type="button" id="memory-table-normal-mode-btn" class="active">普通</button><button type="button" id="memory-table-json-mode-btn">JSON</button>
 </div>
-<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-<button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转表格</button>
-<button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">表格转日记</button>
 </div>
+<section class="memory-workbench-settings" id="memory-workbench-settings" hidden>
+<details id="memory-workbench-advanced-settings">
+<summary>更新与整理</summary>
+<div class="memory-workbench-settings-body">
 <div class="memory-v2-policy-panel">
-  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
-    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#344054;font-weight:700;">
-      <span>记忆更新调度</span>
-      <label class="kkt-switch">
-        <input id="memory-table-auto-update-toggle" type="checkbox"/>
-        <span class="kkt-slider"></span>
-      </label>
-    </div>
-    <div id="memory-table-round-status" style="font-size:11px;color:#667085;">轮次尚未统计</div>
-  </div>
-  <div class="memory-v2-policy-grid">
-    <label>触发方式
-      <select id="memory-table-trigger-mode">
-        <option value="rounds">按轮数</option>
-        <option value="messages">按消息数</option>
-        <option value="either">轮数或消息数先到</option>
-      </select>
-    </label>
-    <label>默认每几轮
-      <input id="memory-table-round-interval" type="number" min="1" step="1" value="2"/>
-    </label>
-    <label>消息量兜底
-      <input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/>
-    </label>
-    <label>单次最多读取
-      <input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/>
-    </label>
-  </div>
-  <div class="memory-v2-cursor-row">
-    <label>目标表 / 独立游标
-      <select id="memory-table-cursor-table-select"></select>
-    </label>
-    <label>已处理到消息序号
-      <input id="memory-table-cursor-position" type="number" min="0" step="1" value="0"/>
-    </label>
-    <button class="btn btn-small btn-secondary" id="memory-table-save-cursor-btn" type="button">保存游标</button>
-    <button class="btn btn-small btn-primary" id="memory-table-update-selected-btn" type="button">更新选中表</button>
-  </div>
-  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-    <button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">更新所有到期表</button>
-    <button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试补救</button>
-    <button class="btn btn-small btn-neutral" id="memory-table-cursor-latest-btn" type="button">游标设到最新</button>
-    <button class="btn btn-small btn-neutral" id="memory-table-cursor-start-btn" type="button">游标设到开头</button>
-  </div>
-  <div id="memory-table-auto-update-status" style="font-size:12px;color:#667085;margin-top:8px;">独立自动更新：未开启</div>
+<div class="memory-workbench-setting-head">
+<strong>自动整理</strong>
+<label class="kkt-switch"><input id="memory-table-auto-update-toggle" type="checkbox"/><span class="kkt-slider"></span></label>
+<span id="memory-table-round-status">短期状态随聊天更新</span>
+</div>
+<div class="memory-v2-policy-grid">
+<label>触发<select id="memory-table-trigger-mode"><option value="rounds">按轮数</option><option value="messages">按消息数</option><option value="either">任一达到</option></select></label>
+<label>默认轮数<input id="memory-table-round-interval" type="number" min="1" step="1" value="2"/></label>
+<label>消息兜底<input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/></label>
+<label>读取上限<input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/></label>
+<label>审核<select id="memory-table-review-mode"><option value="summary_only">总结需审核</option><option value="manual_and_summary">手动与总结</option><option value="all">全部审核</option></select></label>
+<label>检索<select id="memory-table-retrieval-mode"><option value="auto">自动</option><option value="keyword">关键词</option><option value="hybrid">混合</option></select></label>
+<label>语义权重<input id="memory-table-semantic-weight" type="number" min="0" max="1" step="0.05" value="0.55"/></label>
+<label>标签权重<input id="memory-table-tag-weight" type="number" min="0" max="0.8" step="0.05" value="0.35"/></label>
+<label>向量候选<input id="memory-table-embedding-candidate-limit" type="number" min="4" max="200" step="4" value="32"/></label>
+<label class="memory-sidecar-setting">场景路由<span class="memory-sidecar-switch-row"><input id="memory-table-scene-routing-toggle" type="checkbox" checked/>启用</span></label>
+<label class="memory-sidecar-setting">副作用保护<span class="memory-sidecar-switch-row"><input id="memory-table-side-effect-guard-toggle" type="checkbox" checked/>启用</span></label>
+<label class="memory-sidecar-setting">聊天更新<span class="memory-sidecar-switch-row"><input id="memory-sidecar-enabled-toggle" type="checkbox" checked/>启用</span></label>
+<label class="memory-sidecar-setting">短期候选<span class="memory-sidecar-switch-row"><input id="memory-sidecar-candidate-toggle" type="checkbox" checked/>保存</span></label>
+<label class="memory-sidecar-setting">聊天状态条<span class="memory-sidecar-switch-row"><input id="memory-sidecar-statusbar-toggle" type="checkbox" checked/>显示</span></label>
+</div>
+<div class="memory-v2-cursor-row">
+<label>目标表<select id="memory-table-cursor-table-select"></select></label>
+<label>消息位置<input id="memory-table-cursor-position" type="number" min="0" step="1" value="0"/></label>
+<button class="btn btn-small btn-secondary" id="memory-table-save-cursor-btn" type="button">保存</button>
+<button class="btn btn-small btn-primary" id="memory-table-update-selected-btn" type="button">整理此表</button>
+</div>
+<div class="memory-workbench-tools">
+<button class="btn btn-small btn-secondary" id="memory-table-preview-range-btn" type="button">预览范围</button>
+<button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">整理到期表</button>
+<button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试失败</button>
+<button class="btn btn-small btn-neutral" id="memory-table-cursor-latest-btn" type="button">跳到最新</button>
+<button class="btn btn-small btn-neutral" id="memory-table-cursor-start-btn" type="button">回到开头</button>
+</div>
+<div id="memory-table-auto-update-status">自动整理未开启</div>
 </div>
 </div>
+</details>
+</section>
+<div class="memory-workbench-legacy-tabs" aria-hidden="true">
+<button class="memory-table-tab-btn" data-tab="tables" type="button">当前表格</button>
+<button class="memory-table-tab-btn" data-tab="templates" type="button">模板库</button>
+<button class="memory-table-tab-btn" data-tab="review" type="button">更新审核<span id="memory-review-tab-count">0</span></button>
+<button class="memory-table-tab-btn" data-tab="retrieval" type="button">检索诊断</button>
+<button class="memory-table-tab-btn" data-tab="sidecar" type="button">短期候选<span id="memory-sidecar-tab-count">0</span></button>
+<button class="memory-table-tab-btn" data-tab="reliability" type="button">可靠性</button>
+<button class="memory-table-tab-btn" data-tab="feedback" type="button">使用反馈<span id="memory-feedback-tab-count">0</span></button>
+<button class="memory-table-tab-btn" data-tab="tasks" type="button">任务队列<span id="memory-task-tab-count">0</span></button>
+<button class="memory-table-tab-btn" data-tab="quality" type="button">质量评估</button>
+<button class="memory-table-tab-btn" data-tab="history" type="button">历史</button>
 </div>
-<div style="padding: 0 15px 14px;">
-<div style="display:flex; gap:8px;">
-<button class="memory-table-tab-btn btn btn-small btn-primary" data-tab="tables" type="button">当前表格</button>
-<button class="memory-table-tab-btn btn btn-small btn-secondary" data-tab="templates" type="button">模板库</button>
-<button class="memory-table-tab-btn btn btn-small btn-secondary" data-tab="history" type="button">历史</button>
-</div>
-</div>
-<div id="memory-table-content" style="padding: 0 15px 24px;"></div>
-<div class="placeholder-text" id="memory-table-empty-state" style="display:none;">
-<p>还没有内容哦~</p>
-</div>
+<div class="memory-workbench-content" id="memory-table-content"></div>
+<div class="placeholder-text" id="memory-table-empty-state" style="display:none;"><p>还没有内容</p></div>
 </main>
 </div>
+
+<div class="modal-overlay" id="memory-range-preview-modal">
+  <div class="modal-window" style="max-width:720px;max-height:86vh;overflow:auto;">
+    <h3 style="margin:0 0 12px;">总结范围预览</h3>
+    <div id="memory-range-preview-content"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" id="memory-range-preview-close-btn" type="button">关闭</button>
+      <button class="btn btn-primary" id="memory-range-preview-confirm-btn" type="button">生成更新草案</button>
+    </div>
+  </div>
+</div>
+
 <div class="screen" id="vector-memory-screen">
 <header class="app-header">
 <button class="back-btn" data-target="chat-room-screen">‹</button>
@@ -6772,7 +6756,7 @@
 </div>
 <input accept=".ee" id="import-data-input" style="display: none;" type="file"/>
 <input accept=".ee" id="import-partial-data-input" style="display: none;" type="file"/>
-<div class="screen" id="storage-screen"></div>
+
 <!-- INS Widget Avatar Modal -->
 <!-- More Card Background Modal -->
 <div class="modal-overlay" id="more-card-bg-modal">
@@ -6799,60 +6783,7 @@
 <!-- Add/Edit Gallery Item Modal -->
 <!-- Batch Add Gallery Modal -->
 <!-- Burnout Update Modal -->
-<div class="modal-overlay" id="burnout-update-modal">
-<div class="modal-window" style="max-height: 80vh; overflow-y: auto;">
-<h3 style="margin-bottom: 20px;">更新说明</h3>
-<div class="update-log-content" style="text-align: left; line-height: 1.6; font-size: 14px; color: #333;">
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">时间感知</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>时间感知 char会知道你是几年几月几日几时几分发的消息</li>
-<li>更换：移除发送键，原位置改为表情包键，使用输入法的回车键来发送消息，获取ai回复在原位置。</li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">新增功能</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>新增：api温度设置</li>
-<li>新增：报错弹窗和具体日志</li>
-<li>字体移到→自定义界面 增加字体预设管理，调节字体大小，存储空间移至原字体位置（底部dock栏第三个）</li>
-<li>新增：发送上下文时自动识别{{user}}字符替换为当前用户人设姓名</li>
-<li>新增：后台主动发消息</li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">双语规则</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>双语规则改为「」识别而不是（），修改目的：为了让某些char能发带括号的颜文字嗯，过往消息渲染不受影响，也不用怕ai学上下文，在发送过往消息记录之前自动会把（）替换为「」，在写过的扩好输出规范提示词里改一下就行
-                    </li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">界面改版</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>聊天室UI大改，仿kkt，返回键在左上角，右上角的搜索图标仅为装饰，标题下方的胶囊区域可以给角色分组分类，相当于文件夹，文件夹支持自定义重命名，长按聊天项可以移入文件夹</li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">聊天设置界面</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>新增：角色专属状态栏，使用方法和酒馆的状态栏正则一致，最好强调输出在一条消息尽量一个&lt;&gt;
-                            标签内完成，不然ai可能会分多条消息发送会掉格式！状态栏卡片可左滑查看历史状态栏，历史状态栏仅保存最近20条</li>
-<li>状态栏开启后，聊天界面顶栏备注旁边会显示一个蓝色WIFI信号，当char输出正确的状态栏格式后，点击那个显示状态栏</li>
-<li>新增：表情包逻辑，未绑定表情包分组的角色，将不会发送表情包，</li>
-<li>新增：头像显示模式，全部显示：每条消息旁边都有个头像。气泡合并：连续消息只显示第一条的消息的头像，Kkt模式：角色的连续消息只显示第一条消息的头像，而我方消息不显示头像。全部隐藏：不显示头像
-                    </li>
-<li>新增：时间戳开关（仅影响样式），头像圆角自定义，气泡磨砂层开关</li>
-<li>修改：引用消息样式仿vx</li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">新增：联系人界面</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>联系人界面</li>
-<li>右上角三图标还没做，仅为装饰</li>
-<li>新增：个人档案，在这里显示你的所有人设预设，文本框里可以填通用设定，如：外貌背景巴拉巴拉，点击下方小胶囊可绑定角色，点击已绑定的角色弹出专属设定的输入文本框，填入对这个角色的专属设定（如：正在交往中，是姐姐/妹妹/前女友/角色专属关系和背景），点击保存同步后，自动拼接通用人设+专属人设。使用场景：以一个通用设定绑定多个char，每个char设置不同的专属设定。右上角星星符号，点亮后是选择联系人主界面顶部展示的头像。
-                    </li>
-<li>新增：好友列表。其实没什么用，纯属废物，点击可看总消息条数，所占内存，最近聊天时间。</li>
-</ul>
-<h4 style="margin: 15px 0 10px; color: var(--primary-color);">新增：菜单界面</h4>
-<ul style="padding-left: 20px; margin: 0;">
-<li>状态栏预设管理，支持导出导入（只能导入从该链接导出的文件）</li>
-<li>第二页创意工坊点不动是正常的，还没做完</li>
-</ul>
-</div>
-<button class="btn btn-primary" onclick="document.getElementById('burnout-update-modal').classList.remove('visible')" style="margin-top: 20px; width: 100%;">关闭</button>
-</div>
-</div>
+
 <!-- Private Chat Monitor Overlay (Browser Style) -->
 <div class="private-chat-overlay" id="private-chat-overlay">
 <div class="browser-window">
@@ -6894,6 +6825,11 @@
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
 <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <!-- [2. 核心交互层] -->
+<script src="js/core/feature_flags.js"></script>
+<script src="js/core/ui_components.js"></script>
+<script src="js/app_registry.js"></script>
+<script src="js/features/apps/settings_hub.js"></script>
+<script src="js/features/apps/api_workspace.js"></script>
 <script src="js/ui.js"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
 <!-- Chat Modules -->
 <script src="js/modules/chat_list.js"></script>
@@ -6906,7 +6842,20 @@
 <script src="js/modules/chat_ops.js"></script>
 <script src="js/chat.js"></script> <!-- 聊天核心入口 -->
 <script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
-<script src="js/settings.js"></script> <!-- 设置管理：API设置、外观自定义、预设管理 -->
+<!-- Settings feature controllers (V2.9-R5) -->
+<script src="js/features/settings/magic_room.js"></script>
+<script src="js/features/settings/api_controller.js"></script>
+<script src="js/features/settings/presets.js"></script>
+<script src="js/features/settings/customization.js"></script>
+<script src="js/features/settings/character/context.js"></script>
+<script src="js/features/settings/character/profile_controller.js"></script>
+<script src="js/features/settings/character/media_controller.js"></script>
+<script src="js/features/settings/character/extensions_controller.js"></script>
+<script src="js/features/settings/character/behavior_controller.js"></script>
+<script src="js/features/settings/character/chat_controller.js"></script>
+<script src="js/settings.js"></script> <!-- 角色设置兼容入口与跨域辅助函数 -->
+<script src="js/features/settings/preset_manager.js"></script>
+<script src="js/features/settings/facade.js"></script>
 <script src="js/modules/api_settings_ui.js?v=161-coldstart1"></script> <!-- API 管理界面增强 -->
 <script src="js/modules/block_system.js"></script> <!-- 拉黑与好友申请 -->
 <!-- [3. 独立功能模块 (Plugins)] -->
@@ -6914,8 +6863,21 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/modules/memory_table_policy.js"></script> <!-- 结构化记忆 V2 策略/轮次/检索 -->
-<script src="js/modules/memory_table.js"></script> <!-- 结构化记忆 -->
+<script src="js/features/memory/kernel.js"></script>
+<script src="js/modules/memory_table_policy.js"></script>
+<script src="js/modules/memory_table_lifecycle.js"></script>
+<script src="js/modules/memory_table_effects.js"></script>
+<script src="js/modules/memory_table_feedback.js"></script>
+<script src="js/modules/memory_table_review.js"></script>
+<script src="js/modules/memory_table_retrieval.js"></script>
+<script src="js/modules/memory_table_sidecar.js"></script>
+<script src="js/modules/memory_table_tasks.js"></script>
+<script src="js/modules/memory_table_quality.js"></script>
+<script src="js/features/memory/api_adapter.js"></script>
+<script src="js/features/memory/domain.js"></script>
+<script src="js/features/memory/workspace.js"></script>
+<script src="js/modules/memory_table.js"></script>
+<script src="js/features/memory/facade.js"></script>
 <script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
 <script src="js/modules/memory_mode_ui.js"></script> <!-- 长期记忆模式清晰化 UI -->
 <script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
@@ -6937,6 +6899,7 @@
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
 <script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
+<script src="js/core/diagnostics.js"></script> <!-- 运行诊断：导航、记忆、设置与错误快照 -->
 <!-- [4. 程序入口] -->
 <script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>

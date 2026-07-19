@@ -468,7 +468,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                     console.warn('[VectorMemory] failed to prepare prompt context:', error);
                 }
             }
-            systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText });
+            systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText, enableMemorySidecar: !isBackground && !isSummary });
             // V14.7: capture the exact private-chat system prompt for Proment diagnostics.
             // This is a read-only runtime snapshot and does not alter request construction.
             try {
@@ -1293,6 +1293,17 @@ function executePhoneControlCommands(text, controllingChar) {
 
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null) {
     const rawResponse = fullResponse;
+    if (fullResponse && targetChatType === 'private' && window.MemoryTableSidecar) {
+        const sidecarResult = window.MemoryTableSidecar.extractSidecar(fullResponse);
+        fullResponse = sidecarResult.cleaned;
+        if (sidecarResult.error) {
+            console.warn('[MemorySidecar] parse failed; visible chat preserved:', sidecarResult.error);
+            const sidecarState = window.MemoryTableSidecar.ensureState(chat);
+            sidecarState.lastApplyReport = { at: Date.now(), changed: [], rejected: [], error: sidecarResult.error.message || String(sidecarResult.error), roundId: memoryRoundToken?.id || null };
+        } else if (sidecarResult.payload) {
+            await window.MemoryTableSidecar.applySidecar(chat, sidecarResult.payload, { roundId: memoryRoundToken?.id || null });
+        }
+    }
     if (fullResponse) {
         // 1. 移除 [incipere] 标签
         fullResponse = fullResponse.replace(/\[incipere\]/g, "");
@@ -2422,6 +2433,9 @@ function generatePrivateSystemPrompt(character, opts) {
             template += '\n' + opts.historyText;
         }
 
+        if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
+            template += window.MemoryTableSidecar.buildSystemPrompt(character);
+        }
         return template;
     }
 
@@ -2664,6 +2678,9 @@ function generatePrivateSystemPrompt(character, opts) {
             nodePrompt += '\n' + opts.historyText;
         }
 
+        if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
+            nodePrompt += window.MemoryTableSidecar.buildSystemPrompt(character);
+        }
         return nodePrompt;
     }
 
@@ -3142,6 +3159,9 @@ function generatePrivateSystemPrompt(character, opts) {
         prompt += '\n' + opts.historyText;
     }
 
+    if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
+        prompt += window.MemoryTableSidecar.buildSystemPrompt(character);
+    }
     return prompt;
 }
 

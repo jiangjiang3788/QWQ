@@ -1,0 +1,12 @@
+:root {
+    --ui-space-1: 4px;
+    --ui-space-2: 8px;
+    --ui-space-3: 12px;
+    --ui-space-4: 16px;
+    --ui-radius-sm: 8px;
+    --ui-radius-md: 12px;
+    --ui-border: color-mix(in srgb, currentColor 12%, transparent);
+    --ui-muted: color-mix(in srgb, currentColor 58%, transparent);
+    --ui-surface: var(--panel-bg, #fff);
+    --ui-danger: #d93b3b;
+}

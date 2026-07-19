@@ -1,0 +1,95 @@
+.ui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .35);
+}
+
+.ui-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-3);
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.ui-action-row:last-child { border-bottom: 0; }
+
+.ui-action-row__copy {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    gap: 3px;
+}
+
+.ui-action-row__copy strong,
+.ui-action-row__copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ui-action-row__copy small {
+    color: var(--ui-muted);
+    font-size: 12px;
+}
+
+.ui-action-row__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.ui-button {
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.ui-button--primary {
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.ui-button--danger {
+    border-color: color-mix(in srgb, var(--ui-danger) 30%, transparent);
+    color: var(--ui-danger);
+}
+
+.ui-empty-state {
+    margin: var(--ui-space-2) 0;
+    color: var(--ui-muted);
+    text-align: center;
+}
+
+.settings-card,
+.settings-panel {
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    background: var(--ui-surface);
+}
+
+@media (max-width: 520px) {
+    .ui-action-row { align-items: flex-start; }
+    .ui-action-row__actions { max-width: 132px; }
+    .ui-button { padding-inline: 8px; }
+}
+
+.ovo-diagnostics-dialog{width:min(680px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 30px));padding:0;border:0;border-radius:20px;background:var(--card-background,#fff);color:var(--text-color,#222);box-shadow:0 24px 80px rgba(0,0,0,.28)}
+.ovo-diagnostics-dialog::backdrop{background:rgba(0,0,0,.38);backdrop-filter:blur(4px)}
+.ovo-diagnostics-head{display:flex;align-items:center;justify-content:space-between;padding:15px 17px;border-bottom:1px solid rgba(0,0,0,.07)}
+.ovo-diagnostics-head button{width:34px;height:34px;border:0;border-radius:50%;font-size:22px;background:rgba(0,0,0,.06)}
+.ovo-diagnostics-summary{display:flex;flex-direction:column;gap:4px;padding:13px 17px;background:rgba(91,106,205,.08)}
+.ovo-diagnostics-summary span{font-size:12px;color:#747780}
+.ovo-diagnostics-dialog pre{margin:0;padding:14px 17px;max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.55;background:rgba(0,0,0,.025)}
+.ovo-diagnostics-actions{display:flex;justify-content:flex-end;gap:8px;padding:13px 17px}

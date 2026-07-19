@@ -2,6 +2,12 @@
 (function () {
     'use strict';
 
+    const Kernel = window.OvoMemoryKernel || null;
+    const Core = Kernel?.core;
+    if (!Core) throw new Error('记忆内核未加载');
+    const clone = Core.clone;
+    const clampNumber = Core.clamp;
+
     const ENGINE_DEFAULTS = Object.freeze({
         enabled: true,
         triggerMode: 'either',
@@ -11,7 +17,14 @@
         overlapMessages: 8,
         retrievalQueryMessages: 10,
         globalInjectionBudget: 3600,
-        maxAutoTablesPerRun: 2
+        maxAutoTablesPerRun: 2,
+        reviewMode: 'summary_only',
+        retrievalMode: 'auto',
+        semanticWeight: 0.55,
+        tagWeight: 0.35,
+        embeddingCandidateLimit: 32,
+        sceneRoutingEnabled: true,
+        sideEffectGuardEnabled: true
     });
 
     const LAYER_DEFAULTS = Object.freeze({
@@ -36,16 +49,6 @@
             injectionPolicy: { mode: 'never', topK: 0, threshold: 1, budget: 0, maxAgeDays: 0 }
         }
     });
-
-    function clone(value) {
-        return JSON.parse(JSON.stringify(value));
-    }
-
-    function clampNumber(value, fallback, min, max) {
-        const parsed = Number(value);
-        if (!Number.isFinite(parsed)) return fallback;
-        return Math.min(max, Math.max(min, parsed));
-    }
 
     function normalizeLayer(layer, tableName) {
         const raw = String(layer || '').trim().toLowerCase();
@@ -115,7 +118,14 @@
             overlapMessages: clampNumber(source.overlapMessages, ENGINE_DEFAULTS.overlapMessages, 0, 100),
             retrievalQueryMessages: clampNumber(source.retrievalQueryMessages, ENGINE_DEFAULTS.retrievalQueryMessages, 1, 50),
             globalInjectionBudget: clampNumber(source.globalInjectionBudget, ENGINE_DEFAULTS.globalInjectionBudget, 500, 30000),
-            maxAutoTablesPerRun: clampNumber(source.maxAutoTablesPerRun, ENGINE_DEFAULTS.maxAutoTablesPerRun, 1, 20)
+            maxAutoTablesPerRun: clampNumber(source.maxAutoTablesPerRun, ENGINE_DEFAULTS.maxAutoTablesPerRun, 1, 20),
+            reviewMode: ['summary_only', 'manual_and_summary', 'all'].includes(source.reviewMode) ? source.reviewMode : ENGINE_DEFAULTS.reviewMode,
+            retrievalMode: ['auto', 'keyword', 'hybrid'].includes(source.retrievalMode) ? source.retrievalMode : ENGINE_DEFAULTS.retrievalMode,
+            semanticWeight: clampNumber(source.semanticWeight, ENGINE_DEFAULTS.semanticWeight, 0, 1),
+            tagWeight: clampNumber(source.tagWeight, ENGINE_DEFAULTS.tagWeight, 0, 0.8),
+            embeddingCandidateLimit: clampNumber(source.embeddingCandidateLimit, ENGINE_DEFAULTS.embeddingCandidateLimit, 4, 200),
+            sceneRoutingEnabled: source.sceneRoutingEnabled !== false,
+            sideEffectGuardEnabled: source.sideEffectGuardEnabled !== false
         };
     }
 
@@ -150,12 +160,14 @@
                 lastRunAt: null,
                 lastRunStatus: 'idle',
                 lastError: '',
-                customCursorPosition: null
+                customCursorPosition: null,
+                pendingReviewBatchId: null
             };
             runtime.tableStates[templateId][tableId] = state;
         }
         if (state.enabled === undefined) state.enabled = true;
         if (!state.lastRunStatus) state.lastRunStatus = 'idle';
+        if (state.pendingReviewBatchId === undefined) state.pendingReviewBatchId = null;
         return state;
     }
 
@@ -191,6 +203,7 @@
         if (!chat || !token) return;
         const runtime = ensureRuntimeState(chat);
         if (runtime.activeRound && runtime.activeRound.id === token.id) runtime.activeRound = null;
+        if (window.MemoryTableFeedback) window.MemoryTableFeedback.discardRound(chat, token.id);
     }
 
     function finishRound(chat, token) {
@@ -220,6 +233,7 @@
         runtime.rounds = runtime.rounds.slice(-500);
         runtime.lastRoundId = round.id;
         runtime.activeRound = null;
+        if (window.MemoryTableFeedback) window.MemoryTableFeedback.finalizeRound(chat, round.id);
         return round;
     }
 
@@ -262,6 +276,7 @@
         const info = getUnprocessedInfo(chat, templateId, table.id);
         const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings);
         if (!info.runtime.engineSettings.enabled || !policy.enabled || !info.tableState.enabled || policy.triggerMode === 'manual') return false;
+        if (info.tableState.pendingReviewBatchId) return false;
         const roundDue = policy.roundInterval > 0 && info.unsyncedRounds >= policy.roundInterval;
         const messageDue = policy.messageInterval > 0 && info.unsyncedMessages >= policy.messageInterval;
         if (policy.triggerMode === 'rounds') return roundDue;
@@ -312,6 +327,7 @@
         }
         tableState.lastRunStatus = 'idle';
         tableState.lastError = '';
+        tableState.pendingReviewBatchId = null;
         clearRetrievalCache(chat);
         return tableState;
     }
@@ -323,12 +339,15 @@
         state.lastRunAt = Date.now();
         state.lastRunStatus = status || 'success';
         state.lastError = '';
+        state.pendingReviewBatchId = null;
         return state;
     }
 
     function clearRetrievalCache(chat) {
         const runtime = ensureRuntimeState(chat);
         runtime.retrievalCache = {};
+        runtime.preparedSelections = {};
+        runtime.preparedSelectionQuery = '';
         runtime.lastPreparedQuery = '';
         runtime.lastPreparedAt = null;
     }
@@ -430,7 +449,7 @@
         return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 821px)').matches;
     }
 
-    window.MemoryTablePolicy = {
+    const api = {
         ENGINE_DEFAULTS,
         LAYER_DEFAULTS,
         normalizeLayer,
@@ -458,4 +477,7 @@
         trimToBudget,
         isDesktopJsonAvailable
     };
+
+    if (Kernel) Kernel.register('policy', api, { legacyGlobal: 'MemoryTablePolicy' });
+    else window.MemoryTablePolicy = api;
 })();

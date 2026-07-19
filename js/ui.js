@@ -21,109 +21,119 @@ const messageInput = document.getElementById('message-input');
 const getReplyBtn = document.getElementById('get-reply-btn');
 const regenerateBtn = document.getElementById('regenerate-btn');
 
-// 屏幕切换
-const switchScreen = (targetId) => {
-    // V2: Live and Pomodoro are retired. Redirect stale routes safely.
-    if (targetId === 'live-room-screen' || targetId === 'pomodoro-screen' || targetId === 'pomodoro-focus-screen') {
-        targetId = 'home-screen';
+// 屏幕切换与返回栈
+const navigationState = {
+    stack: [],
+    current: null,
+    maxDepth: 40
+};
+
+function getActiveScreenId() {
+    return document.querySelector('.screen.active')?.id || navigationState.current || null;
+}
+
+function normalizeScreenTarget(targetId) {
+    if (targetId === 'live-room-screen' || targetId === 'pomodoro-screen' || targetId === 'pomodoro-focus-screen') return 'home-screen';
+    if (targetId === 'group-settings-screen') return 'chat-list-screen';
+    if (typeof targetId === 'string' && targetId.startsWith('forum-')) return 'home-screen';
+    if (typeof targetId === 'string' && targetId.startsWith('node-')) return 'chat-room-screen';
+    if (typeof targetId === 'string' && targetId.startsWith('peek-')) return 'chat-room-screen';
+    if (targetId === 'shop-screen' || (typeof targetId === 'string' && targetId.startsWith('shop-'))) return 'chat-room-screen';
+    if (targetId === 'piggy-bank-screen' || targetId === 'family-card-list-screen' || targetId === 'family-card-detail-screen') return 'settings-hub-screen';
+    if (targetId === 'more-screen') {
+        if (window.OvoSettingsHub && typeof window.OvoSettingsHub.render === 'function') window.OvoSettingsHub.render();
+        return 'settings-hub-screen';
     }
-    // V3: group chat routes are retired. Redirect stale links safely.
-    if (targetId === 'group-settings-screen') {
-        targetId = 'chat-list-screen';
+    if (typeof targetId === 'string' && (targetId.startsWith('video-call') || targetId.startsWith('voice-call') || targetId.startsWith('vc-') || targetId === 'call-screen')) return 'chat-room-screen';
+    return targetId;
+}
+
+function rememberPreviousScreen(previousId) {
+    if (!previousId || navigationState.stack[navigationState.stack.length - 1] === previousId) return;
+    navigationState.stack.push(previousId);
+    if (navigationState.stack.length > navigationState.maxDepth) navigationState.stack.splice(0, navigationState.stack.length - navigationState.maxDepth);
+}
+
+const switchScreen = (requestedTargetId, options = {}) => {
+    const targetId = normalizeScreenTarget(requestedTargetId);
+    const targetScreen = typeof targetId === 'string' ? document.getElementById(targetId) : null;
+    if (!targetScreen) {
+        console.warn('[Navigation] target screen not found:', requestedTargetId);
+        return false;
     }
-    // V4: forum routes are retired. Redirect every stale forum screen safely.
-    if (typeof targetId === 'string' && targetId.startsWith('forum-')) {
-        targetId = 'home-screen';
-    }
-    // V5: node system routes are retired. Redirect stale links safely.
-    if (typeof targetId === 'string' && targetId.startsWith('node-')) {
-        targetId = 'chat-room-screen';
-    }
-    // V6.0: Peek routes are retired. Redirect stale links safely.
-    if (typeof targetId === 'string' && targetId.startsWith('peek-')) {
-        targetId = 'chat-room-screen';
-    }
-    // V7.0: Shop routes are retired. Redirect stale links safely.
-    if (targetId === 'shop-screen' || (typeof targetId === 'string' && targetId.startsWith('shop-'))) {
-        targetId = 'chat-room-screen';
-    }
-    // V8.0: Wallet, piggy bank and family-card routes are retired.
-    if (targetId === 'piggy-bank-screen' || targetId === 'family-card-list-screen' || targetId === 'family-card-detail-screen') {
-        targetId = 'more-screen';
-    }
-    // V9.0: all stale call routes return to the active private chat.
-    if (typeof targetId === 'string' && (targetId.startsWith('video-call') || targetId.startsWith('voice-call') || targetId.startsWith('vc-') || targetId === 'call-screen')) {
-        targetId = 'chat-room-screen';
-    }
-    // 离开聊天室时停止 TTS 播放，避免退出后继续读
+
+    const previousId = getActiveScreenId();
+    if (options.resetHistory) navigationState.stack.length = 0;
+    if (options.record !== false && previousId && previousId !== targetId) rememberPreviousScreen(previousId);
+
     if (targetId !== 'chat-room-screen' && typeof MinimaxTTSService !== 'undefined' && MinimaxTTSService.stop) {
         MinimaxTTSService.stop();
     }
-    // 离开聊天室时清理自定义样式及全局状态
     if (targetId !== 'chat-room-screen') {
-        const customStyles = document.querySelectorAll('style[id^="custom-bubble-style-for-"]');
-        customStyles.forEach(style => style.remove());
-        
-        // 防止串线：仅在返回大厅类主页面时清空当前聊天目标ID，防止影响聊天设置页等二级页面
-        const mainScreens = ['chat-list-screen', 'contacts-screen', 'more-screen', 'phone-screen', 'home-screen'];
-        if (mainScreens.includes(targetId)) {
+        document.querySelectorAll('style[id^="custom-bubble-style-for-"]').forEach(style => style.remove());
+        // 角色选择是跨 App 的上下文。进入设置和角色库时保留，只在真正返回公共大厅时清空聊天会话。
+        const clearConversationScreens = ['chat-list-screen', 'contacts-screen', 'home-screen'];
+        if (clearConversationScreens.includes(targetId)) {
             if (typeof currentChatId !== 'undefined') currentChatId = null;
             if (typeof currentChatType !== 'undefined') currentChatType = null;
         }
-    } else {
-        // 返回聊天室时重新应用样式
-        if (typeof currentChatId !== 'undefined' && currentChatId) {
-            const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
-            if (chat) {
-                updateCustomBubbleStyle(currentChatId, chat.customBubbleCss, chat.useCustomBubbleCss);
-            }
-        }
+    } else if (typeof currentChatId !== 'undefined' && currentChatId) {
+        const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
+        if (chat) updateCustomBubbleStyle(currentChatId, chat.customBubbleCss, chat.useCustomBubbleCss);
     }
-    
-    screens.forEach(screen => screen.classList.remove('active'));
-    const targetScreen = document.getElementById(targetId);
-    if (targetScreen) targetScreen.classList.add('active');
-    
-    // 关闭所有覆盖层和侧边栏
-    const overlays = document.querySelectorAll('.modal-overlay, .action-sheet-overlay, .settings-sidebar');
-    overlays.forEach(o => o.classList.remove('visible', 'open'));
 
-    // 离开设置页面时清空CSS预览区域，防止预览样式(可能是全局的)污染其他页面
+    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+    targetScreen.classList.add('active');
+    navigationState.current = targetId;
+
+    document.querySelectorAll('.modal-overlay, .action-sheet-overlay, .settings-sidebar').forEach(overlay => overlay.classList.remove('visible', 'open'));
+
     if (targetId !== 'chat-settings-screen' && targetId !== 'group-settings-screen') {
-        const previewContainers = document.querySelectorAll('.bubble-css-preview');
-        previewContainers.forEach(el => el.innerHTML = '');
+        document.querySelectorAll('.bubble-css-preview').forEach(element => { element.innerHTML = ''; });
     }
 
-    // 控制全局底栏显示与状态
     const globalNav = document.getElementById('global-bottom-nav');
     if (globalNav) {
-        if (targetId === 'chat-list-screen' || targetId === 'contacts-screen' || targetId === 'more-screen' || targetId === 'phone-screen') {
-            globalNav.style.display = 'flex';
-            // 更新选中状态
-            const navItems = globalNav.querySelectorAll('.nav-item');
-            navItems.forEach(item => {
-                if (item.getAttribute('data-target') === targetId) {
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
-            });
-        } else {
-            globalNav.style.display = 'none';
+        const showGlobalNav = targetId === 'chat-list-screen' || targetId === 'contacts-screen';
+        globalNav.style.display = showGlobalNav ? 'flex' : 'none';
+        if (showGlobalNav) {
+            globalNav.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.getAttribute('data-target') === targetId));
         }
     }
 
-    if (targetId === 'more-screen') {
-        renderMoreScreen();
-    }
     if (targetId === 'contacts-screen') {
         if (typeof renderContactList === 'function') renderContactList();
         if (typeof renderMyProfile === 'function') renderMyProfile();
     }
-    if (targetId === 'appearance-settings-screen' && typeof renderAppearanceSettingsScreen === 'function') {
-        renderAppearanceSettingsScreen();
-    }
+    if (targetId === 'appearance-settings-screen' && typeof renderAppearanceSettingsScreen === 'function') renderAppearanceSettingsScreen();
+
+    try {
+        window.dispatchEvent(new CustomEvent('ovo:navigation', { detail: { from: previousId, to: targetId, depth: navigationState.stack.length } }));
+    } catch (_) {}
+    return true;
 };
+
+function navigateBack(fallbackTarget = 'home-screen') {
+    const currentId = getActiveScreenId();
+    let targetId = null;
+    while (navigationState.stack.length && !targetId) {
+        const candidate = normalizeScreenTarget(navigationState.stack.pop());
+        if (candidate && candidate !== currentId && document.getElementById(candidate)) targetId = candidate;
+    }
+    return switchScreen(targetId || normalizeScreenTarget(fallbackTarget) || 'home-screen', { record: false });
+}
+
+window.OvoNavigation = Object.freeze({
+    go(targetId, options) { return switchScreen(targetId, options || {}); },
+    back(fallbackTarget) { return navigateBack(fallbackTarget); },
+    reset(targetId = 'home-screen') {
+        navigationState.stack.length = 0;
+        return switchScreen(targetId, { record: false, resetHistory: true });
+    },
+    snapshot() {
+        return { current: getActiveScreenId(), stack: [...navigationState.stack], depth: navigationState.stack.length };
+    }
+});
 
 function renderMoreScreen() {
     let myName = 'User Name';
@@ -381,90 +391,27 @@ function updateBubbleCssPreview(previewContainer, css, useDefault, theme) {
 // V12.3: desktop is now a single page.
 
 function setupHomeScreen() {
-    // V11.2: tolerate retired/missing icon definitions so one stale item cannot abort startup.
-    const getIcon = (id) => (db.customIcons && db.customIcons[id]) || (defaultIcons[id] && defaultIcons[id].url) || '';
-    const getName = (id) => (db.customAppNames && db.customAppNames[id]) || (defaultIcons[id] && defaultIcons[id].name) || '';
+    if (!homeScreen) return;
 
-    const homeScreenHTML = `
-    <div class="home-screen-swiper single-page-home">
-        <div class="home-screen-page widget-free-home-page">
-            <div class="app-grid widget-free-app-grid">
-                <a href="#" class="app-icon" data-target="chat-list-screen"><img src="${getIcon('chat-list-screen')}" alt="聊天" class="icon-img"><span class="app-name">${getName('chat-list-screen')}</span></a>
-                <a href="#" class="app-icon" data-target="world-book-screen"><img src="${getIcon('world-book-screen')}" alt="世界书" class="icon-img"><span class="app-name">${getName('world-book-screen')}</span></a>
-                <a href="#" class="app-icon" data-target="theater-screen"><img src="${getIcon('theater-screen')}" alt="小剧场" class="icon-img"><span class="app-name">${getName('theater-screen')}</span></a>
-                <a href="#" class="app-icon" data-action="open-favorites"><img src="${getIcon('favorites-screen')}" alt="收藏" class="icon-img"><span class="app-name">${getName('favorites-screen') || '收藏'}</span></a>
-            </div>
-        </div>
-    </div>
-    <div class="dock primary-dock" aria-label="主要功能">
-        <a href="#" class="app-icon dock-app" data-target="api-settings-screen"><img src="${getIcon('api-settings-screen')}" alt="API" class="icon-img"><span class="app-name">API</span></a>
-        <a href="#" class="app-icon dock-app" data-target="storage-analysis-screen"><img src="${getIcon('storage-analysis-screen')}" alt="数据分析" class="icon-img"><span class="app-name">数据分析</span></a>
-        <a href="#" class="app-icon dock-app" data-action="magic-room-app"><img src="${getIcon('magic-room-screen')}" alt="Proment" class="icon-img"><span class="app-name">Proment</span></a>
-        <a href="#" class="app-icon dock-app" data-target="appearance-settings-screen"><img src="${getIcon('appearance-settings-screen')}" alt="外观" class="icon-img"><span class="app-name">外观</span></a>
-    </div>`;
-    homeScreen.innerHTML = homeScreenHTML;
+    if (window.OvoAppRegistry && typeof window.OvoAppRegistry.renderLauncher === 'function') {
+        homeScreen.innerHTML = window.OvoAppRegistry.renderLauncher();
+        window.OvoAppRegistry.bindLauncher(homeScreen);
+    } else {
+        homeScreen.innerHTML = '<div class="home-screen-page"><div class="app-grid"><a href="#" class="app-icon" data-target="chat-list-screen"><span class="app-name">聊天</span></a></div></div>';
+    }
+
     applyWallpaper(db.wallpaper);
-
     applyHomeStatusBar();
-    /* 外观设置：点击进入页面，由 showScreen 时调用 renderAppearanceSettingsScreen */
-    document.querySelector('[data-target="world-book-screen"]').addEventListener('click', renderWorldBookList);
-    document.querySelector('[data-action="magic-room-app"]')?.addEventListener('click', (e) => { 
-        e.preventDefault(); 
-        if (typeof setupMagicRoomApp === 'function') setupMagicRoomApp();
-        switchScreen('magic-room-screen');
-    });
     if (typeof setupReminderModule === 'function') setupReminderModule();
 
-    document.querySelector('[data-action="open-favorites"]')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (typeof openFavoritesScreen === 'function') openFavoritesScreen();
-        else if (typeof switchScreen === 'function') switchScreen('favorites-screen');
-    });
-
-    // V13.8: provide consistent pressed state and accessible labels for the four primary dock entries.
     homeScreen.querySelectorAll('.primary-dock .dock-app').forEach(item => {
         item.setAttribute('role', 'button');
         item.addEventListener('pointerdown', () => item.classList.add('dock-app--pressed'));
-        ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => item.addEventListener(type, () => item.classList.remove('dock-app--pressed')));
-    });
-
-    // V12.3: single-page desktop; swipe and page indicator are no longer needed.
-
-    homeScreen.addEventListener('click', (e) => {
-        const activeEl = document.activeElement;
-        if (activeEl && activeEl.hasAttribute('contenteditable') && e.target !== activeEl) {
-            activeEl.blur();
-        }
-    });
-
-    homeScreen.querySelectorAll('.satellite-emoji').forEach(span => {
-        span.addEventListener('input', (e) => {
-            const chars = [...e.target.textContent];
-            if (chars.length > 1) {
-                e.target.textContent = chars[0];
-                const range = document.createRange();
-                const sel = window.getSelection();
-                range.selectNodeContents(e.target);
-                range.collapse(false);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => {
+            item.addEventListener(type, () => item.classList.remove('dock-app--pressed'));
         });
     });
 }
-
-function updateClock() {
-    const now = new Date();
-    const timeString = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const dateString = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日`;
-
-    const homeTimeDisplay = document.getElementById('time-display');
-    const homeDateDisplay = document.getElementById('date-display');
-    if (homeTimeDisplay) homeTimeDisplay.textContent = timeString;
-    if (homeDateDisplay) homeDateDisplay.textContent = dateString;
-
-}
-
 
 function applyWallpaper(url) {
     if (homeScreen) homeScreen.style.backgroundImage = `url(${url})`;
@@ -643,15 +590,6 @@ function setupBottomNavigation() {
             }
         });
     });
-}
-
-function setupPhoneScreen() {
-    const bubble = document.getElementById('burnout-bubble');
-    if (bubble) {
-        bubble.addEventListener('click', () => {
-            document.getElementById('burnout-update-modal').classList.add('visible');
-        });
-    }
 }
 
 function setupFunctionPanelSwiper() {

@@ -34,7 +34,9 @@ const init = async () => {
         const backBtn = e.target.closest('.back-btn');
         if (backBtn) {
             e.preventDefault();
-            switchScreen(backBtn.getAttribute('data-target'));
+            const fallback = backBtn.getAttribute('data-target') || 'home-screen';
+            if (window.OvoNavigation && typeof window.OvoNavigation.back === 'function') window.OvoNavigation.back(fallback);
+            else switchScreen(fallback);
         }
 
         const openOverlay = document.querySelector('.modal-overlay.visible, .action-sheet-overlay.visible');
@@ -54,8 +56,8 @@ const init = async () => {
     });
 
     // 定时任务
-    updateClock();
-    setInterval(updateClock, 30000);
+    // 顶栏时间由 applyHomeStatusBar() 自己维护。旧桌面时钟组件已移除，
+    // 不再调用已不存在的 updateClock()，避免启动阶段 ReferenceError。
     setInterval(checkAutoReply, 60000);
 
     // 应用全局设置
@@ -99,6 +101,7 @@ const init = async () => {
     // setupPeekFeature();
     setupMemoryJournalScreen(); 
     if (typeof setupMemoryTableScreen === 'function') setupMemoryTableScreen();
+    if (window.MemoryTableSidecar && typeof window.MemoryTableSidecar.bindUi === 'function') window.MemoryTableSidecar.bindUi();
     if (typeof setupVectorMemoryScreen === 'function') setupVectorMemoryScreen();
     if (typeof setupMemoryModeUI === 'function') setupMemoryModeUI();
     setupDeleteHistoryChunk();
@@ -111,7 +114,6 @@ const init = async () => {
     // if (typeof initKeyboardDetection === 'function') initKeyboardDetection();
     if (window.BatteryInteraction) window.BatteryInteraction.init();
     if (typeof initMoreMenu === 'function') initMoreMenu();
-    if (typeof setupPhoneScreen === 'function') setupPhoneScreen();
     if (typeof initCotSettings === 'function') initCotSettings();
     // V10.5: video/voice call runtime removed. TTS and voice messages remain independent.
     if (typeof KeepAliveModule !== 'undefined') KeepAliveModule.init();

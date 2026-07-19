@@ -685,6 +685,13 @@ function openChatRoom(chatId, type) {
 
     updateCustomBubbleStyle(chatId, chat.customBubbleCss, chat.useCustomBubbleCss);
     renderMessages(false, true);
+    if (type === 'private' && window.MemoryTableSidecar) {
+        window.MemoryTableSidecar.migratePolicies(chat);
+        window.MemoryTableSidecar.refreshStateBar(chat);
+    } else {
+        const memoryStateBar = document.getElementById('memory-live-state-bar');
+        if (memoryStateBar) memoryStateBar.style.display = 'none';
+    }
     switchScreen('chat-room-screen');
 
     // 角色拉黑用户时的输入区覆盖层：仅根据当前角色状态显示，不修改输入框，避免跨角色污染

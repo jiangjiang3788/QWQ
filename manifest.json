@@ -1,13 +1,13 @@
 {
-  "name": "UwU",
-  "short_name": "UwU",
+  "name": "章鱼机",
+  "short_name": "章鱼机",
   "start_url": ".",
   "scope": ".",
   "display": "fullscreen",
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "description": "一个有趣的网页应用",
+  "description": "多 App 角色聊天、记忆与创作工具",
   "icons": [
     {
       "src": "https://i.postimg.cc/Vk042Snv/5F3BCD91056B989330AE34D11901BD6E.png",
@@ -30,5 +30,4 @@
       "type": "image/png"
     }
   ]
-
 }
