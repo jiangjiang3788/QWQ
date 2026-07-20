@@ -34,9 +34,7 @@ const init = async () => {
         const backBtn = e.target.closest('.back-btn');
         if (backBtn) {
             e.preventDefault();
-            const fallback = backBtn.getAttribute('data-target') || 'home-screen';
-            if (window.OvoNavigation && typeof window.OvoNavigation.back === 'function') window.OvoNavigation.back(fallback);
-            else switchScreen(fallback);
+            switchScreen(backBtn.getAttribute('data-target'));
         }
 
         const openOverlay = document.querySelector('.modal-overlay.visible, .action-sheet-overlay.visible');
@@ -56,8 +54,8 @@ const init = async () => {
     });
 
     // 定时任务
-    // 顶栏时间由 applyHomeStatusBar() 自己维护。旧桌面时钟组件已移除，
-    // 不再调用已不存在的 updateClock()，避免启动阶段 ReferenceError。
+    updateClock();
+    setInterval(updateClock, 30000);
     setInterval(checkAutoReply, 60000);
 
     // 应用全局设置

@@ -11,17 +11,18 @@ const api = fs.readFileSync(path.join(root, 'js/features/apps/api_workspace.js')
 const css = fs.readFileSync(path.join(root, 'css/modules/app_workspace.css'), 'utf8');
 const ui = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
 
+for (const section of ['people', 'creative', 'organize', 'system']) {
+  assert(registry.includes(`id: '${section}'`), `missing launcher section ${section}`);
+}
 assert(registry.includes("id: 'settings'"), 'settings app is not registered');
-assert(registry.includes("appsByIds(['chat', 'characters', 'memory', 'settings'])"), 'quick dock is not app-oriented');
-assert(registry.includes("id: 'daily'"), 'launcher page definition missing');
-assert(registry.includes('home-launcher-viewport'), 'launcher pager markup missing');
+assert(registry.includes("['chat', 'api', 'memory', 'settings']"), 'quick dock should expose API instead of duplicate character entry');
 assert(html.includes('data-target="home-screen" title="Apps"'), 'bottom Apps navigation should open launcher');
 assert(ui.includes("targetId === 'more-screen'"), 'legacy More route redirect is missing');
-assert(ui.includes("return 'settings-hub-screen'"), 'legacy More route does not reach Settings');
+assert(ui.includes("targetId = 'settings-hub-screen'"), 'legacy More route does not reach Settings');
 assert(html.includes('js/features/apps/settings_hub.js'), 'settings hub script not loaded');
 assert(html.includes('js/features/apps/api_workspace.js'), 'API workspace script not loaded');
 assert(html.includes('css/modules/app_workspace.css'), 'app workspace stylesheet not loaded');
-assert(/VERSION = '2\.9-R[346]'/.test(settings), 'settings hub compatibility version mismatch');
+assert(/VERSION = '2\.9-R[34]'/.test(settings), 'settings hub compatibility version mismatch');
 for (const title of ['个人与角色', '模型与能力', '外观与桌面', '数据与系统']) {
   assert(settings.includes(title), `missing Settings section ${title}`);
 }
@@ -31,8 +32,7 @@ for (const id of ['chat', 'memory', 'automation', 'perception']) {
 assert(api.includes("section.dataset.apiGroup = classify(section)"), 'API sections are not grouped');
 assert(css.includes('.settings-hub-list'), 'settings list style missing');
 assert(css.includes('.api-workspace-tabs'), 'API workspace tabs style missing');
-assert(css.includes('scroll-snap-type: x mandatory'), 'phone-like horizontal launcher missing');
-assert(/^V2\.9-R(?:[345]|6(?:\.\d+)?)$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
+assert(/^V2\.9-R[3456]$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);

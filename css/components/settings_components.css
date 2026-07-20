@@ -84,12 +84,3 @@
     .ui-action-row__actions { max-width: 132px; }
     .ui-button { padding-inline: 8px; }
 }
-
-.ovo-diagnostics-dialog{width:min(680px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 30px));padding:0;border:0;border-radius:20px;background:var(--card-background,#fff);color:var(--text-color,#222);box-shadow:0 24px 80px rgba(0,0,0,.28)}
-.ovo-diagnostics-dialog::backdrop{background:rgba(0,0,0,.38);backdrop-filter:blur(4px)}
-.ovo-diagnostics-head{display:flex;align-items:center;justify-content:space-between;padding:15px 17px;border-bottom:1px solid rgba(0,0,0,.07)}
-.ovo-diagnostics-head button{width:34px;height:34px;border:0;border-radius:50%;font-size:22px;background:rgba(0,0,0,.06)}
-.ovo-diagnostics-summary{display:flex;flex-direction:column;gap:4px;padding:13px 17px;background:rgba(91,106,205,.08)}
-.ovo-diagnostics-summary span{font-size:12px;color:#747780}
-.ovo-diagnostics-dialog pre{margin:0;padding:14px 17px;max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.55;background:rgba(0,0,0,.025)}
-.ovo-diagnostics-actions{display:flex;justify-content:flex-end;gap:8px;padding:13px 17px}

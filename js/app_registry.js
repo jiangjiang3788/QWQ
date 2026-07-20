@@ -13,9 +13,11 @@
     }
 
 
-    function navigate(targetId, options) {
-        if (global.OvoNavigation && typeof global.OvoNavigation.go === 'function') return global.OvoNavigation.go(targetId, options || {});
-        if (typeof switchScreen === 'function') return switchScreen(targetId, options || {});
+    function navigate(targetId) {
+        if (typeof switchScreen === 'function') {
+            switchScreen(targetId);
+            return true;
+        }
         return false;
     }
 
@@ -26,20 +28,20 @@
     }
 
     const apps = Object.freeze([
-        { id: 'characters', label: '角色', group: 'dock', section: 'people', opener: 'characters', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('角', '#eff3ff', '#5570d8') },
-        { id: 'memory', label: '记忆', group: 'dock', section: 'people', opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
+        { id: 'characters', label: '角色', group: 'main', section: 'people', opener: 'characters', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('角', '#eff3ff', '#5570d8') },
+        { id: 'memory', label: '记忆', group: 'main', section: 'people', opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
         { id: 'worldbook', label: '世界书', group: 'main', section: 'creative', target: 'world-book-screen', opener: 'worldbook', iconKey: 'world-book-screen', fallbackIcon: svgIcon('界', '#eef8f2', '#438663') },
         { id: 'theater', label: '剧场', group: 'main', section: 'creative', target: 'theater-screen', iconKey: 'theater-screen', fallbackIcon: svgIcon('剧', '#fff2eb', '#bd6d3f') },
         { id: 'favorites', label: '收藏', group: 'main', section: 'organize', opener: 'favorites', iconKey: 'favorites-screen', fallbackIcon: svgIcon('藏', '#fff1f4', '#d55d78') },
         { id: 'reminder', label: '提醒', group: 'main', section: 'organize', opener: 'reminder', iconKey: 'reminder-screen', fallbackIcon: svgIcon('醒', '#fff8e8', '#b98224') },
         { id: 'search', label: '搜索', group: 'main', section: 'organize', opener: 'search', iconKey: 'search-history-screen', fallbackIcon: svgIcon('搜', '#edf7fa', '#3f8191') },
-        { id: 'contacts', label: '联系人', group: 'context', section: 'people', target: 'contacts-screen', iconKey: 'contacts-screen', fallbackIcon: svgIcon('友', '#eef7ff', '#3e7ab4') },
+        { id: 'contacts', label: '联系人', group: 'main', section: 'people', target: 'contacts-screen', iconKey: 'contacts-screen', fallbackIcon: svgIcon('友', '#eef7ff', '#3e7ab4') },
 
         { id: 'chat', label: '聊天', group: 'dock', target: 'chat-list-screen', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('聊', '#eff3ff', '#5570d8') },
-        { id: 'api', label: 'API', group: 'settings', opener: 'api', iconKey: 'api-settings-screen', fallbackIcon: svgIcon('API', '#f2f2f5', '#555764') },
-        { id: 'data', label: '数据', group: 'settings', target: 'storage-analysis-screen', iconKey: 'storage-analysis-screen', fallbackIcon: svgIcon('数', '#eff8f5', '#4b8975') },
-        { id: 'appearance', label: '外观', group: 'settings', target: 'appearance-settings-screen', iconKey: 'appearance-settings-screen', fallbackIcon: svgIcon('美', '#fff0f4', '#b55e7b') },
-        { id: 'settings', label: '设置', group: 'dock', opener: 'settings', customizable: false, fallbackIcon: svgIcon('设', '#f1f2f6', '#596170') },
+        { id: 'api', label: 'API', group: 'dock', opener: 'api', iconKey: 'api-settings-screen', fallbackIcon: svgIcon('API', '#f2f2f5', '#555764') },
+        { id: 'data', label: '数据', group: 'system', target: 'storage-analysis-screen', iconKey: 'storage-analysis-screen', fallbackIcon: svgIcon('数', '#eff8f5', '#4b8975') },
+        { id: 'appearance', label: '外观', group: 'system', target: 'appearance-settings-screen', iconKey: 'appearance-settings-screen', fallbackIcon: svgIcon('美', '#fff0f4', '#b55e7b') },
+        { id: 'settings', label: '设置', group: 'system', opener: 'settings', customizable: false, fallbackIcon: svgIcon('设', '#f1f2f6', '#596170') },
 
         { id: 'proment', label: 'Proment', group: 'advanced', opener: 'proment', iconKey: 'magic-room-screen', fallbackIcon: svgIcon('P', '#f2efff', '#6c55b4'), enabled: () => !flags || flags.get('advancedApps') },
         { id: 'regex', label: '正则', group: 'advanced', target: 'regex-filter-manager-screen', fallbackIcon: svgIcon('.*', '#f0f2f5', '#565d69'), enabled: () => !flags || flags.get('advancedApps') },
@@ -70,48 +72,32 @@
         return `<a href="#" class="app-icon ${extraClass || ''}" data-app-id="${app.id}" aria-label="${customName(app)}"><img src="${iconUrl(app)}" alt="" class="icon-img"><span class="app-name">${customName(app)}</span></a>`;
     }
 
-    const launcherPages = Object.freeze([
-        { id: 'daily', label: '常用', appIds: ['worldbook', 'theater', 'favorites', 'reminder', 'search'] }
+    const dockAppIds = Object.freeze(['chat', 'api', 'memory', 'settings']);
+
+    const launcherSections = Object.freeze([
+        { id: 'people', label: '角色与聊天', appIds: ['characters', 'memory', 'contacts', 'chat'] },
+        { id: 'creative', label: '创作', appIds: ['worldbook', 'theater'] },
+        { id: 'organize', label: '记录与工具', appIds: ['favorites', 'reminder', 'search'] },
+        { id: 'system', label: '系统', appIds: ['appearance', 'data', 'settings'] }
     ]);
 
     function appsByIds(ids) {
         return ids.map(id => apps.find(app => app.id === id && isEnabled(app))).filter(Boolean);
     }
 
-    function renderLauncherPage(page, index) {
-        const pageApps = appsByIds(page.appIds);
-        return `<section class="home-launcher-page" data-launcher-page="${index}" aria-label="${escapeMarkup(page.label)}">
-            <div class="app-grid home-launcher-grid">${pageApps.map(app => renderApp(app, 'launcher-app')).join('')}</div>
-        </section>`;
-    }
-
     function renderLauncher() {
-        const dock = appsByIds(['chat', 'characters', 'memory', 'settings']);
-        const visiblePages = launcherPages.filter(page => appsByIds(page.appIds).length);
+        const dock = appsByIds(dockAppIds);
         return `
-            <div class="home-launcher-viewport" data-launcher-viewport>
-                <div class="home-launcher-track">${visiblePages.map(renderLauncherPage).join('')}</div>
+            <div class="home-screen-swiper single-page-home">
+                <div class="home-screen-page widget-free-home-page">
+                    <div class="launcher-sections">
+                        ${launcherSections.map(section => `<section class="launcher-section" data-launcher-section="${section.id}"><h2 class="launcher-section-title">${section.label}</h2><div class="app-grid widget-free-app-grid app-launcher-grid">${appsByIds(section.appIds).map(app => renderApp(app, 'launcher-app')).join('')}</div></section>`).join('')}
+                    </div>
+                </div>
             </div>
-            ${visiblePages.length > 1 ? `<div class="page-indicator home-launcher-indicator">${visiblePages.map((_, index) => `<button type="button" class="dot ${index === 0 ? 'active' : ''}" data-launcher-dot="${index}" aria-label="第 ${index + 1} 页"></button>`).join('')}</div>` : ''}
             <div class="dock primary-dock app-launcher-dock" aria-label="常用应用">
                 ${dock.map(app => renderApp(app, 'dock-app')).join('')}
             </div>`;
-    }
-
-    function bindPager(root) {
-        const viewport = root.querySelector('[data-launcher-viewport]');
-        if (!viewport || viewport.dataset.launcherPagerBound === '1') return;
-        viewport.dataset.launcherPagerBound = '1';
-        let frame = 0;
-        const updateDots = () => {
-            frame = 0;
-            const pageWidth = Math.max(1, viewport.clientWidth);
-            const index = Math.round(viewport.scrollLeft / pageWidth);
-            root.querySelectorAll('[data-launcher-dot]').forEach(dot => dot.classList.toggle('active', Number(dot.dataset.launcherDot) === index));
-        };
-        viewport.addEventListener('scroll', () => {
-            if (!frame) frame = requestAnimationFrame(updateDots);
-        }, { passive: true });
     }
 
     function setCurrentCharacter(characterId) {
@@ -175,6 +161,11 @@
         const shell = document.querySelector('.phone-screen');
         (shell || document.body).appendChild(screen);
         screen.addEventListener('click', event => {
+            const back = event.target.closest('[data-character-app-back]');
+            if (back) {
+                navigate('home-screen');
+                return;
+            }
             const add = event.target.closest('[data-character-app-add]');
             if (add) {
                 document.getElementById('add-chat-btn-kkt')?.click();
@@ -189,9 +180,6 @@
             } else if (action.dataset.characterAction === 'memory') {
                 if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
                 navigate('memory-table-screen');
-            } else if (action.dataset.characterAction === 'settings') {
-                if (typeof global.loadSettingsToSidebar === 'function') global.loadSettingsToSidebar();
-                navigate('chat-settings-screen');
             }
         });
         return screen;
@@ -202,7 +190,7 @@
         const characters = global.db && Array.isArray(global.db.characters) ? global.db.characters : [];
         screen.innerHTML = `
             <header class="app-header">
-                <button type="button" class="back-btn" data-target="home-screen">‹</button>
+                <button type="button" class="back-btn" data-character-app-back>‹</button>
                 <div class="title-container"><h1 class="title">角色</h1></div>
                 <div class="action-btn-group"><button type="button" class="action-btn" data-character-app-add aria-label="新建角色">+</button></div>
             </header>
@@ -214,7 +202,6 @@
                         <div class="character-app-actions">
                             <button type="button" data-character-action="chat" data-character-id="${character.id}">聊天</button>
                             <button type="button" data-character-action="memory" data-character-id="${character.id}">记忆</button>
-                            <button type="button" data-character-action="settings" data-character-id="${character.id}">设置</button>
                         </div>
                     </article>`).join('')}</div>` : '<div class="character-app-empty"><strong>还没有角色</strong><button type="button" data-character-app-add>新建角色</button></div>'}
             </main>`;
@@ -282,17 +269,9 @@
     }
 
     function bindLauncher(root) {
-        if (!root) return;
-        bindPager(root);
-        if (root.dataset.appRegistryBound === '1') return;
+        if (!root || root.dataset.appRegistryBound === '1') return;
         root.dataset.appRegistryBound = '1';
         root.addEventListener('click', event => {
-            const dot = event.target.closest('[data-launcher-dot]');
-            if (dot) {
-                const viewport = root.querySelector('[data-launcher-viewport]');
-                if (viewport) viewport.scrollTo({ left: Number(dot.dataset.launcherDot) * viewport.clientWidth, behavior: 'smooth' });
-                return;
-            }
             const appLink = event.target.closest('[data-app-id]');
             if (!appLink || !root.contains(appLink)) return;
             event.preventDefault();
@@ -302,12 +281,13 @@
 
     global.OvoAppRegistry = Object.freeze({
         list(group) {
+            if (group === 'dock') return appsByIds(dockAppIds).map(app => ({ ...app }));
             return apps.filter(app => (!group || app.group === group) && isEnabled(app)).map(app => ({ ...app }));
         },
         renderLauncher,
         bindLauncher,
         openApp,
         pickCharacter: openCharacterPicker,
-        sections() { return launcherPages.map(page => ({ ...page, appIds: [...page.appIds] })); }
+        sections() { return launcherSections.map(section => ({ ...section, appIds: [...section.appIds] })); }
     });
 })(window);

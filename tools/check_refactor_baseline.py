@@ -78,32 +78,6 @@ for file in (root / 'js/modules').glob('memory_table*.js'):
     if found:
         errors.append(f'duplicate shared helpers in {file.name}: {found}')
 
-
-
-# V2.9-R6 navigation, launcher IA and memory workspace state boundaries.
-navigation = (root / 'js/ui.js').read_text(encoding='utf-8')
-main_js = (root / 'js/main.js').read_text(encoding='utf-8')
-settings_hub = (root / 'js/features/apps/settings_hub.js').read_text(encoding='utf-8')
-app_workspace_css = (root / 'css/modules/app_workspace.css').read_text(encoding='utf-8')
-for token in ('const navigationState =', 'function navigateBack(', 'window.OvoNavigation = Object.freeze'):
-    if token not in navigation:
-        errors.append(f'navigation stack token missing: {token}')
-if 'window.OvoNavigation.back(fallback)' not in main_js:
-    errors.append('global back buttons do not use OvoNavigation')
-for declaration in ("id: 'chat', label: '聊天', group: 'dock'", "id: 'characters', label: '角色', group: 'dock'", "id: 'memory', label: '记忆', group: 'dock'", "id: 'settings', label: '设置', group: 'dock'"):
-    if declaration not in registry:
-        errors.append(f'primary dock IA missing: {declaration}')
-if 'scroll-snap-type: x mandatory' not in app_workspace_css or 'overflow-y: hidden' not in app_workspace_css:
-    errors.append('mobile launcher paging boundary missing')
-if "label: '角色管理'" in settings_hub or "label: '角色记忆'" in settings_hub:
-    errors.append('duplicate role operations remain in Settings')
-if 'function persistWorkspaceState(chat, workspace, view)' not in main_memory:
-    errors.append('memory workspace state writer missing')
-if 'options.hydrateUi === true || uiState.chatId !== chat.id' not in main_memory:
-    errors.append('memory workspace hydration boundary missing')
-if 'js/core/diagnostics.js' not in index or index.find('js/core/diagnostics.js') > index.find('js/main.js'):
-    errors.append('diagnostics script missing or loaded after main')
-
 template = root / '章鱼机_分层可检索记忆模板V2.8_含原数据.json'
 if not template.exists():
     errors.append('current V2.8 memory template is missing')
@@ -122,4 +96,4 @@ else:
 if errors:
     print('\n'.join(f'ERROR: {item}' for item in errors))
     sys.exit(1)
-print('V2.9-R6 NAVIGATION & WORKSPACE BASELINE: PASS')
+print('V2.9-R6 REFACTOR BASELINE: PASS')

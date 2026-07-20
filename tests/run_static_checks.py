@@ -36,9 +36,9 @@ if 'rowId = ''' not in memory_table_js or 'data-row-id="${rowId}"' not in memory
 
 
 # 结构化记忆 V2 回归检查。
-for rel in ['js/features/memory/kernel.js','js/features/memory/api_adapter.js','js/features/memory/domain.js','js/features/memory/facade.js','js/modules/memory_table_policy.js','js/modules/memory_table_lifecycle.js','js/modules/memory_table_effects.js','js/modules/memory_table_feedback.js','js/modules/memory_table_review.js','js/modules/memory_table_retrieval.js','js/modules/memory_table_sidecar.js','js/modules/memory_table_tasks.js','css/modules/memory_table_v2.css','memory_templates/当前默认记忆模板_V2.8.json']:
+for rel in ['js/modules/message_content.js','js/modules/memory_table_schedule.js','js/features/memory/kernel.js','js/features/memory/api_adapter.js','js/features/memory/domain.js','js/features/memory/facade.js','js/modules/memory_table_policy.js','js/modules/memory_table_lifecycle.js','js/modules/memory_table_effects.js','js/modules/memory_table_feedback.js','js/modules/memory_table_review.js','js/modules/memory_table_retrieval.js','js/modules/memory_table_sidecar.js','js/modules/memory_table_tasks.js','css/modules/memory_table_v2.css','memory_templates/当前默认记忆模板_V2.8.json']:
     if not (root/rel).exists(): errors.append('missing memory v2 asset: '+rel)
-for rid in ['memory-table-normal-mode-btn','memory-table-json-mode-btn','memory-table-trigger-mode','memory-table-round-interval','memory-table-cursor-table-select','memory-table-cursor-position','memory-table-update-selected-btn','memory-table-review-mode','memory-table-retrieval-mode','memory-table-semantic-weight','memory-table-embedding-candidate-limit','memory-table-preview-range-btn','memory-review-tab-count','memory-range-preview-modal','memory-live-state-bar','memory-sidecar-enabled-toggle','memory-sidecar-candidate-toggle','memory-sidecar-statusbar-toggle','memory-sidecar-tab-count','memory-table-tag-weight','memory-table-scene-routing-toggle','memory-table-side-effect-guard-toggle','memory-task-tab-count','memory-feedback-tab-count']:
+for rid in ['memory-table-normal-mode-btn','memory-table-json-mode-btn','memory-table-trigger-mode','memory-table-round-interval','memory-table-cursor-table-select','memory-table-cursor-position','memory-table-update-selected-btn','memory-table-review-mode','memory-table-retrieval-mode','memory-table-semantic-weight','memory-table-embedding-candidate-limit','memory-table-preview-range-btn','memory-review-tab-count','memory-range-preview-modal','memory-live-state-bar','memory-sidecar-enabled-toggle','memory-sidecar-candidate-toggle','memory-sidecar-statusbar-toggle','memory-sidecar-tab-count','memory-table-tag-weight','memory-table-scene-routing-toggle','memory-table-side-effect-guard-toggle','memory-task-tab-count','memory-feedback-tab-count','memory-table-auto-schedule-list']:
     if rid not in ids: errors.append('missing memory v2 id: '+rid)
 policy_js=(root/'js/modules/memory_table_policy.js').read_text(encoding='utf-8') if (root/'js/modules/memory_table_policy.js').exists() else ''
 lifecycle_js=(root/'js/modules/memory_table_lifecycle.js').read_text(encoding='utf-8') if (root/'js/modules/memory_table_lifecycle.js').exists() else ''
@@ -120,6 +120,18 @@ for rel in root.glob('js/modules/memory_table*.js'):
     found=helper_pattern.findall(rel.read_text(encoding='utf-8'))
     if found: helper_hits.append(rel.name+':'+','.join(found))
 if helper_hits: errors.append('memory shared helpers not converged: '+'; '.join(helper_hits))
+
+
+# V2.9-R6 experience and scheduler boundaries.
+registry_js=(root/'js/app_registry.js').read_text(encoding='utf-8') if (root/'js/app_registry.js').exists() else ''
+favorites_js=(root/'js/modules/favorites.js').read_text(encoding='utf-8') if (root/'js/modules/favorites.js').exists() else ''
+message_content_js=(root/'js/modules/message_content.js').read_text(encoding='utf-8') if (root/'js/modules/message_content.js').exists() else ''
+if "const dockAppIds = Object.freeze(['chat', 'api', 'memory', 'settings'])" not in registry_js: errors.append('R6 dock source of truth missing')
+if "appsByIds(dockAppIds)" not in registry_js or "group === 'dock'" not in registry_js: errors.append('R6 dock registry/render consistency missing')
+if 'OvoMessageContent' not in favorites_js or 'contentType' not in favorites_js or 'plainText' not in favorites_js: errors.append('R6 favorite message snapshot integration missing')
+if "parsed.type === 'voice'" not in message_content_js: errors.append('R6 voice transcript parser missing')
+if 'normalizeAutomationMode' not in policy_js or 'resolveEffectiveUpdatePolicy' not in policy_js: errors.append('R6 automation channel policy missing')
+if "settingsPanel.hidden = uiState.workspace !== 'memory'" not in memory_table_js: errors.append('R6 memory update panel placement missing')
 
 required=['proment-compare-runtime','proment-preview-worldbook','proment-preview-ai-request']
 for rid in required:

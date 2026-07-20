@@ -15,6 +15,7 @@
     const MemoryFeedback = Kernel.get('feedback');
     const MemoryQuality = Kernel.get('quality');
     const MemorySidecar = Kernel.get('sidecar');
+    const MemorySchedule = Kernel.require('schedule');
     const MemoryApi = Kernel.require('api');
     const MemoryDomain = Kernel.require('domain');
     const MemoryWorkspace = Kernel.require('workspace');
@@ -38,7 +39,6 @@
     const requestSummaryContent = MemoryApi.requestSummary;
 
     const uiState = {
-        chatId: null,
         workspace: 'memory',
         tab: 'tables',
         search: '',
@@ -53,36 +53,21 @@
         rangePreview: null
     };
 
-    function ensureMemoryTableState(chat, options = {}) {
+    function ensureMemoryTableState(chat) {
         ensureMemoryTableStateBase(chat);
-        if (!chat || !MemoryPolicy) return;
-        const runtime = MemoryPolicy.ensureRuntimeState(chat);
-        const shouldHydrateUi = options.hydrateUi === true || uiState.chatId !== chat.id;
-        if (shouldHydrateUi) {
-            uiState.chatId = chat.id;
+        if (chat && MemoryPolicy) {
+            const runtime = MemoryPolicy.ensureRuntimeState(chat);
             uiState.viewMode = runtime.viewMode || 'normal';
             uiState.activeTableId = runtime.activeTableId || null;
-            const normalizedWorkspace = MemoryWorkspace.normalizeState(runtime.workspace || 'memory', runtime.workspaceView || 'tables');
+            const normalizedWorkspace = MemoryWorkspace.normalizeState(runtime.workspace || uiState.workspace, runtime.workspaceView || uiState.tab);
             uiState.workspace = normalizedWorkspace.workspace;
             uiState.tab = normalizedWorkspace.view;
         }
     }
 
-    function persistWorkspaceState(chat, workspace, view) {
-        const normalized = MemoryWorkspace.normalizeState(workspace, view);
-        uiState.workspace = normalized.workspace;
-        uiState.tab = normalized.view;
-        if (chat && MemoryPolicy) {
-            const runtime = MemoryPolicy.ensureRuntimeState(chat);
-            runtime.workspace = normalized.workspace;
-            runtime.workspaceView = normalized.view;
-        }
-        return normalized;
-    }
-
     function getCurrentMemoryTableChat() {
         const chat = getCurrentMemoryTableChatBase();
-        if (chat) ensureMemoryTableState(chat, { hydrateUi: uiState.chatId !== chat.id });
+        if (chat) ensureMemoryTableState(chat);
         return chat;
     }
 
@@ -242,6 +227,7 @@
         const updateSelectedBtn = document.getElementById('memory-table-update-selected-btn');
         const cursorLatestBtn = document.getElementById('memory-table-cursor-latest-btn');
         const cursorStartBtn = document.getElementById('memory-table-cursor-start-btn');
+        const scheduleList = document.getElementById('memory-table-auto-schedule-list');
 
         if (!toggle || !intervalInput || !latestBtn || !retryBtn || !statusEl) return;
 
@@ -252,6 +238,7 @@
             statusEl.textContent = '请先进入一个私聊角色';
             if (roundStatus) roundStatus.textContent = '轮次尚未统计';
             if (cursorSelect) cursorSelect.innerHTML = '<option>暂无表格</option>';
+            if (scheduleList) scheduleList.innerHTML = '<div class="memory-auto-schedule-empty">暂无可配置表格</div>';
             return;
         }
 
@@ -313,16 +300,11 @@
             sideEffectGuardToggle.disabled = !hasTemplates || isRunning;
         }
 
-        let dueCount = 0;
-        let totalUnsyncedMessages = 0;
-        let totalUnsyncedRounds = 0;
-        descriptors.forEach(({ template, table }) => {
-            if (!MemoryPolicy) return;
-            const info = MemoryPolicy.getUnprocessedInfo(chat, template.id, table.id);
-            totalUnsyncedMessages = Math.max(totalUnsyncedMessages, info.unsyncedMessages);
-            totalUnsyncedRounds = Math.max(totalUnsyncedRounds, info.unsyncedRounds);
-            if (MemoryPolicy.isTableDue(chat, template.id, table)) dueCount += 1;
-        });
+        const schedule = MemorySchedule.build(chat, descriptors, engine, { isRunning });
+        const { dueCount, eligibleCount } = schedule;
+        const totalUnsyncedMessages = schedule.maxUnsyncedMessages;
+        const totalUnsyncedRounds = schedule.maxUnsyncedRounds;
+        if (scheduleList) scheduleList.innerHTML = schedule.html;
 
         if (cursorSelect) {
             const previous = cursorSelect.value || uiState.activeTableId || runtime?.activeTableId || '';
@@ -356,7 +338,7 @@
         const pendingReviewCount = MemoryReview ? MemoryReview.getPendingCount(chat) : 0;
         const queuedTaskCount = taskCounts ? (taskCounts.queued + taskCounts.paused + taskCounts.running + taskCounts.failed) : 0;
         statusEl.textContent = hasTemplates
-            ? `自动更新：${toggle.checked ? '已开启' : '已关闭'} · 到期表 ${dueCount} 张 · 队列 ${queuedTaskCount} 项 · 待审核 ${pendingReviewCount} 批 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息`
+            ? `自动更新：${toggle.checked ? '已开启' : '已关闭'} · 自动表 ${eligibleCount} 张 · 到期 ${dueCount} 张 · 队列 ${queuedTaskCount} 项 · 待审核 ${pendingReviewCount} 批 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息${toggle.checked && eligibleCount === 0 ? ' · 请把至少一张表设为“跟随全局”或“按表设置”' : ''}`
             : '先绑定模板后才能使用更新调度';
     }
 
@@ -439,7 +421,13 @@
             jsonModeBtn.disabled = !!(MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable());
         }
         const boundTemplates = getBoundTemplates(chat);
-        const normalizedWorkspace = persistWorkspaceState(chat, uiState.workspace, uiState.tab);
+        const normalizedWorkspace = MemoryWorkspace.normalizeState(uiState.workspace, uiState.tab);
+        uiState.workspace = normalizedWorkspace.workspace;
+        uiState.tab = normalizedWorkspace.view;
+        if (runtime) {
+            runtime.workspace = uiState.workspace;
+            runtime.workspaceView = uiState.tab;
+        }
         const workbenchCounts = MemoryWorkspace.getCounts(chat, boundTemplates);
         const workbenchStatus = MemoryWorkspace.getStatusSummary(chat, boundTemplates);
         if (statusTitle) statusTitle.textContent = workbenchStatus.title;
@@ -454,7 +442,7 @@
         });
         if (memoryToolbar) memoryToolbar.hidden = uiState.workspace !== 'memory';
         if (manageTools) manageTools.hidden = uiState.workspace !== 'manage';
-        if (settingsPanel) settingsPanel.hidden = !(uiState.workspace === 'manage' && uiState.tab === 'manage_home');
+        if (settingsPanel) settingsPanel.hidden = uiState.workspace !== 'memory';
         if (updateBtn) updateBtn.hidden = uiState.workspace !== 'memory';
         if (createTemplateBtn) createTemplateBtn.hidden = uiState.workspace !== 'manage';
         const modeLabel = chat.memoryMode === 'table'
@@ -3630,17 +3618,17 @@ ${tableContext}`;
         const tabButtons = document.querySelectorAll('.memory-table-tab-btn');
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
-                const chat = getCurrentMemoryTableChat();
-                const view = button.dataset.tab || 'tables';
-                persistWorkspaceState(chat, MemoryWorkspace.getWorkspaceForView(view), view);
+                uiState.tab = button.dataset.tab || 'tables';
+                uiState.workspace = MemoryWorkspace.getWorkspaceForView(uiState.tab);
                 renderMemoryTableScreen();
             });
         });
 
         document.querySelectorAll('.memory-workspace-tab-btn').forEach(button => {
             button.addEventListener('click', () => {
-                const chat = getCurrentMemoryTableChat();
-                persistWorkspaceState(chat, button.dataset.workspace, '');
+                const normalized = MemoryWorkspace.normalizeState(button.dataset.workspace, '');
+                uiState.workspace = normalized.workspace;
+                uiState.tab = normalized.view;
                 renderMemoryTableScreen();
             });
         });
@@ -3726,10 +3714,16 @@ ${tableContext}`;
             });
         }
 
+        const scheduleControlIds = new Set(['memory-table-trigger-mode', 'memory-table-round-interval', 'memory-table-auto-update-interval', 'memory-table-max-source-messages']);
         ['memory-table-trigger-mode', 'memory-table-round-interval', 'memory-table-auto-update-interval', 'memory-table-max-source-messages', 'memory-table-review-mode', 'memory-table-retrieval-mode', 'memory-table-semantic-weight', 'memory-table-tag-weight', 'memory-table-embedding-candidate-limit', 'memory-table-scene-routing-toggle', 'memory-table-side-effect-guard-toggle'].forEach(id => {
             const control = document.getElementById(id);
             if (!control) return;
-            control.addEventListener(control.tagName === 'SELECT' ? 'change' : 'blur', persistEngineControls);
+            control.addEventListener(control.tagName === 'SELECT' || control.type === 'checkbox' ? 'change' : 'blur', async () => {
+                const chat = await persistEngineControls();
+                if (chat?.memoryTables?.autoUpdateEnabled && scheduleControlIds.has(id)) {
+                    await checkAndTriggerAutoTableUpdate(chat);
+                }
+            });
         });
 
         const cursorSelect = document.getElementById('memory-table-cursor-table-select');
@@ -3862,22 +3856,24 @@ ${tableContext}`;
                 if (workbenchView) {
                     const view = workbenchView.dataset.workbenchView;
                     if (view === 'manage_settings') {
-                        const settings = document.getElementById('memory-workbench-settings');
+                        uiState.workspace = 'memory';
+                        uiState.tab = 'tables';
+                        renderMemoryTableScreen();
                         const details = document.getElementById('memory-workbench-advanced-settings');
-                        if (settings) settings.hidden = false;
                         if (details) details.open = true;
-                        settings?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        document.getElementById('memory-workbench-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         return;
                     }
-                    const chat = getCurrentMemoryTableChat();
-                    persistWorkspaceState(chat, MemoryWorkspace.getWorkspaceForView(view), view);
+                    uiState.tab = view;
+                    uiState.workspace = MemoryWorkspace.getWorkspaceForView(view);
                     renderMemoryTableScreen();
                     return;
                 }
                 const workbenchBack = event.target.closest('[data-workbench-back]');
                 if (workbenchBack) {
-                    const chat = getCurrentMemoryTableChat();
-                    persistWorkspaceState(chat, workbenchBack.dataset.workbenchBack, '');
+                    const normalized = MemoryWorkspace.normalizeState(workbenchBack.dataset.workbenchBack, '');
+                    uiState.workspace = normalized.workspace;
+                    uiState.tab = normalized.view;
                     renderMemoryTableScreen();
                     return;
                 }
@@ -4031,7 +4027,7 @@ ${tableContext}`;
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryReview) return;
                     MemoryReview.setActiveBatch(chat, actionEl.dataset.batchId || null);
-                    persistWorkspaceState(chat, 'inbox', 'review');
+                    uiState.tab = 'review';
                     renderMemoryTableScreen();
                 } else if (action === 'retrieval-rebuild') {
                     const chat = getCurrentMemoryTableChat();
@@ -4228,6 +4224,19 @@ ${tableContext}`;
 
             screen.addEventListener('change', async (event) => {
                 const target = event.target;
+                if (target.matches('[data-memory-automation-mode]') && MemoryPolicy) {
+                    const chat = getCurrentMemoryTableChat();
+                    const template = db.memoryTableTemplates.find(item => item.id === target.dataset.templateId);
+                    const table = template?.tables?.find(item => item.id === target.dataset.tableId);
+                    if (!chat || !template || !table) return;
+                    MemoryPolicy.setAutomationMode(chat, template.id, table, target.value);
+                    await saveCharacter(chat.id);
+                    refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
+                    if (chat.memoryTables.autoUpdateEnabled && ['engine', 'table'].includes(target.value)) {
+                        setTimeout(() => checkAndTriggerAutoTableUpdate(chat).catch(error => console.warn('[MemoryTable] schedule update failed:', error)), 0);
+                    }
+                    return;
+                }
                 if (target.dataset.qualitySetting && MemoryQuality) {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
@@ -4592,8 +4601,8 @@ ${text}`;
     }
 
     function openMemoryFeedbackTab() {
-        const chat = getCurrentMemoryTableChat();
-        persistWorkspaceState(chat, 'inbox', 'feedback');
+        uiState.workspace = 'inbox';
+        uiState.tab = 'feedback';
         renderMemoryTableScreen();
         if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
     }
@@ -4606,8 +4615,9 @@ ${text}`;
         renderScreen: renderMemoryTableScreen,
         openFeedback: openMemoryFeedbackTab,
         openWorkspace(workspace, view) {
-            const chat = getCurrentMemoryTableChat();
-            persistWorkspaceState(chat, workspace, view);
+            const normalized = MemoryWorkspace.normalizeState(workspace, view);
+            uiState.workspace = normalized.workspace;
+            uiState.tab = normalized.view;
             renderMemoryTableScreen();
         },
         getContext: getMemoryContextBlock,

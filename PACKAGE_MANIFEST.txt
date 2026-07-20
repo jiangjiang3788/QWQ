@@ -1,5 +1,4 @@
 NETLIFY_DEPLOY.txt
-PACKAGE_MANIFEST.txt
 VERSION.txt
 _headers
 _redirects
@@ -41,20 +40,17 @@ css/style.css
 docs/APP_ARCHITECTURE.md
 docs/APP_WORKSPACE_ARCHITECTURE.md
 docs/CHARACTER_SETTINGS_ARCHITECTURE.md
-docs/CODE_AND_PRODUCT_REVIEW_R6.md
 docs/CODE_INVENTORY.md
 docs/DEPRECATION_MAP.md
 docs/MEMORY_DATA_SHA256.txt
 docs/MEMORY_KERNEL_ARCHITECTURE.md
 docs/MEMORY_WORKBENCH_ARCHITECTURE.md
-docs/NAVIGATION_AND_UI_ARCHITECTURE.md
 docs/REFACTOR_BASELINE.md
 docs/SETTINGS_ARCHITECTURE.md
 index.html
 js/app_registry.js
 js/chat.js
 js/contacts.js
-js/core/diagnostics.js
 js/core/feature_flags.js
 js/core/ui_components.js
 js/db.js
@@ -105,8 +101,10 @@ js/modules/memory_table_policy.js
 js/modules/memory_table_quality.js
 js/modules/memory_table_retrieval.js
 js/modules/memory_table_review.js
+js/modules/memory_table_schedule.js
 js/modules/memory_table_sidecar.js
 js/modules/memory_table_tasks.js
+js/modules/message_content.js
 js/modules/more_menu.js
 js/modules/msg_version.js
 js/modules/music_player.js
@@ -149,8 +147,7 @@ tests/run_v29_r2_memory_workspace_checks.js
 tests/run_v29_r3_app_workspace_checks.js
 tests/run_v29_r4_settings_components_checks.js
 tests/run_v29_r5_character_settings_checks.js
-tests/run_v29_r61_startup_checks.js
-tests/run_v29_r6_navigation_workspace_checks.js
+tests/run_v29_r6_experience_memory_checks.js
 tools/build_release.py
 tools/check_refactor_baseline.py
 vendor/README.txt
@@ -162,6 +159,7 @@ vendor/html2canvas.min.js
 vendor/jszip.min.js
 vendor/mammoth.browser.min.js
 vendor/purify.min.js
-章鱼机_V2.9-R6.1_启动修复说明.md
 章鱼机_V2.9-R6_更新说明与验收.md
+章鱼机_V2.9-R6_自动检查结果.txt
+章鱼机_V2.9-R6_项目理解深度报告.md
 章鱼机_分层可检索记忆模板V2.8_含原数据.json

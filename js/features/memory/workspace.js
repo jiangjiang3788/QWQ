@@ -121,8 +121,7 @@
             ['templates', '模板与字段', `${counts.templates} 个已绑定模板`, '管理表格结构与字段'],
             ['retrieval', '召回与行为', '标签、场景与相关性', '查看本轮为什么召回'],
             ['quality', '质量与诊断', latestRun ? `最近得分 ${Math.round(latestRun.score || 0)}` : '尚未建立质量基线', '运行回归与质量测试'],
-            ['history', '更新历史', '查看表格变更快照', '用于核对和回滚'],
-            ['manage_settings', '更新与整理', '总结游标、审核和 API', '展开下方高级设置']
+            ['history', '更新历史', '查看表格变更快照', '用于核对和回滚']
         ];
         return `<div class="memory-workbench-overview">
             <div class="memory-workbench-overview-head"><div><h2>管理</h2><p>日常使用无需调整这些设置</p></div><span class="memory-workbench-health">${counts.tasks ? `${counts.tasks} 项任务待处理` : '运行正常'}</span></div>

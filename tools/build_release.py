@@ -11,6 +11,8 @@ ROOT_FILES = {
     'netlify.toml', 'NETLIFY_DEPLOY.txt', 'VERSION.txt',
     'contacts.css', 'more_menu.css',
     '章鱼机_V2.9-R6_更新说明与验收.md',
+    '章鱼机_V2.9-R6_项目理解深度报告.md',
+    '章鱼机_V2.9-R6_自动检查结果.txt',
 }
 ROOT_DIRS = {'css', 'js', 'vendor', 'memory_templates', 'tests', 'tools', 'docs'}
 

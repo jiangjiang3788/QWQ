@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '2.9-R6';
+    const VERSION = '2.9-R4';
 
     function escapeHtml(value) {
         return String(value == null ? '' : value)
@@ -50,8 +50,10 @@
             id: 'profile',
             title: '个人与角色',
             items: [
-                { id: 'profile', label: '我的档案', detail: '名字、头像与个人资料', target: 'my-profile-screen', mark: '我' },
-                { id: 'character-settings', label: '当前角色设置', detail: '人设、聊天行为与媒体能力', action: 'character-settings', mark: '角' }
+                { id: 'profile', label: '我的档案', detail: '名字、头像与绑定角色', target: 'my-profile-screen', mark: '我' },
+                { id: 'characters', label: '角色管理', detail: '角色资料与聊天入口', app: 'characters', mark: '角' },
+                { id: 'character-settings', label: '角色设置', detail: '当前角色的设定与功能', action: 'character-settings', mark: '设' },
+                { id: 'memory', label: '角色记忆', detail: '状态、待办与长期记忆', app: 'memory', mark: '忆' }
             ]
         },
         {
@@ -152,12 +154,12 @@
     }
 
     function showHealth() {
-        if (global.OvoDiagnostics && typeof global.OvoDiagnostics.open === 'function') {
-            global.OvoDiagnostics.open();
-            return;
-        }
-        const memory = global.OvoMemory && typeof global.OvoMemory.health === 'function' ? global.OvoMemory.health() : { ok: false };
-        const message = memory.ok ? '核心模块运行正常' : '部分模块尚未就绪，请刷新后重试';
+        const memory = global.OvoMemory && typeof global.OvoMemory.health === 'function'
+            ? global.OvoMemory.health()
+            : { ok: false };
+        const message = memory.ok
+            ? '核心模块运行正常'
+            : '部分模块尚未就绪，请刷新后重试';
         if (typeof global.showToast === 'function') global.showToast(message);
         else global.alert(message);
     }

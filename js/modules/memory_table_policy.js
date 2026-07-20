@@ -50,6 +50,12 @@
         }
     });
 
+    const AUTOMATION_MODES = Object.freeze(['sidecar', 'engine', 'table', 'manual']);
+
+    function normalizeAutomationMode(mode) {
+        return AUTOMATION_MODES.includes(mode) ? mode : '';
+    }
+
     function normalizeLayer(layer, tableName) {
         const raw = String(layer || '').trim().toLowerCase();
         if (LAYER_DEFAULTS[raw]) return raw;
@@ -105,6 +111,18 @@
             updatePolicy: normalizeUpdatePolicy(table && table.updatePolicy, layer),
             injectionPolicy: normalizeInjectionPolicy(table && table.injectionPolicy, layer)
         };
+    }
+
+    function inferAutomationMode(table) {
+        const descriptor = table && typeof table === 'object' ? table : {};
+        const policy = normalizeTablePolicy(descriptor);
+        const identity = `${descriptor.id || ''} ${descriptor.name || ''} ${policy.updatePolicy.instructions || ''}`;
+        if (/table_current_state|table_tasks|table_recent_events|table_daily_observation|memory_sidecar|聊天同请求/i.test(identity)) {
+            return 'sidecar';
+        }
+        if (policy.updatePolicy.enabled && policy.updatePolicy.triggerMode !== 'manual') return 'table';
+        if (policy.memoryLayer === 'medium') return 'engine';
+        return 'manual';
     }
 
     function normalizeEngineSettings(raw) {
@@ -168,6 +186,9 @@
         if (state.enabled === undefined) state.enabled = true;
         if (!state.lastRunStatus) state.lastRunStatus = 'idle';
         if (state.pendingReviewBatchId === undefined) state.pendingReviewBatchId = null;
+        if (!normalizeAutomationMode(state.automationMode) && options?.table) {
+            state.automationMode = inferAutomationMode(options.table);
+        }
         return state;
     }
 
@@ -237,9 +258,11 @@
         return round;
     }
 
-    function getUnprocessedInfo(chat, templateId, tableId) {
+    function getUnprocessedInfo(chat, templateId, tableOrId) {
         const runtime = ensureRuntimeState(chat);
-        const tableState = ensureTableState(chat, templateId, tableId);
+        const table = tableOrId && typeof tableOrId === 'object' ? tableOrId : null;
+        const tableId = table ? table.id : tableOrId;
+        const tableState = ensureTableState(chat, templateId, tableId, table ? { table } : undefined);
         const history = Array.isArray(chat.history) ? chat.history : [];
         let cursorIndex = getHistoryIndexById(history, tableState.lastProcessedMsgId);
         if (cursorIndex < 0 && tableState.lastProcessedMsgTimestamp) {
@@ -259,22 +282,55 @@
         return { runtime, tableState, history, cursorIndex, nextStartIndex, unsyncedMessages, roundCursorIndex, unsyncedRounds };
     }
 
-    function resolveEffectiveUpdatePolicy(table, engineSettings) {
+    function resolveEffectiveUpdatePolicy(table, engineSettings, automationMode) {
         const normalized = normalizeTablePolicy(table).updatePolicy;
         const engine = normalizeEngineSettings(engineSettings);
-        if (normalized.triggerMode === 'manual') return normalized;
+        const mode = normalizeAutomationMode(automationMode) || inferAutomationMode(table);
+        if (mode === 'manual' || mode === 'sidecar') {
+            return { ...normalized, enabled: false, triggerMode: 'manual', automationMode: mode };
+        }
+        if (mode === 'engine') {
+            return {
+                ...normalized,
+                enabled: true,
+                triggerMode: engine.triggerMode,
+                roundInterval: engine.roundInterval,
+                messageInterval: engine.messageInterval,
+                maxSourceMessages: engine.maxSourceMessages,
+                overlapMessages: engine.overlapMessages,
+                automationMode: mode
+            };
+        }
         return {
             ...normalized,
+            enabled: true,
+            triggerMode: normalized.triggerMode === 'manual' ? engine.triggerMode : normalized.triggerMode,
             roundInterval: normalized.roundInterval || engine.roundInterval,
             messageInterval: normalized.messageInterval || engine.messageInterval,
             maxSourceMessages: normalized.maxSourceMessages || engine.maxSourceMessages,
-            overlapMessages: normalized.overlapMessages ?? engine.overlapMessages
+            overlapMessages: normalized.overlapMessages ?? engine.overlapMessages,
+            automationMode: mode
         };
     }
 
+    function getAutomationMode(chat, templateId, table) {
+        const state = ensureTableState(chat, templateId, table.id, { table });
+        return normalizeAutomationMode(state.automationMode) || inferAutomationMode(table);
+    }
+
+    function setAutomationMode(chat, templateId, table, mode) {
+        const normalizedMode = normalizeAutomationMode(mode);
+        if (!normalizedMode) throw new Error('无效的自动整理模式');
+        const state = ensureTableState(chat, templateId, table.id, { table });
+        state.automationMode = normalizedMode;
+        state.lastRunStatus = state.lastRunStatus === 'failed' ? 'idle' : state.lastRunStatus;
+        state.lastError = '';
+        return state;
+    }
+
     function isTableDue(chat, templateId, table) {
-        const info = getUnprocessedInfo(chat, templateId, table.id);
-        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings);
+        const info = getUnprocessedInfo(chat, templateId, table);
+        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings, info.tableState.automationMode);
         if (!info.runtime.engineSettings.enabled || !policy.enabled || !info.tableState.enabled || policy.triggerMode === 'manual') return false;
         if (info.tableState.pendingReviewBatchId) return false;
         const roundDue = policy.roundInterval > 0 && info.unsyncedRounds >= policy.roundInterval;
@@ -285,8 +341,8 @@
     }
 
     function getTableUpdateRange(chat, templateId, table, options) {
-        const info = getUnprocessedInfo(chat, templateId, table.id);
-        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings);
+        const info = getUnprocessedInfo(chat, templateId, table);
+        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings, info.tableState.automationMode);
         const requestedStart = Number(options?.start);
         const requestedEnd = Number(options?.end);
         if (Number.isFinite(requestedStart) && Number.isFinite(requestedEnd)) {
@@ -457,8 +513,12 @@
         normalizeInjectionPolicy,
         normalizeTablePolicy,
         normalizeEngineSettings,
+        normalizeAutomationMode,
+        inferAutomationMode,
         ensureRuntimeState,
         ensureTableState,
+        getAutomationMode,
+        setAutomationMode,
         beginRound,
         finishRound,
         cancelRound,

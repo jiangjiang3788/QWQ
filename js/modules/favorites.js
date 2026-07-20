@@ -1,14 +1,33 @@
 // --- 消息收藏模块 ---
 
-// 从消息 content 中提取纯文本预览（去 [xxx的消息：] 等包裹）
-function getMessagePreview(content) {
+const FavoriteMessageContent = window.OvoMessageContent || null;
+
+// 收藏预览统一走消息内容解析器。旧收藏只有 raw content，新收藏同时保存 plainText。
+function getMessagePreview(content, plainText, contentType) {
+    const savedText = typeof plainText === 'string' ? plainText.trim() : '';
+    if (contentType === 'voice' && savedText) return `[语音] ${savedText}`;
+    if (savedText && contentType && contentType !== 'text' && contentType !== 'message') {
+        if (contentType === 'sticker') return '[表情包]';
+        if (contentType === 'photo_video') return '[照片/视频]';
+    }
+    if (savedText) return savedText;
+    if (FavoriteMessageContent) return FavoriteMessageContent.getPreview(content);
     if (!content || typeof content !== 'string') return '';
-    const match = content.match(/\[.*?的消息：([\s\S]+?)\]$/);
-    if (match && match[1]) return match[1].trim();
+    const messageMatch = content.match(/^\[.*?的消息：([\s\S]+?)\]$/);
+    if (messageMatch && messageMatch[1]) return messageMatch[1].trim();
+    const voiceMatch = content.match(/^\[.*?的语音：([\s\S]*?)\]$/);
+    if (voiceMatch) return voiceMatch[1].trim() ? `[语音] ${voiceMatch[1].trim()}` : '[语音]';
     if (/\[.*?的表情包：.*?\]/.test(content)) return '[表情包]';
-    if (/\[.*?的语音：.*?\]/.test(content)) return '[语音]';
     if (/\[.*?发来的照片\/视频：.*?\]/.test(content)) return '[照片/视频]';
     return content;
+}
+
+function getFavoriteMessageSnapshot(message) {
+    if (FavoriteMessageContent) return FavoriteMessageContent.snapshot(message);
+    const content = typeof message?.content === 'string'
+        ? message.content
+        : (message?.parts && message.parts[0] ? message.parts[0].text : '');
+    return { content, contentType: 'text', plainText: getMessagePreview(content) };
 }
 
 // 获取发送者显示名
@@ -30,7 +49,7 @@ function addMessageToFavorites(messageId) {
     const message = chat.history.find(m => m.id === messageId);
     if (!message) return;
 
-    const content = typeof message.content === 'string' ? message.content : (message.parts && message.parts[0] ? message.parts[0].text : '');
+    const snapshot = getFavoriteMessageSnapshot(message);
     const chatName = getChatDisplayName(currentChatType, currentChatId);
     const sender = getSenderName(chat, message);
 
@@ -46,7 +65,9 @@ function addMessageToFavorites(messageId) {
         chatId: currentChatId,
         chatType: 'private',
         chatName: chatName,
-        content: content,
+        content: snapshot.content,
+        contentType: snapshot.contentType,
+        plainText: snapshot.plainText,
         timestamp: message.timestamp || Date.now(),
         favoriteTime: Date.now(),
         note: '',
@@ -80,7 +101,7 @@ function addFavoritesFromSelection() {
     if (!db.favorites) db.favorites = [];
     messages.forEach(message => {
         if (existingIds.has(message.id)) return;
-        const content = typeof message.content === 'string' ? message.content : (message.parts && message.parts[0] ? message.parts[0].text : '');
+        const snapshot = getFavoriteMessageSnapshot(message);
         const sender = getSenderName(chat, message);
         db.favorites.push({
             id: 'fav_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
@@ -88,7 +109,9 @@ function addFavoritesFromSelection() {
             chatId: currentChatId,
             chatType: 'private',
             chatName: chatName,
-            content: content,
+            content: snapshot.content,
+            contentType: snapshot.contentType,
+            plainText: snapshot.plainText,
             timestamp: message.timestamp || Date.now(),
             favoriteTime: Date.now(),
             note: '',
@@ -124,8 +147,8 @@ function addFavoritesFromSelectionMerged() {
     const chatName = getChatDisplayName(currentChatType, currentChatId);
     const parts = [];
     messages.forEach(m => {
-        const content = typeof m.content === 'string' ? m.content : (m.parts && m.parts[0] ? m.parts[0].text : '');
-        const text = getMessagePreview(content) || content || '';
+        const snapshot = getFavoriteMessageSnapshot(m);
+        const text = getMessagePreview(snapshot.content, snapshot.plainText, snapshot.contentType) || snapshot.content || '';
         if (text.trim()) parts.push(text.trim());
     });
     const mergedContent = parts.join('\n\n');
@@ -166,7 +189,7 @@ function addCharacterFavorite(messageId, characterId, note) {
         f => f.messageId === messageId && f.characterId === characterId && f.favoriteBy === 'character'
     );
     if (existing) return;
-    const content = typeof message.content === 'string' ? message.content : (message.parts && message.parts[0] ? message.parts[0].text : '');
+    const snapshot = getFavoriteMessageSnapshot(message);
     const chatName = chat.remarkName || chat.name || '角色';
     const sender = chat.myName || '我';
     const fav = {
@@ -175,7 +198,9 @@ function addCharacterFavorite(messageId, characterId, note) {
         chatId: characterId,
         chatType: 'private',
         chatName: chatName,
-        content: content,
+        content: snapshot.content,
+        contentType: snapshot.contentType,
+        plainText: snapshot.plainText,
         timestamp: message.timestamp || Date.now(),
         favoriteTime: Date.now(),
         note: (note || '').trim(),
@@ -262,7 +287,7 @@ function renderFavoritesList(filter) {
             if (emptyEl) emptyEl.style.display = 'none';
             container.innerHTML = groups.map(g => {
                 const itemsHtml = g.items.map(fav => {
-                    const preview = getMessagePreview(fav.content);
+                    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
                     const previewShort = preview.length > 60 ? preview.slice(0, 60) + '…' : preview;
                     const timeStr = formatFavoriteTime(fav.favoriteTime);
                     const note = (fav.note || '').trim();
@@ -302,7 +327,7 @@ function renderFavoritesList(filter) {
             container.innerHTML = groups.map(g => {
                 const typeLabel = g.chatType === 'private' ? '私聊' : '历史';
                 const itemsHtml = g.items.map(fav => {
-                    const preview = getMessagePreview(fav.content);
+                    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
                     const previewShort = preview.length > 80 ? preview.slice(0, 80) + '…' : preview;
                     const favoriteTimeStr = formatFavoriteTime(fav.favoriteTime);
                     const sendTimeStr = formatMessageSendTime(fav.timestamp);
@@ -511,7 +536,7 @@ function openFavoriteDetail(favoriteId) {
     if (!contentEl || !noteInput) return;
 
     currentFavoriteDetailId = favoriteId;
-    const preview = getMessagePreview(fav.content);
+    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
     const timeStr = formatFavoriteTime(fav.favoriteTime);
     const msgTimeStr = formatFavoriteTime(fav.timestamp);
     const isCharacterFavorite = fav.favoriteBy === 'character';

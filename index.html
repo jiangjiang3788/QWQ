@@ -5654,8 +5654,8 @@
 </div>
 </div>
 <section class="memory-workbench-settings" id="memory-workbench-settings" hidden>
-<details id="memory-workbench-advanced-settings">
-<summary>更新与整理</summary>
+<details id="memory-workbench-advanced-settings" open>
+<summary>更新与整理 <small>高频操作</small></summary>
 <div class="memory-workbench-settings-body">
 <div class="memory-v2-policy-panel">
 <div class="memory-workbench-setting-head">
@@ -5678,6 +5678,10 @@
 <label class="memory-sidecar-setting">聊天更新<span class="memory-sidecar-switch-row"><input id="memory-sidecar-enabled-toggle" type="checkbox" checked/>启用</span></label>
 <label class="memory-sidecar-setting">短期候选<span class="memory-sidecar-switch-row"><input id="memory-sidecar-candidate-toggle" type="checkbox" checked/>保存</span></label>
 <label class="memory-sidecar-setting">聊天状态条<span class="memory-sidecar-switch-row"><input id="memory-sidecar-statusbar-toggle" type="checkbox" checked/>显示</span></label>
+</div>
+<div class="memory-auto-schedule" aria-label="表格自动整理方式">
+<div class="memory-auto-schedule-head"><strong>表格更新通道</strong><small>聊天同请求不会额外调用 API；跟随全局会按上方频率自动整理。</small></div>
+<div id="memory-table-auto-schedule-list" class="memory-auto-schedule-list"></div>
 </div>
 <div class="memory-v2-cursor-row">
 <label>目标表<select id="memory-table-cursor-table-select"></select></label>
@@ -6865,6 +6869,7 @@
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
 <script src="js/features/memory/kernel.js"></script>
 <script src="js/modules/memory_table_policy.js"></script>
+<script src="js/modules/memory_table_schedule.js"></script>
 <script src="js/modules/memory_table_lifecycle.js"></script>
 <script src="js/modules/memory_table_effects.js"></script>
 <script src="js/modules/memory_table_feedback.js"></script>
@@ -6886,6 +6891,7 @@
 <script src="js/modules/tutorial.js"></script> <!-- 教程与 GitHub 备份 -->
 <script src="js/modules/more_menu.js"></script> <!-- 更多菜单与状态栏管理 -->
 <script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
+<script src="js/modules/message_content.js"></script> <!-- 统一消息内容解析 -->
 <script src="js/modules/favorites.js"></script> <!-- 消息收藏 -->
 <script src="js/modules/search.js"></script> <!-- 聊天记录搜索模块 -->
 <script src="js/modules/battery_interaction.js"></script> <!-- 电量交互模块 -->
@@ -6899,7 +6905,6 @@
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
 <script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
-<script src="js/core/diagnostics.js"></script> <!-- 运行诊断：导航、记忆、设置与错误快照 -->
 <!-- [4. 程序入口] -->
 <script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>

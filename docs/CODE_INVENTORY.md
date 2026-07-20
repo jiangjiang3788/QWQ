@@ -52,12 +52,17 @@
 - 设置相关直接 `.style.* =` 赋值由 363 处降至约 223 处。
 - 新增 `OvoSettings.health()`，用于确认各设置控制器和公共 UI 组件是否就绪。
 
-## V2.9-R6 导航与工作台变化
+## V2.9-R5 角色设置边界
 
-- `js/ui.js`：增加统一导航栈与 `OvoNavigation` facade。
-- `js/main.js`：所有 `.back-btn` 统一走导航栈。
-- `js/app_registry.js`：Dock、桌面、设置和上下文入口重新分组；角色 App 统一三动作。
-- `js/modules/memory_table.js`：修复工作区状态在渲染时被旧 runtime 覆盖的问题。
-- `js/core/diagnostics.js`：增加脱敏运行快照、错误环形缓冲和诊断弹窗。
-- `css/modules/app_workspace.css`：首页切换为横向原生分页，禁止长纵向桌面列表。
-- `tests/run_v29_r6_navigation_workspace_checks.js`：覆盖工作区状态、返回栈、入口去重和诊断加载。
+- `js/settings.js` 收敛为兼容门面。
+- 角色资料、聊天、行为、媒体和扩展拆到 `js/features/settings/character/`。
+- `OvoCharacterSettings.health()` 提供注册和初始化健康检查。
+
+## V2.9-R6 体验与记忆调度边界
+
+- `js/app_registry.js` 的 `dockAppIds` 是 Dock 顺序的唯一配置源。
+- `js/modules/message_content.js` 是消息格式与列表预览的共享解析层。
+- `favorites.js` 保存原始内容与规范化快照，旧收藏在读取时兼容解析。
+- `memory_table_policy.js` 只负责自动化通道、有效策略、轮次和游标，不操作 DOM。
+- `memory_table.js` 展示表级通道和运行状态；“更新与整理”属于记忆页。
+- 本版不修改 V2.8 记忆模板行数据和 IndexedDB schema。
