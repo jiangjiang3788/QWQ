@@ -11,18 +11,17 @@ const api = fs.readFileSync(path.join(root, 'js/features/apps/api_workspace.js')
 const css = fs.readFileSync(path.join(root, 'css/modules/app_workspace.css'), 'utf8');
 const ui = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
 
-for (const section of ['people', 'creative', 'organize', 'system']) {
-  assert(registry.includes(`id: '${section}'`), `missing launcher section ${section}`);
-}
+assert(registry.includes("const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data'])"), 'flat phone launcher app list missing');
+assert(!registry.includes('launcherSections'), 'grouped launcher sections should be retired');
 assert(registry.includes("id: 'settings'"), 'settings app is not registered');
 assert(registry.includes("['chat', 'api', 'memory', 'settings']"), 'quick dock should expose API instead of duplicate character entry');
-assert(html.includes('data-target="home-screen" title="Apps"'), 'bottom Apps navigation should open launcher');
+assert(!html.includes('id="global-bottom-nav"'), 'legacy bottom Apps navigation should be removed');
 assert(ui.includes("targetId === 'more-screen'"), 'legacy More route redirect is missing');
-assert(ui.includes("targetId = 'settings-hub-screen'"), 'legacy More route does not reach Settings');
+assert(ui.includes("return 'settings-hub-screen'"), 'legacy More route does not reach Settings');
 assert(html.includes('js/features/apps/settings_hub.js'), 'settings hub script not loaded');
 assert(html.includes('js/features/apps/api_workspace.js'), 'API workspace script not loaded');
 assert(html.includes('css/modules/app_workspace.css'), 'app workspace stylesheet not loaded');
-assert(/VERSION = '2\.9-R[34]'/.test(settings), 'settings hub compatibility version mismatch');
+assert(/VERSION = '2\.9-R11'/.test(settings), 'settings hub compatibility version mismatch');
 for (const title of ['个人与角色', '模型与能力', '外观与桌面', '数据与系统']) {
   assert(settings.includes(title), `missing Settings section ${title}`);
 }
@@ -32,7 +31,7 @@ for (const id of ['chat', 'memory', 'automation', 'perception']) {
 assert(api.includes("section.dataset.apiGroup = classify(section)"), 'API sections are not grouped');
 assert(css.includes('.settings-hub-list'), 'settings list style missing');
 assert(css.includes('.api-workspace-tabs'), 'API workspace tabs style missing');
-assert(/^V2\.9-R[3456]$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
+assert(/^V2\.9-R11$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);

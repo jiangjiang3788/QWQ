@@ -133,6 +133,21 @@ if "parsed.type === 'voice'" not in message_content_js: errors.append('R6 voice 
 if 'normalizeAutomationMode' not in policy_js or 'resolveEffectiveUpdatePolicy' not in policy_js: errors.append('R6 automation channel policy missing')
 if "settingsPanel.hidden = uiState.workspace !== 'memory'" not in memory_table_js: errors.append('R6 memory update panel placement missing')
 
+
+# V2.9-R7 startup reliability and removed legacy routes.
+startup_runtime_js=(root/'js/core/startup_runtime.js').read_text(encoding='utf-8') if (root/'js/core/startup_runtime.js').exists() else ''
+main_js=(root/'js/main.js').read_text(encoding='utf-8')
+if 'js/core/startup_runtime.js' not in html: errors.append('R7 startup runtime script missing')
+if html.find('js/core/startup_runtime.js') > html.find('js/main.js'): errors.append('R7 startup runtime script order invalid')
+if "global.OvoStartupRuntime" not in startup_runtime_js or "VERSION: '2.9-R8'" not in startup_runtime_js: errors.append('R8 startup runtime implementation missing')
+if re.search(r'\bupdateClock\s*\(', main_js): errors.append('R7 retired updateClock call remains')
+if "StartupRuntime.call('initDatabase'" not in main_js or "StartupRuntime.call('loadData'" not in main_js: errors.append('R7 critical startup stages not guarded')
+if 'window.__OCTOPUS_STARTUP_TASKS__' not in (root/'js/db.js').read_text(encoding='utf-8'): errors.append('R8 explicit data startup contract missing')
+if "StartupRuntime.validate(['initDatabase', 'loadData']" not in main_js: errors.append('R8 startup contract preflight missing')
+if 'const taskRegistry = new Map()' not in startup_runtime_js or 'function register(name, task)' not in startup_runtime_js: errors.append('R8 startup task registry missing')
+retired_memory_route='_'.join(['manage','settings'])
+if retired_memory_route in memory_table_js or retired_memory_route in html: errors.append('R7 removed legacy memory route remains')
+
 required=['proment-compare-runtime','proment-preview-worldbook','proment-preview-ai-request']
 for rid in required:
     if rid not in ids: errors.append('missing required id: '+rid)

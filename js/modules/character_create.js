@@ -48,7 +48,6 @@ function setupAddCharModal() {
         db.characters.push(newChar);
         await saveData();
         renderChatList();
-        if (typeof renderContactList === 'function') renderContactList();
         document.getElementById('add-char-modal')?.classList.remove('visible');
         form.reset();
         const personaInput = document.getElementById('char-persona-input');

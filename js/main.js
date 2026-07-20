@@ -13,158 +13,201 @@ if ((location.protocol === 'http:' || location.protocol === 'https:') && 'servic
     });
 }
 
-const init = async () => {
-    await loadData();
-
-    // V12.3: desktop widgets were retired; no widget-state migration is required.
-
-    // 全局点击事件委托
-    document.body.addEventListener('click', (e) => {
-        // 全局点击触感反馈
-        // if (e.target.closest('button, .btn, .action-btn, .nav-item, .icon-btn, .list-item, input[type="checkbox"], input[type="radio"], .back-btn')) {
-        //     triggerHapticFeedback('light');
-        // }
-
-        if (e.target.closest('.context-menu')) {
-            e.stopPropagation();
-            return;
-        }
-        removeContextMenu();
-
-        const backBtn = e.target.closest('.back-btn');
-        if (backBtn) {
-            e.preventDefault();
-            switchScreen(backBtn.getAttribute('data-target'));
-        }
-
-        const openOverlay = document.querySelector('.modal-overlay.visible, .action-sheet-overlay.visible');
-        if (openOverlay && e.target === openOverlay) {
-            openOverlay.classList.remove('visible');
-        }
-    });
-
-    // 导航栏跳转
-    document.body.addEventListener('click', e => {
-        const navLink = e.target.closest('.app-icon[data-target]');
-        if (navLink) {
-            e.preventDefault();
-            const target = navLink.getAttribute('data-target');
-            switchScreen(target);
-        }
-    });
-
-    // 定时任务
-    updateClock();
-    setInterval(updateClock, 30000);
-    setInterval(checkAutoReply, 60000);
-
-    // 应用全局设置
-    if (db.fontUrl === 'local' && db.fontBuffer) {
-        applyGlobalFont('local');
-    } else {
-        applyGlobalFont(db.fontUrl);
-    }
-    applyGlobalCss(db.globalCss);
-    applyFontSize(db.fontSizeScale || 1.0);
-    if (typeof applyThemeSettings === 'function') applyThemeSettings();
-
-    // 初始化各个模块
-    setupGlobalRescueGesture(); // 全局救援手势
-    setupHomeScreen();
-    setupChatListScreen();
-    setupContactsScreen();
-    setupBottomNavigation();
-    setupAddCharModal();
-    setupChatRoom();
-    setupChatSettings();
-    setupArchiveApp();
-    setupApiSettingsApp();
-    setupWallpaperApp();
-    await setupStickerSystem();
-    setupPresetFeatures();
-    setupVoiceMessageSystem();
-    setupPhotoVideoSystem();
-    setupImageRecognition();
-    // V10.4: economy and gift action runtime removed; historical cards remain render-only.
-    setupTimeSkipSystem();
-
-    // 错误处理包裹的模块初始化
-    try { setupWorldBookApp(); } catch(e) { console.error("setupWorldBookApp failed:", e); }
-    // try { setupGroupChatSystem(); } catch(e) { console.error("setupGroupChatSystem failed:", e); }
-    try { setupCustomizeApp(); } catch(e) { console.error("setupCustomizeApp failed:", e); }
-    try { setupTutorialApp(); } catch(e) { console.error("setupTutorialApp failed:", e); }
-    
-    // V5: update log display removed for the single-user build.
-    // checkForUpdates();
-    // setupPeekFeature();
-    setupMemoryJournalScreen(); 
-    if (typeof setupMemoryTableScreen === 'function') setupMemoryTableScreen();
-    if (window.MemoryTableSidecar && typeof window.MemoryTableSidecar.bindUi === 'function') window.MemoryTableSidecar.bindUi();
-    if (typeof setupVectorMemoryScreen === 'function') setupVectorMemoryScreen();
-    if (typeof setupMemoryModeUI === 'function') setupMemoryModeUI();
-    setupDeleteHistoryChunk();
-    // setupForumBindingFeature();
-    // setupForumFeature();
-    setupStorageAnalysisScreen();
-
-    setupMoreCardBgModal();
-    // if (typeof setupShopSystem === 'function') setupShopSystem();
-    // if (typeof initKeyboardDetection === 'function') initKeyboardDetection();
-    if (window.BatteryInteraction) window.BatteryInteraction.init();
-    if (typeof initMoreMenu === 'function') initMoreMenu();
-    if (typeof initCotSettings === 'function') initCotSettings();
-    // V10.5: video/voice call runtime removed. TTS and voice messages remain independent.
-    if (typeof KeepAliveModule !== 'undefined') KeepAliveModule.init();
-    if (window.FloatingBall && typeof window.FloatingBall.init === 'function') window.FloatingBall.init();
-
-    // 全局事件绑定
-    const delWBBtn = document.getElementById('delete-selected-world-books-btn');
-    if(delWBBtn) delWBBtn.addEventListener('click', deleteSelectedWorldBooks);
-    
-    const cancelWBBtn = document.getElementById('cancel-wb-multi-select-btn');
-    if(cancelWBBtn) cancelWBBtn.addEventListener('click', exitWorldBookMultiSelectMode);
-    
-    if(window.GitHubMgr) {
-        window.GitHubMgr.init();
-    }
-
-    // 自动尝试拉取模型列表
-    if (window.fetchAndPopulateModels && db.apiSettings && db.apiSettings.url && db.apiSettings.key) {
-        // 稍微延迟一点，确保 API 设置 DOM 已加载
-        setTimeout(() => {
-            window.fetchAndPopulateModels(true);
-        }, 1000);
-    }
-    
-    if (window.fetchAndPopulateGptModels && db.gptImageSettings && db.gptImageSettings.url && db.gptImageSettings.key) {
-        setTimeout(() => {
-            window.fetchAndPopulateGptModels(false);
-        }, 1000);
-    }
-
-    // 检查并请求持久化存储 (抗系统清理)
-    if (typeof checkAndRequestPersistence === 'function') {
-        setTimeout(checkAndRequestPersistence, 2000); // 延迟一点，避免与初始化逻辑冲突
-    }
-
-    // 追踪是否有正在进行的保存操作
-    let _isSaving = false;
-    const _origSaveData = window.saveData;
-    window.saveData = async (...args) => {
-        _isSaving = true;
+const StartupRuntime = window.OvoStartupRuntime || Object.freeze({
+    reset() {},
+    resolve(name) {
+        const pending = window.__OCTOPUS_STARTUP_TASKS__ || {};
+        return typeof pending[name] === 'function'
+            ? pending[name]
+            : (typeof window[name] === 'function' ? window[name] : null);
+    },
+    async run(name, task, options = {}) {
         try {
-            await _origSaveData(...args);
-        } finally {
-            _isSaving = false;
+            if (typeof task !== 'function') {
+                if (options.critical) throw new ReferenceError(`启动任务未注册: ${name}`);
+                return undefined;
+            }
+            return await task();
+        } catch (error) {
+            console.error(`[Startup:${name}] 初始化失败`, error);
+            if (options.critical) throw error;
+            return undefined;
         }
-    };
+    },
+    call(name, args, options) {
+        const fn = this.resolve(name);
+        return this.run(name, typeof fn === 'function' ? () => fn(...(args || [])) : null, options);
+    },
+    validate(names, options = {}) {
+        const missing = (Array.isArray(names) ? names : []).filter(name => typeof this.resolve(name) !== 'function');
+        if (missing.length && options.critical) throw new ReferenceError(`启动契约缺少任务: ${missing.join(', ')}`);
+        return { ok: missing.length === 0, missing };
+    },
+    startInterval(name, task, delayMs) {
+        if (typeof task !== 'function') return null;
+        return setInterval(() => Promise.resolve().then(task).catch(error => {
+            console.error(`[Runtime:${name}] 定时任务执行失败`, error);
+        }), delayMs);
+    },
+    defer(name, task, delayMs) {
+        if (typeof task !== 'function') return null;
+        return setTimeout(() => this.run(name, task), delayMs);
+    },
+    complete() { return { summary: {} }; }
+});
 
-    // 用户关闭或刷新页面时，如有未完成保存则弹出提示
-    window.addEventListener('beforeunload', (e) => {
-        if (_isSaving) {
-            e.preventDefault();
-            e.returnValue = '数据正在保存中，请稍候再关闭页面...';
+const init = async () => {
+    StartupRuntime.validate(['loadData'], { critical: true });
+    await StartupRuntime.call('loadData', [], { critical: true, optional: false });
+
+    await StartupRuntime.run('global-click-routing', () => {
+        document.body.addEventListener('click', event => {
+            const backBtn = event.target.closest('.back-btn[data-target]');
+            if (!backBtn) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const fallback = backBtn.getAttribute('data-target') || 'home-screen';
+            if (window.OvoNavigation && typeof window.OvoNavigation.back === 'function') {
+                window.OvoNavigation.back(fallback);
+            } else if (typeof window.switchScreen === 'function') {
+                window.switchScreen(fallback);
+            }
+        }, true);
+
+        document.body.addEventListener('click', event => {
+            if (event.target.closest('.context-menu')) {
+                event.stopPropagation();
+                return;
+            }
+            if (typeof window.removeContextMenu === 'function') window.removeContextMenu();
+
+            const openOverlay = document.querySelector('.modal-overlay.visible, .action-sheet-overlay.visible');
+            if (openOverlay && event.target === openOverlay) openOverlay.classList.remove('visible');
+
+            const navLink = event.target.closest('.app-icon[data-target]');
+            if (!navLink) return;
+            event.preventDefault();
+            if (typeof window.switchScreen === 'function') window.switchScreen(navLink.getAttribute('data-target'));
+        });
+    });
+
+    // 桌面时钟组件已经退役。旧版遗留的 updateClock 调用会让整个启动流程中断，现已彻底移除。
+    StartupRuntime.startInterval('auto-reply-check', () => checkAutoReply(), 60000);
+
+    await StartupRuntime.run('apply-global-appearance', () => {
+        if (db.fontUrl === 'local' && db.fontBuffer) {
+            if (typeof window.applyGlobalFont === 'function') window.applyGlobalFont('local');
+        } else if (typeof window.applyGlobalFont === 'function') {
+            window.applyGlobalFont(db.fontUrl);
         }
+        if (typeof window.applyGlobalCss === 'function') window.applyGlobalCss(db.globalCss);
+        if (typeof window.applyFontSize === 'function') window.applyFontSize(db.fontSizeScale || 1.0);
+        if (typeof window.applyThemeSettings === 'function') window.applyThemeSettings();
+    });
+
+    const orderedInitializers = [
+        'setupGlobalRescueGesture',
+        'setupHomeScreen',
+        'setupChatListScreen',
+        'setupProfilePersonaScreen',
+        'setupAddCharModal',
+        'setupChatRoom',
+        'setupChatSettings',
+        'setupArchiveApp',
+        'setupApiSettingsApp',
+        'setupWallpaperApp',
+        'setupStickerSystem',
+        'setupPresetFeatures',
+        'setupVoiceMessageSystem',
+        'setupPhotoVideoSystem',
+        'setupImageRecognition',
+        'setupTimeSkipSystem',
+        'setupWorldBookApp',
+        'setupCustomizeApp',
+        'setupTutorialApp',
+        'setupSearchSystem',
+        'setupMemoryJournalScreen',
+        'setupMemoryTableScreen',
+        'setupVectorMemoryScreen',
+        'setupMemoryModeUI',
+        'setupDeleteHistoryChunk',
+        'setupStorageAnalysisScreen',
+        'setupMoreCardBgModal',
+        'initMoreMenu',
+        'initCotSettings'
+    ];
+    for (const initializerName of orderedInitializers) {
+        await StartupRuntime.call(initializerName, [], { optional: true, critical: false });
+    }
+
+    await StartupRuntime.run('memory-sidecar-ui', () => {
+        if (window.MemoryTableSidecar && typeof window.MemoryTableSidecar.bindUi === 'function') {
+            window.MemoryTableSidecar.bindUi();
+        }
+    });
+
+    await StartupRuntime.run('battery-interaction', () => {
+        if (window.BatteryInteraction && typeof window.BatteryInteraction.init === 'function') {
+            window.BatteryInteraction.init();
+        }
+    });
+
+    await StartupRuntime.run('keep-alive', () => {
+        if (window.KeepAliveModule && typeof window.KeepAliveModule.init === 'function') {
+            window.KeepAliveModule.init();
+        }
+    });
+
+    await StartupRuntime.run('floating-ball', () => {
+        if (window.FloatingBall && typeof window.FloatingBall.init === 'function') {
+            window.FloatingBall.init();
+        }
+    });
+
+    await StartupRuntime.run('worldbook-actions', () => {
+        const delWBBtn = document.getElementById('delete-selected-world-books-btn');
+        if (delWBBtn && typeof window.deleteSelectedWorldBooks === 'function') {
+            delWBBtn.addEventListener('click', window.deleteSelectedWorldBooks);
+        }
+        const cancelWBBtn = document.getElementById('cancel-wb-multi-select-btn');
+        if (cancelWBBtn && typeof window.exitWorldBookMultiSelectMode === 'function') {
+            cancelWBBtn.addEventListener('click', window.exitWorldBookMultiSelectMode);
+        }
+    });
+
+    await StartupRuntime.run('github-manager', () => {
+        if (window.GitHubMgr && typeof window.GitHubMgr.init === 'function') window.GitHubMgr.init();
+    });
+
+    if (window.fetchAndPopulateModels && db.apiSettings && db.apiSettings.url && db.apiSettings.key) {
+        StartupRuntime.defer('fetch-chat-models', () => window.fetchAndPopulateModels(true), 1000);
+    }
+    if (window.fetchAndPopulateGptModels && db.gptImageSettings && db.gptImageSettings.url && db.gptImageSettings.key) {
+        StartupRuntime.defer('fetch-image-models', () => window.fetchAndPopulateGptModels(false), 1000);
+    }
+    if (typeof window.checkAndRequestPersistence === 'function') {
+        StartupRuntime.defer('request-persistent-storage', window.checkAndRequestPersistence, 2000);
+    }
+
+    await StartupRuntime.run('save-in-flight-guard', () => {
+        if (typeof window.saveData !== 'function' || window.saveData.__ovoSaveGuard) return;
+        let isSaving = false;
+        const originalSaveData = window.saveData;
+        const guardedSaveData = async (...args) => {
+            isSaving = true;
+            try {
+                return await originalSaveData(...args);
+            } finally {
+                isSaving = false;
+            }
+        };
+        guardedSaveData.__ovoSaveGuard = true;
+        window.saveData = guardedSaveData;
+        window.addEventListener('beforeunload', event => {
+            if (!isSaving) return;
+            event.preventDefault();
+            event.returnValue = '数据正在保存中，请稍候再关闭页面...';
+        });
     });
 };
 
@@ -225,15 +268,22 @@ async function startApplication() {
         console.warn('[Startup] 无法清理旧账号验证标记:', e);
     }
 
+    StartupRuntime.reset();
     try {
-        initDatabase();
+        StartupRuntime.validate(['initDatabase', 'loadData'], { critical: true });
+        await StartupRuntime.call('initDatabase', [], { critical: true, optional: false });
         await init();
-        console.log('[Startup] 单用户模式初始化完成');
+        const startupReport = StartupRuntime.complete();
+        const failedCount = startupReport.summary.failed || 0;
+        console.log('[Startup] 单用户模式初始化完成', startupReport);
+        if (failedCount > 0 && typeof window.showToast === 'function') {
+            window.showToast(`应用已启动，${failedCount} 个非核心模块初始化失败，可在悬浮球控制台查看`);
+        }
     } catch (error) {
-        console.error('[Startup] 应用初始化失败:', error);
-        // 不恢复已删除的登录界面；保留页面和控制台错误供排查。
-        if (typeof showToast === 'function') {
-            showToast('应用初始化失败，请查看控制台错误');
+        const startupReport = StartupRuntime.complete();
+        console.error('[Startup] 核心初始化失败:', error, startupReport);
+        if (typeof window.showToast === 'function') {
+            window.showToast('应用核心初始化失败，请查看启动报告');
         }
     }
 }

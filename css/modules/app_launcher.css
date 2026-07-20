@@ -1,13 +1,42 @@
-.app-launcher-grid {
-    grid-auto-rows: minmax(74px, 1fr);
-    height: calc(100% - 142px);
+.phone-launcher {
+    width: min(100%, 520px);
+    margin: 0 auto;
+    overflow: hidden;
+}
+.phone-home-page {
+    width: 100%;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 18px 12px 122px;
+    box-sizing: border-box;
+}
+.phone-app-grid {
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: 86px;
+    gap: 22px 8px;
+    align-content: start;
     overflow-y: auto;
     scrollbar-width: none;
-    padding-bottom: 20px;
 }
-.app-launcher-grid::-webkit-scrollbar { display: none; }
-.app-launcher-grid .launcher-app { min-width: 0; }
-.app-launcher-dock { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.2); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.phone-app-grid::-webkit-scrollbar { display: none; }
+.phone-app-grid .launcher-app { min-width: 0; justify-content: flex-start; }
+.phone-app-grid .icon-img { width: 56px; height: 56px; border-radius: 16px; }
+.phone-app-grid .app-name { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-launcher-dock {
+    width: min(calc(100% - 20px), 500px);
+    align-self: center;
+    margin: 0 auto max(8px, env(safe-area-inset-bottom));
+    background: rgba(255,255,255,.22);
+    border: 1px solid rgba(255,255,255,.25);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
 .app-picker-dialog { width: min(390px, calc(100vw - 32px)); max-height: min(620px, calc(100vh - 48px)); border: 0; border-radius: 20px; padding: 0; color: var(--text-color, #222); background: var(--card-background, #fff); box-shadow: 0 20px 70px rgba(0,0,0,.24); }
 .app-picker-dialog::backdrop { background: rgba(0,0,0,.36); backdrop-filter: blur(3px); }
 .app-picker-head { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid rgba(0,0,0,.07); }
@@ -17,19 +46,23 @@
 .app-picker-item:active { transform:scale(.99); background:rgba(0,0,0,.07); }
 .app-picker-item img { width:44px; height:44px; border-radius:14px; object-fit:cover; background:#eee; }
 .app-picker-item span { font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-@media (max-width: 480px) {
-    .app-launcher-grid { gap: 12px 8px; padding-inline: 10px; }
-    .app-launcher-grid .icon-img { width: 50px; height: 50px; }
+
+@media (min-width: 700px) {
+    .phone-home-page { padding-top: 28px; }
+    .phone-app-grid { grid-auto-rows: 92px; gap: 26px 10px; }
 }
-.bottom-nav .nav-item:nth-child(3) svg { transform: scale(1.15); }
-.character-app-content { padding: 14px; }
-.character-app-list { display:grid; gap:10px; }
-.character-app-card { display:grid; grid-template-columns:54px minmax(0,1fr) auto; align-items:center; gap:12px; padding:12px; border-radius:18px; background:var(--card-background,#fff); border:1px solid rgba(0,0,0,.055); box-shadow:0 6px 20px rgba(0,0,0,.035); }
-.character-app-card > img { width:54px; height:54px; border-radius:17px; object-fit:cover; background:#eee; }
-.character-app-info { min-width:0; display:flex; flex-direction:column; gap:4px; }
-.character-app-info strong { font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.character-app-info span { color:#888; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.character-app-actions { display:flex; flex-direction:column; gap:6px; }
-.character-app-actions button,.character-app-empty button { border:0; border-radius:10px; padding:7px 11px; background:rgba(90,110,220,.11); color:#5265bd; font-weight:600; }
-.character-app-empty { min-height:50vh; display:grid; place-content:center; justify-items:center; gap:14px; color:#777; }
-@media (max-width:480px) { .character-app-card { grid-template-columns:48px minmax(0,1fr); } .character-app-card > img { width:48px; height:48px; } .character-app-actions { grid-column:1 / -1; flex-direction:row; justify-content:flex-end; } }
+@media (max-width: 480px) {
+    .phone-home-page { padding-inline: 8px; }
+    .phone-app-grid { gap: 18px 4px; }
+    .phone-app-grid .icon-img { width: 52px; height: 52px; }
+}
+
+/* 原生 dialog 不可用的旧 WebView 兼容：仍显示为居中的可操作面板。 */
+.app-picker-dialog[open], .app-picker-dialog.app-picker-dialog-open {
+    position: fixed;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10060;
+    display: block;
+    margin: 0;
+}

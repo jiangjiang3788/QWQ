@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '2.9-R4';
+    const VERSION = '2.9-R11';
 
     function escapeHtml(value) {
         return String(value == null ? '' : value)
@@ -13,8 +13,8 @@
     }
 
     function navigate(targetId) {
-        if (typeof switchScreen === 'function') {
-            switchScreen(targetId);
+        if (typeof global.switchScreen === 'function') {
+            global.switchScreen(targetId);
             return true;
         }
         return false;
@@ -50,8 +50,7 @@
             id: 'profile',
             title: '个人与角色',
             items: [
-                { id: 'profile', label: '我的档案', detail: '名字、头像与绑定角色', target: 'my-profile-screen', mark: '我' },
-                { id: 'characters', label: '角色管理', detail: '角色资料与聊天入口', app: 'characters', mark: '角' },
+                { id: 'profile', label: '我的档案', detail: '名字、头像与绑定角色', action: 'profile', mark: '我' },
                 { id: 'character-settings', label: '角色设置', detail: '当前角色的设定与功能', action: 'character-settings', mark: '设' },
                 { id: 'memory', label: '角色记忆', detail: '状态、待办与长期记忆', app: 'memory', mark: '忆' }
             ]
@@ -150,7 +149,7 @@
             global.OvoAppRegistry.pickCharacter('选择角色设置', open);
             return;
         }
-        if (global.OvoAppRegistry) global.OvoAppRegistry.openApp('characters');
+        if (typeof global.showToast === 'function') global.showToast('请从聊天页右上角新建或选择角色');
     }
 
     function showHealth() {
@@ -176,6 +175,10 @@
         if (item.target) {
             navigate(item.target);
             return;
+        }
+        if (item.action === 'profile') {
+            if (typeof global.setupMyProfileScreen === 'function') global.setupMyProfileScreen();
+            navigate('my-profile-screen');
         }
         if (item.action === 'character-settings') openCharacterSettings();
         if (item.action === 'health') showHealth();

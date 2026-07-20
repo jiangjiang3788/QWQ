@@ -4,9 +4,12 @@ const SearchSystem = {
     currentScope: 'all', // 'all' or chatId
     currentResults: [],
     searchTimer: null,
+    initialized: false,
     
     // 初始化
     init() {
+        if (this.initialized) return;
+        this.initialized = true;
         // 绑定筛选器点击事件
         const scopeSelect = document.getElementById('search-scope-select');
         if (scopeSelect) {
@@ -62,6 +65,7 @@ const SearchSystem = {
 
     // 打开搜索界面
     open() {
+        this.init();
         // 重置状态
         this.currentScope = 'all';
         this.updateScopeUI();
@@ -84,7 +88,11 @@ const SearchSystem = {
     },
 
     closeSearchScreen() {
-        switchScreen('more-screen'); // 返回上一个屏幕
+        if (window.OvoNavigation && typeof window.OvoNavigation.back === 'function') {
+            window.OvoNavigation.back('home-screen');
+        } else {
+            switchScreen('home-screen');
+        }
     },
 
     // 执行搜索
@@ -492,3 +500,5 @@ const SearchSystem = {
 
 // 暴露给全局
 window.SearchSystem = SearchSystem;
+
+window.setupSearchSystem = function setupSearchSystem() { window.SearchSystem.init(); };

@@ -14,8 +14,8 @@
 
 
     function navigate(targetId) {
-        if (typeof switchScreen === 'function') {
-            switchScreen(targetId);
+        if (typeof global.switchScreen === 'function') {
+            global.switchScreen(targetId);
             return true;
         }
         return false;
@@ -28,14 +28,12 @@
     }
 
     const apps = Object.freeze([
-        { id: 'characters', label: '角色', group: 'main', section: 'people', opener: 'characters', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('角', '#eff3ff', '#5570d8') },
         { id: 'memory', label: '记忆', group: 'main', section: 'people', opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
         { id: 'worldbook', label: '世界书', group: 'main', section: 'creative', target: 'world-book-screen', opener: 'worldbook', iconKey: 'world-book-screen', fallbackIcon: svgIcon('界', '#eef8f2', '#438663') },
         { id: 'theater', label: '剧场', group: 'main', section: 'creative', target: 'theater-screen', iconKey: 'theater-screen', fallbackIcon: svgIcon('剧', '#fff2eb', '#bd6d3f') },
         { id: 'favorites', label: '收藏', group: 'main', section: 'organize', opener: 'favorites', iconKey: 'favorites-screen', fallbackIcon: svgIcon('藏', '#fff1f4', '#d55d78') },
         { id: 'reminder', label: '提醒', group: 'main', section: 'organize', opener: 'reminder', iconKey: 'reminder-screen', fallbackIcon: svgIcon('醒', '#fff8e8', '#b98224') },
         { id: 'search', label: '搜索', group: 'main', section: 'organize', opener: 'search', iconKey: 'search-history-screen', fallbackIcon: svgIcon('搜', '#edf7fa', '#3f8191') },
-        { id: 'contacts', label: '联系人', group: 'main', section: 'people', target: 'contacts-screen', iconKey: 'contacts-screen', fallbackIcon: svgIcon('友', '#eef7ff', '#3e7ab4') },
 
         { id: 'chat', label: '聊天', group: 'dock', target: 'chat-list-screen', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('聊', '#eff3ff', '#5570d8') },
         { id: 'api', label: 'API', group: 'dock', opener: 'api', iconKey: 'api-settings-screen', fallbackIcon: svgIcon('API', '#f2f2f5', '#555764') },
@@ -74,12 +72,7 @@
 
     const dockAppIds = Object.freeze(['chat', 'api', 'memory', 'settings']);
 
-    const launcherSections = Object.freeze([
-        { id: 'people', label: '角色与聊天', appIds: ['characters', 'memory', 'contacts', 'chat'] },
-        { id: 'creative', label: '创作', appIds: ['worldbook', 'theater'] },
-        { id: 'organize', label: '记录与工具', appIds: ['favorites', 'reminder', 'search'] },
-        { id: 'system', label: '系统', appIds: ['appearance', 'data', 'settings'] }
-    ]);
+    const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data']);
 
     function appsByIds(ids) {
         return ids.map(id => apps.find(app => app.id === id && isEnabled(app))).filter(Boolean);
@@ -87,17 +80,33 @@
 
     function renderLauncher() {
         const dock = appsByIds(dockAppIds);
+        const homeApps = appsByIds(homeAppIds);
         return `
-            <div class="home-screen-swiper single-page-home">
-                <div class="home-screen-page widget-free-home-page">
-                    <div class="launcher-sections">
-                        ${launcherSections.map(section => `<section class="launcher-section" data-launcher-section="${section.id}"><h2 class="launcher-section-title">${section.label}</h2><div class="app-grid widget-free-app-grid app-launcher-grid">${appsByIds(section.appIds).map(app => renderApp(app, 'launcher-app')).join('')}</div></section>`).join('')}
+            <div class="home-screen-swiper single-page-home phone-launcher">
+                <div class="home-screen-page phone-home-page">
+                    <div class="app-grid phone-app-grid app-launcher-grid" aria-label="应用">
+                        ${homeApps.map(app => renderApp(app, 'launcher-app')).join('')}
                     </div>
                 </div>
             </div>
             <div class="dock primary-dock app-launcher-dock" aria-label="常用应用">
                 ${dock.map(app => renderApp(app, 'dock-app')).join('')}
             </div>`;
+    }
+
+    const LAST_CHARACTER_STORAGE_KEY = 'ovo:last-character-workspace';
+
+    function rememberCharacter(characterId) {
+        try {
+            if (characterId) global.sessionStorage?.setItem(LAST_CHARACTER_STORAGE_KEY, String(characterId));
+        } catch (_) {}
+    }
+
+    function getRememberedCharacter() {
+        let rememberedId = '';
+        try { rememberedId = global.sessionStorage?.getItem(LAST_CHARACTER_STORAGE_KEY) || ''; } catch (_) {}
+        if (!rememberedId || !global.db || !Array.isArray(global.db.characters)) return null;
+        return global.db.characters.find(item => item.id === rememberedId) || null;
     }
 
     function setCurrentCharacter(characterId) {
@@ -107,7 +116,33 @@
         if (!character) return null;
         global.currentChatId = character.id;
         global.currentChatType = 'private';
+        rememberCharacter(character.id);
         return character;
+    }
+
+    function closePickerDialog(dialog) {
+        if (!dialog) return;
+        try {
+            if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+            else dialog.removeAttribute('open');
+        } catch (_) {
+            dialog.removeAttribute('open');
+        }
+        dialog.classList.remove('app-picker-dialog-open');
+    }
+
+    function showPickerDialog(dialog) {
+        if (!dialog) return;
+        try {
+            if (typeof dialog.showModal === 'function') {
+                if (!dialog.open) dialog.showModal();
+            } else {
+                dialog.setAttribute('open', '');
+            }
+        } catch (_) {
+            dialog.setAttribute('open', '');
+        }
+        dialog.classList.add('app-picker-dialog-open');
     }
 
     function openCharacterPicker(title, onSelect) {
@@ -115,6 +150,11 @@
         if (!characters.length) {
             if (typeof global.showToast === 'function') global.showToast('还没有角色，先创建一个吧');
             navigate('chat-list-screen');
+            return;
+        }
+        if (characters.length === 1) {
+            const onlyCharacter = setCurrentCharacter(characters[0].id);
+            if (onlyCharacter) onSelect(onlyCharacter);
             return;
         }
 
@@ -138,89 +178,37 @@
 
         dialog.onclick = event => {
             if (event.target === dialog || event.target.closest('[data-picker-close]')) {
-                dialog.close();
+                closePickerDialog(dialog);
                 return;
             }
             const button = event.target.closest('[data-character-id]');
             if (!button) return;
             const character = setCurrentCharacter(button.dataset.characterId);
-            dialog.close();
+            closePickerDialog(dialog);
             if (character) onSelect(character);
         };
 
-        if (typeof dialog.showModal === 'function') dialog.showModal();
-        else dialog.setAttribute('open', '');
-    }
-
-    function ensureCharacterAppScreen() {
-        let screen = document.getElementById('character-app-screen');
-        if (screen) return screen;
-        screen = document.createElement('div');
-        screen.className = 'screen';
-        screen.id = 'character-app-screen';
-        const shell = document.querySelector('.phone-screen');
-        (shell || document.body).appendChild(screen);
-        screen.addEventListener('click', event => {
-            const back = event.target.closest('[data-character-app-back]');
-            if (back) {
-                navigate('home-screen');
-                return;
-            }
-            const add = event.target.closest('[data-character-app-add]');
-            if (add) {
-                document.getElementById('add-chat-btn-kkt')?.click();
-                return;
-            }
-            const action = event.target.closest('[data-character-action]');
-            if (!action) return;
-            const character = setCurrentCharacter(action.dataset.characterId);
-            if (!character) return;
-            if (action.dataset.characterAction === 'chat') {
-                if (typeof global.openChatRoom === 'function') global.openChatRoom(character.id, 'private');
-            } else if (action.dataset.characterAction === 'memory') {
-                if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
-                navigate('memory-table-screen');
-            }
-        });
-        return screen;
-    }
-
-    function renderCharacterApp() {
-        const screen = ensureCharacterAppScreen();
-        const characters = global.db && Array.isArray(global.db.characters) ? global.db.characters : [];
-        screen.innerHTML = `
-            <header class="app-header">
-                <button type="button" class="back-btn" data-character-app-back>‹</button>
-                <div class="title-container"><h1 class="title">角色</h1></div>
-                <div class="action-btn-group"><button type="button" class="action-btn" data-character-app-add aria-label="新建角色">+</button></div>
-            </header>
-            <main class="content character-app-content">
-                ${characters.length ? `<div class="character-app-list">${characters.map(character => `
-                    <article class="character-app-card">
-                        <img src="${escapeMarkup(character.avatar || '')}" alt="">
-                        <div class="character-app-info"><strong>${escapeMarkup(character.remarkName || character.realName || '未命名角色')}</strong><span>${escapeMarkup(character.signature || character.persona || '角色档案')}</span></div>
-                        <div class="character-app-actions">
-                            <button type="button" data-character-action="chat" data-character-id="${character.id}">聊天</button>
-                            <button type="button" data-character-action="memory" data-character-id="${character.id}">记忆</button>
-                        </div>
-                    </article>`).join('')}</div>` : '<div class="character-app-empty"><strong>还没有角色</strong><button type="button" data-character-app-add>新建角色</button></div>'}
-            </main>`;
-        return screen;
+        showPickerDialog(dialog);
     }
 
     const openers = {
-        characters() {
-            renderCharacterApp();
-            navigate('character-app-screen');
-        },
         memory() {
             const open = character => {
-                if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
+                if (!character) return;
+                if (global.OvoMemory?.screen?.openWorkspace) global.OvoMemory.screen.openWorkspace('memory', 'tables');
+                else if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
                 navigate('memory-table-screen');
             };
             const current = global.currentChatType === 'private' ? setCurrentCharacter(global.currentChatId) : null;
-            if (current) open(current);
-            else openCharacterPicker('选择角色记忆', open);
+            const remembered = current || getRememberedCharacter();
+            if (remembered) {
+                open(setCurrentCharacter(remembered.id));
+                return;
+            }
+            // 先打开记忆页，避免角色选择器在不支持原生 dialog 的 WebView 中失败时表现为“完全没反应”。
+            navigate('memory-table-screen');
+            if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
+            openCharacterPicker('选择角色记忆', open);
         },
         reminder() {
             const open = () => {
@@ -232,7 +220,7 @@
             else openCharacterPicker('选择角色提醒', open);
         },
         search() {
-            if (typeof SearchSystem !== 'undefined' && typeof SearchSystem.open === 'function') SearchSystem.open();
+            if (global.SearchSystem && typeof global.SearchSystem.open === 'function') global.SearchSystem.open();
             else navigate('search-history-screen');
         },
         favorites() {
@@ -288,6 +276,6 @@
         bindLauncher,
         openApp,
         pickCharacter: openCharacterPicker,
-        sections() { return launcherSections.map(section => ({ ...section, appIds: [...section.appIds] })); }
+        sections() { return [{ id: 'desktop', label: '桌面', appIds: [...homeAppIds] }]; }
     });
 })(window);

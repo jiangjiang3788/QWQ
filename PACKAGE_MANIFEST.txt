@@ -50,8 +50,9 @@ docs/SETTINGS_ARCHITECTURE.md
 index.html
 js/app_registry.js
 js/chat.js
-js/contacts.js
 js/core/feature_flags.js
+js/core/navigation_runtime.js
+js/core/startup_runtime.js
 js/core/ui_components.js
 js/db.js
 js/features/apps/api_workspace.js
@@ -122,6 +123,7 @@ js/modules/voice_selector.js
 js/modules/volcengine_tts_service.js
 js/modules/weather.js
 js/modules/worldbook.js
+js/persona_profile.js
 js/settings.js
 js/ui.js
 js/utils.js
@@ -142,12 +144,17 @@ tests/run_v26_task_checks.js
 tests/run_v27_feedback_checks.js
 tests/run_v28_quality_checks.js
 tests/run_v29_r0_app_registry_checks.js
+tests/run_v29_r10_memory_search_checks.js
+tests/run_v29_r11_memory_workspace_state_checks.js
 tests/run_v29_r1_memory_kernel_checks.js
 tests/run_v29_r2_memory_workspace_checks.js
 tests/run_v29_r3_app_workspace_checks.js
 tests/run_v29_r4_settings_components_checks.js
 tests/run_v29_r5_character_settings_checks.js
 tests/run_v29_r6_experience_memory_checks.js
+tests/run_v29_r7_startup_checks.js
+tests/run_v29_r8_startup_contract_checks.js
+tests/run_v29_r9_navigation_launcher_checks.js
 tools/build_release.py
 tools/check_refactor_baseline.py
 vendor/README.txt
@@ -159,7 +166,7 @@ vendor/html2canvas.min.js
 vendor/jszip.min.js
 vendor/mammoth.browser.min.js
 vendor/purify.min.js
-章鱼机_V2.9-R6_更新说明与验收.md
-章鱼机_V2.9-R6_自动检查结果.txt
-章鱼机_V2.9-R6_项目理解深度报告.md
+章鱼机_V2.9-R11_更新说明与验收.md
+章鱼机_V2.9-R11_自动检查结果.txt
+章鱼机_V2.9-R11_项目理解深度报告.md
 章鱼机_分层可检索记忆模板V2.8_含原数据.json

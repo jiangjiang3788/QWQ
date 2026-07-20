@@ -17,13 +17,18 @@ for retired in ('id="phone-screen"', 'id="storage-screen"', 'id="burnout-update-
         errors.append(f'retired UI still present: {retired}')
 
 nav_targets = re.findall(r'class="nav-item[^\"]*"[^>]+data-target="([^"]+)"', index)
-if nav_targets != ['contacts-screen', 'chat-list-screen', 'home-screen']:
-    errors.append(f'unexpected bottom navigation: {nav_targets}')
+if nav_targets:
+    errors.append(f'legacy bottom navigation still present: {nav_targets}')
 
 registry = (root / 'js' / 'app_registry.js').read_text(encoding='utf-8')
-for app_id in ('characters', 'memory', 'worldbook', 'theater', 'favorites', 'reminder', 'search', 'contacts'):
+for app_id in ('memory', 'worldbook', 'theater', 'favorites', 'reminder', 'search', 'chat', 'api', 'settings'):
     if f"id: '{app_id}'" not in registry:
         errors.append(f'missing app registry item: {app_id}')
+for retired_app in ('characters', 'contacts'):
+    if f"id: '{retired_app}'" in registry:
+        errors.append(f'retired duplicate app still registered: {retired_app}')
+if 'phone-app-grid' not in registry or 'launcherSections' in registry:
+    errors.append('phone-style flat launcher contract is missing')
 
 if 'js/core/feature_flags.js' not in index or 'js/app_registry.js' not in index:
     errors.append('app registry scripts are not loaded')
@@ -96,4 +101,4 @@ else:
 if errors:
     print('\n'.join(f'ERROR: {item}' for item in errors))
     sys.exit(1)
-print('V2.9-R6 REFACTOR BASELINE: PASS')
+print('V2.9-R11 REFACTOR BASELINE: PASS')

@@ -626,7 +626,7 @@ let currentFavoriteDetailId = null;
 // 初始化收藏界面事件
 function initFavoritesScreen() {
     const backBtn = document.querySelector('#favorites-screen .back-btn');
-    if (backBtn) backBtn.addEventListener('click', () => { exitFavoritesMultiSelectMode(); switchScreen('more-screen'); });
+    if (backBtn) backBtn.addEventListener('click', () => { exitFavoritesMultiSelectMode(); switchScreen('home-screen'); });
 
     const detailBackBtn = document.querySelector('#favorites-detail-screen .back-btn');
     if (detailBackBtn) detailBackBtn.addEventListener('click', () => switchScreen('favorites-screen'));

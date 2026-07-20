@@ -2,16 +2,12 @@
 
 // 初始化 Menu 页面
 function initMoreMenu() {
-    // 初始化搜索模块
+    // 搜索已由独立启动任务 setupSearchSystem 初始化；旧 Apps 页面只保留兼容入口。
     if (window.SearchSystem) {
-        window.SearchSystem.init();
-        
-        // 绑定搜索入口点击
         const searchEntry = document.querySelector('.search-bar-decoration');
-        if (searchEntry) {
-            searchEntry.addEventListener('click', () => {
-                window.SearchSystem.open();
-            });
+        if (searchEntry && searchEntry.dataset.searchBound !== '1') {
+            searchEntry.dataset.searchBound = '1';
+            searchEntry.addEventListener('click', () => window.SearchSystem.open());
         }
     }
 

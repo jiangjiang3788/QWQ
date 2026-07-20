@@ -33,3 +33,18 @@ run_v29_r1_memory_kernel_checks.js
 V2.9-R6 体验入口与记忆调度：
   node tests/run_v29_r6_experience_memory_checks.js
 验证 Dock 唯一配置源、收藏语音转写、更新面板位置、表级自动化通道和全局调度生效。
+
+V2.9-R7 启动可靠性：
+node tests/run_v29_r7_startup_checks.js
+
+
+V2.9-R8 启动契约：
+- node tests/run_v29_r8_startup_contract_checks.js
+- 覆盖顶层 const/let 不挂到 window、显式任务注册、核心任务预检。
+
+V2.9-R10 记忆入口与搜索导航：
+  node tests/run_v29_r10_memory_search_checks.js
+
+V2.9-R11 记忆工作区状态机：
+  node tests/run_v29_r11_memory_workspace_state_checks.js
+验证角色运行态水合、显式工作区切换、待处理/管理/反馈路由不会互相覆盖。

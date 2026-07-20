@@ -16,6 +16,16 @@
     border-bottom: 1px solid #eee;
 }
 
+.search-screen-back-btn {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    border-radius: 50%;
+    font-size: 30px;
+    line-height: 30px;
+}
+
 .search-input-wrapper {
     flex-grow: 1;
     background-color: #f2f2f2;

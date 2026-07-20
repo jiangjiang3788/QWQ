@@ -334,7 +334,6 @@ function handleChatListLongPress(chatId, chatType, x, y) {
                     }
                     await saveData(); // 确保删除状态被即刻持久化
                     renderChatList();
-                    if (typeof renderContactList === 'function') renderContactList();
                     showToast('聊天及相关数据已彻底删除');
                 }
             }

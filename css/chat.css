@@ -173,18 +173,7 @@
     font-family: 'Poppins', sans-serif !important;
 }
 
-.hidden-back-btn {
-    position: absolute;
-    top: -10px;
-    left: 0px;
-    width: 400px;
-    height: 400px;
-    opacity: 0;
-    margin: 0;
-    pointer-events: auto;
-    z-index: 10;
-    cursor: pointer;
-}
+.hidden-back-btn { display: none !important; }
 
 .chat-list-header .action-btn-group {
     gap: 15px !important;

@@ -90,7 +90,7 @@
 <header class="app-header chat-list-header">
 <div class="header-left">
 <h1 class="title">Chats</h1>
-<button class="back-btn hidden-back-btn" data-target="home-screen">‹</button>
+<button class="back-btn" data-target="home-screen" aria-label="返回桌面">‹</button>
 </div>
 <div class="action-btn-group">
 <!-- 搜索 (装饰) -->
@@ -125,86 +125,7 @@
 </div>
 </main>
 </div>
-<div class="screen" id="contacts-screen">
-<header class="app-header chat-list-header">
-<div class="header-left">
-<h1 class="title">Friends</h1>
-<button class="back-btn hidden-back-btn" data-target="home-screen">‹</button>
-</div>
-<div class="action-btn-group">
-<!-- 搜索 -->
-<button class="action-btn" title="搜索">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24">
-<circle cx="11" cy="11" r="8"></circle>
-<line x1="21" x2="16.65" y1="21" y2="16.65"></line>
-</svg>
-</button>
-<!-- 添加好友 -->
-<button class="action-btn" title="添加好友">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24">
-<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-<circle cx="8.5" cy="7" r="4"></circle>
-<line x1="20" x2="20" y1="8" y2="14"></line>
-<line x1="23" x2="17" y1="11" y2="11"></line>
-</svg>
-</button>
-<!-- 设置 -->
-<button class="action-btn" title="设置">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="24">
-<circle cx="12" cy="12" r="3"></circle>
-<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-</path>
-</svg>
-</button>
-</div>
-</header>
-<main class="content">
-<!-- My Profile Section -->
-<div class="profile-section" id="my-profile-section">
-<!-- JS 动态注入我的信息 -->
-<div class="profile-item my-profile">
-<img alt="My Avatar" class="profile-avatar squircle" id="contacts-my-avatar" src="https://i.postimg.cc/GtbTnxhP/o-o-1.jpg"/>
-<div class="profile-info">
-<div class="profile-name" id="contacts-my-name">User Name</div>
-<div class="profile-status" id="contacts-my-status">Set a status message</div>
-</div>
-</div>
-</div>
-<div class="section-divider"></div>
-<!-- Friends List Section -->
-<div class="friends-section">
-<div class="section-title">好友 <span id="friends-count">0</span></div>
-<ul class="friend-list" id="contacts-list">
-<!-- JS 动态注入好友列表 -->
-</ul>
-</div>
-</main>
-</div>
-
 <!-- 直播间 Screen -->
-<!-- 全局底部导航栏 -->
-<nav class="bottom-nav" id="global-bottom-nav" style="display: none;">
-<button class="nav-item" data-nav-id="0" data-target="contacts-screen" title="联系人">
-<svg class="bi bi-person-fill" fill="currentColor" height="26" viewbox="0 0 16 16" width="26" xmlns="http://www.w3.org/2000/svg">
-<path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
-</svg>
-<img alt="icon" class="nav-icon-img" src=""/>
-</button>
-<button class="nav-item active" data-nav-id="1" data-target="chat-list-screen" title="聊天">
-<svg class="bi bi-chat-fill" fill="currentColor" height="26" viewbox="0 0 16 16" width="26" xmlns="http://www.w3.org/2000/svg">
-<path d="M8 15c4.418 0 8-3.134 8-7s-3.582-7-8-7-8 3.134-8 7c0 1.76.743 3.37 1.97 4.6-.097 1.016-.417 2.13-.771 2.966-.079.186.074.394.273.362 2.256-.37 3.597-.938 4.18-1.234A9.06 9.06 0 0 0 8 15z"></path>
-</svg>
-<img alt="icon" class="nav-icon-img" src=""/>
-<span class="nav-badge" id="nav-chat-badge" style="display: none;">0</span>
-</button>
-
-<button class="nav-item" data-nav-id="2" data-target="home-screen" title="Apps">
-<svg class="bi bi-three-dots" fill="currentColor" height="26" viewbox="0 0 16 16" width="26" xmlns="http://www.w3.org/2000/svg">
-<path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"></path>
-</svg>
-<img alt="icon" class="nav-icon-img" src=""/>
-</button>
-</nav>
 <div class="screen" id="chat-room-screen">
 <header class="app-header" id="chat-room-header-default">
 <button class="back-btn" data-target="chat-list-screen">
@@ -2286,6 +2207,7 @@
 </div>
 <div class="screen" id="search-history-screen">
 <header class="search-header">
+<button class="back-btn search-screen-back-btn" data-target="home-screen" aria-label="返回" type="button">‹</button>
 <div class="search-input-wrapper">
 <svg fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="18">
 <circle cx="11" cy="11" r="8"></circle>
@@ -2394,7 +2316,7 @@
 <!-- 正则过滤管理界面 -->
 <div class="screen" id="regex-filter-manager-screen">
 <header class="app-header">
-<button class="back-btn" data-target="more-screen">‹</button>
+<button class="back-btn" data-target="home-screen">‹</button>
 <div class="title-container">
 <h1 class="title">正则过滤管理</h1>
 </div>
@@ -2471,7 +2393,7 @@
 </div>
 <div class="screen" id="cot-settings-screen">
 <header class="app-header">
-<button class="back-btn" data-target="more-screen">‹</button>
+<button class="back-btn" data-target="home-screen">‹</button>
 <div class="title-container">
 <h1 class="title">思维链(CoT)设置</h1>
 </div>
@@ -2573,7 +2495,7 @@
 </div>
 <div class="screen" id="status-bar-manager-screen">
 <header class="app-header">
-<button class="back-btn" data-target="more-screen">‹</button>
+<button class="back-btn" data-target="home-screen">‹</button>
 <div class="title-container">
 <h1 class="title">状态栏管理</h1>
 </div>
@@ -2648,7 +2570,7 @@
 </div>
 <div class="screen" id="my-profile-screen">
 <header class="app-header">
-<button class="back-btn" data-target="contacts-screen">‹</button>
+<button class="back-btn" data-target="settings-hub-screen">‹</button>
 <div class="title-container">
 <h1 class="title">我的档案</h1>
 </div>
@@ -2764,89 +2686,6 @@
 </div>
 <input accept="image/*" id="image-upload-input" multiple="" style="display:none;" type="file"/>
 <input accept="image/*" capture="environment" id="camera-upload-input" style="display:none;" type="file"/>
-<!-- Profile Card Modal -->
-<div class="modal-overlay" id="profile-card-modal">
-<div class="modal-window">
-<div class="pc-header" id="pc-header" title="点击更换背景图">
-<img class="pc-avatar" id="pc-avatar" src=""/>
-</div>
-<div class="pc-content">
-<div class="pc-name" id="pc-name">Character Name</div>
-<div class="pc-remark" id="pc-remark">@RemarkName</div>
-<div class="pc-stats-grid">
-<div class="pc-stat-item">
-<span class="pc-stat-value" id="pc-stat-msg-count">0</span>
-<span class="pc-stat-label">消息</span>
-</div>
-<div class="pc-stat-item pc-stat-token-wrap" id="pc-stat-token-click" title="点击查看 Token 分布">
-<span class="pc-stat-value" id="pc-stat-memory">0</span>
-<span class="pc-stat-label">Token</span>
-</div>
-<div class="pc-stat-item">
-<span class="pc-stat-value" id="pc-stat-last-chat">-</span>
-<span class="pc-stat-label">最近</span>
-</div>
-</div>
-<div class="pc-persona-box">
-<span class="pc-persona-label">人设档案</span>
-<span id="pc-persona-text">...</span>
-</div>
-<div class="pc-actions">
-<button class="pc-btn-primary" id="pc-message-btn">
-<svg fill="currentColor" height="20" viewbox="0 0 24 24" width="20">
-<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path>
-</svg>
-                            发消息
-                        </button>
-<!-- 预留更多操作按钮 -->
-<button class="pc-btn-secondary" id="pc-settings-btn" title="设置">
-<svg fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="20">
-<circle cx="12" cy="12" r="3"></circle>
-<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-</path>
-</svg>
-</button>
-</div>
-</div>
-</div>
-</div>
-<!-- 资料卡背景图更换弹窗 -->
-<div class="modal-overlay" id="pc-banner-modal">
-<div class="modal-window">
-<h3>更换卡片背景</h3>
-<form id="pc-banner-form">
-<div id="pc-banner-preview" style="width: 100%; height: 150px; border: 2px dashed #ddd; border-radius: 10px; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; color: #aaa; background-size: cover; background-position: center;">
-<span>预览</span>
-</div>
-<div class="form-group">
-<label for="pc-banner-url-input">图片URL</label>
-<input class="form-group" id="pc-banner-url-input" placeholder="粘贴图片URL" type="url"/>
-</div>
-<p style="text-align:center; color:#888; margin: -10px 0 15px;">或</p>
-<input accept="image/*" id="pc-banner-file-input" style="display:none;" type="file"/>
-<label class="btn btn-secondary" for="pc-banner-file-input" style="width:100%; margin-bottom: 10px;">从本地上传</label>
-<button class="btn btn-primary" style="margin-bottom: 8px;" type="submit">保存</button>
-<button class="btn btn-neutral" id="pc-banner-reset-btn" type="button">重置为默认</button>
-</form>
-</div>
-</div>
-<!-- Token 分布弹窗（点击角色资料卡 Token 打开） -->
-<div class="modal-overlay" id="token-distribution-modal">
-<div class="modal-window token-distribution-window">
-<h3 class="token-distribution-title">Token 分布</h3>
-<div class="token-chart-summary">
-<div id="token-chart-container"></div>
-<div class="token-total-row">
-<span class="token-total-label">合计</span>
-<strong class="token-total-value" id="token-distribution-total">0</strong>
-<span class="token-total-unit">Token</span>
-</div>
-</div>
-<div class="token-details-list" id="token-details-list"></div>
-<div class="token-detail-desc" id="token-detail-desc"></div>
-<button class="btn btn-neutral token-distribution-close" id="token-distribution-close-btn" type="button">关闭</button>
-</div>
-</div>
 <!-- Capture Result Modal -->
 <div class="modal-overlay" id="capture-result-modal">
 <div class="modal-window" style="max-width: 90%; width: 400px;">
@@ -5604,7 +5443,7 @@
 </div>
 <div class="screen" id="memory-table-screen">
 <header class="app-header">
-<button class="back-btn" data-target="more-screen">‹</button>
+<button class="back-btn" data-target="home-screen">‹</button>
 <div class="title-container"><h1 class="title">记忆</h1></div>
 <div class="action-btn-group">
 <button class="action-btn" id="memory-table-update-btn" title="整理当前表">
@@ -5900,7 +5739,7 @@
 <!-- 收藏列表界面 -->
 <div class="screen" id="favorites-screen">
 <header class="app-header">
-<button class="back-btn" data-target="more-screen">‹</button>
+<button class="back-btn" data-target="home-screen">‹</button>
 <div class="title-container">
 <h1 class="title">收藏</h1>
 </div>
@@ -6831,6 +6670,8 @@
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
 <script src="js/core/ui_components.js"></script>
+<script src="js/core/startup_runtime.js"></script>
+<script src="js/core/navigation_runtime.js"></script>
 <script src="js/app_registry.js"></script>
 <script src="js/features/apps/settings_hub.js"></script>
 <script src="js/features/apps/api_workspace.js"></script>
@@ -6845,7 +6686,7 @@
 <script src="js/modules/avatar_recognition.js"></script>
 <script src="js/modules/chat_ops.js"></script>
 <script src="js/chat.js"></script> <!-- 聊天核心入口 -->
-<script src="js/contacts.js"></script> <!-- 联系人：好友列表、名片 -->
+<script src="js/persona_profile.js"></script> <!-- 用户档案与角色资料卡 -->
 <!-- Settings feature controllers (V2.9-R5) -->
 <script src="js/features/settings/magic_room.js"></script>
 <script src="js/features/settings/api_controller.js"></script>

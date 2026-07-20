@@ -39,6 +39,7 @@
     const requestSummaryContent = MemoryApi.requestSummary;
 
     const uiState = {
+        hydratedChatId: null,
         workspace: 'memory',
         tab: 'tables',
         search: '',
@@ -53,24 +54,47 @@
         rangePreview: null
     };
 
-    function ensureMemoryTableState(chat) {
+    function ensureMemoryTableState(chat, options = {}) {
         ensureMemoryTableStateBase(chat);
-        if (chat && MemoryPolicy) {
+        if (!chat) return null;
+        if (MemoryPolicy) {
             const runtime = MemoryPolicy.ensureRuntimeState(chat);
-            uiState.viewMode = runtime.viewMode || 'normal';
-            uiState.activeTableId = runtime.activeTableId || null;
-            const normalizedWorkspace = MemoryWorkspace.normalizeState(runtime.workspace || uiState.workspace, runtime.workspaceView || uiState.tab);
-            uiState.workspace = normalizedWorkspace.workspace;
-            uiState.tab = normalizedWorkspace.view;
+            const shouldHydrateUi = options.forceUiHydration === true || uiState.hydratedChatId !== chat.id;
+            if (shouldHydrateUi) {
+                uiState.viewMode = runtime.viewMode || 'normal';
+                uiState.activeTableId = runtime.activeTableId || null;
+                const normalizedWorkspace = MemoryWorkspace.normalizeState(runtime.workspace || 'memory', runtime.workspaceView || 'tables');
+                Object.assign(uiState, { workspace: normalizedWorkspace.workspace, tab: normalizedWorkspace.view, hydratedChatId: chat.id });
+            }
+        } else if (uiState.hydratedChatId !== chat.id) {
+            Object.assign(uiState, { workspace: 'memory', tab: 'tables', hydratedChatId: chat.id });
         }
-    }
-
-    function getCurrentMemoryTableChat() {
-        const chat = getCurrentMemoryTableChatBase();
-        if (chat) ensureMemoryTableState(chat);
         return chat;
     }
+    function getCurrentMemoryTableChat(options = {}) {
+        const chat = getCurrentMemoryTableChatBase();
+        if (chat) ensureMemoryTableState(chat, options);
+        else uiState.hydratedChatId = null;
+        return chat;
+    }
+    function applyMemoryWorkspaceState(chat, workspace, view) {
+        const normalized = MemoryWorkspace.normalizeState(workspace, view || '');
+        uiState.workspace = normalized.workspace;
+        uiState.tab = normalized.view;
+        if (chat && MemoryPolicy) Object.assign(MemoryPolicy.ensureRuntimeState(chat), {
+            workspace: normalized.workspace, workspaceView: normalized.view
+        });
+        return normalized;
+    }
 
+    function selectMemoryWorkspace(workspace, view) {
+        // 先解析/水合当前角色，再提交目标工作区。反过来会被旧运行态覆盖。
+        const chat = getCurrentMemoryTableChat();
+        const normalized = applyMemoryWorkspaceState(chat, workspace, view);
+        renderMemoryTableScreen();
+        return normalized;
+    }
+    const selectMemoryView = (chat, view) => applyMemoryWorkspaceState(chat, MemoryWorkspace.getWorkspaceForView(view), view);
     function getVisibleFieldItems(chat) {
         const keyword = uiState.search.trim().toLowerCase();
         const templates = getBoundTemplates(chat);
@@ -386,10 +410,13 @@
         if (!content || !summary || !modePill || !empty) return;
 
         if (!chat) {
-            summary.textContent = '请先进入一个私聊角色。';
+            summary.textContent = '请选择一个角色查看记忆。';
             modePill.textContent = '未选择角色';
-            content.innerHTML = '';
-            empty.style.display = 'block';
+            content.innerHTML = `<div class="memory-workbench-overview memory-character-empty">
+                <div class="memory-workbench-overview-head"><div><h2>角色记忆</h2><p>记忆、待处理和管理内容都属于具体角色。</p></div></div>
+                <button type="button" class="btn btn-primary" data-memory-pick-character>选择角色</button>
+            </div>`;
+            empty.style.display = 'none';
             if (updateBtn) updateBtn.disabled = true;
             if (fromJournalBtn) fromJournalBtn.disabled = true;
             if (toJournalBtn) toJournalBtn.disabled = true;
@@ -1614,7 +1641,7 @@
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         const block = await prepareMemoryTableContext(chat, { preview: true });
         await saveCharacter(chat.id);
-        uiState.tab = 'retrieval';
+        selectMemoryView(chat, 'retrieval');
         renderMemoryTableScreen();
         return block;
     }
@@ -1986,7 +2013,7 @@ ${historyText}`;
                 }
                 chat.memoryTables.autoUpdateState = 'idle';
                 await saveCharacter(chat.id);
-                if (!options.isAutoUpdate) uiState.tab = 'review';
+                if (!options.isAutoUpdate) selectMemoryView(chat, 'review');
                 if (!options.skipRender) renderMemoryTableScreen();
                 if (!options.suppressSuccessToast) showToast(`已生成 ${queued.proposals.length} 项更新草案，等待审核`);
                 return { status: 'pending_review', changedFields: [], batchId: queued.id, proposedCount: queued.proposals.length };
@@ -2252,8 +2279,7 @@ ${historyText}`;
         const processed = await processMemoryTaskQueue(chat, { taskId: queued.task.id, maxTasks: 1, force: true, ignoreRoundLimit: true, skipRender: true });
         const entry = processed.results?.[0];
         const result = entry?.result || entry?.task?.result || { status: entry?.task?.status || 'queued', changedFields: [] };
-        if (entry?.task?.status === 'waiting_review') uiState.tab = 'review';
-        else uiState.tab = 'tasks';
+        selectMemoryView(chat, entry?.task?.status === 'waiting_review' ? 'review' : 'tasks');
         renderMemoryTableScreen();
         if (queued.deduped) showToast(`${table.name} 的同范围任务已存在，未重复提交`);
         else if (entry?.task?.status === 'waiting_review') showToast(`${table.name} 已生成审核草案`);
@@ -2344,7 +2370,7 @@ ${historyText}`;
         await saveCharacter(chat.id);
         const processed = await processMemoryTaskQueue(chat, { taskId: queued.task.id, maxTasks: 1, force: true, ignoreRoundLimit: true, skipRender: true });
         const task = processed.results?.[0]?.task || queued.task;
-        uiState.tab = task.status === 'waiting_review' ? 'review' : 'tasks';
+        selectMemoryView(chat, task.status === 'waiting_review' ? 'review' : 'tasks');
         renderMemoryTableScreen();
         if (queued.deduped) showToast('同一范围的总结任务已存在，未重复提交');
         else if (task.status === 'waiting_review') showToast('已生成更新草案，等待审核');
@@ -2767,7 +2793,7 @@ ${tableContext}`;
         });
         if (MemoryTasks) MemoryTasks.resolveReviewBatch(chat, batchId, options.rejectAll ? 'rejected' : 'applied');
         await saveCharacter(chat.id);
-        uiState.tab = 'review';
+        selectMemoryView(chat, 'review');
         renderMemoryTableScreen();
         showToast(options.rejectAll ? '已拒绝整批建议并推进游标' : `已应用 ${changedFields.length} 项审核结果`);
         return { status: options.rejectAll ? 'rejected' : 'applied', changedFields };
@@ -3596,8 +3622,41 @@ ${tableContext}`;
         renderMemoryTableScreen();
     }
 
+    function bindMemoryWorkspaceNavigation(screen) {
+        if (!screen || screen.dataset.memoryWorkspaceNavigationBound === '1') return;
+        screen.dataset.memoryWorkspaceNavigationBound = '1';
+        screen.addEventListener('click', event => {
+            const workspaceTab = event.target.closest('.memory-workspace-tab-btn[data-workspace]');
+            if (workspaceTab) {
+                event.preventDefault();
+                selectMemoryWorkspace(workspaceTab.dataset.workspace, '');
+                return;
+            }
+            const pickCharacter = event.target.closest('[data-memory-pick-character]');
+            if (pickCharacter) {
+                event.preventDefault();
+                window.OvoAppRegistry?.pickCharacter?.('选择角色记忆', character => {
+                    if (!character) return;
+                    selectMemoryWorkspace('memory', 'tables');
+                    if (typeof switchScreen === 'function') switchScreen('memory-table-screen', { replace: true });
+                });
+                return;
+            }
+            const workbenchView = event.target.closest('[data-workbench-view]');
+            if (workbenchView) {
+                const view = workbenchView.dataset.workbenchView;
+                selectMemoryWorkspace(MemoryWorkspace.getWorkspaceForView(view), view);
+                return;
+            }
+            const workbenchBack = event.target.closest('[data-workbench-back]');
+            if (workbenchBack) selectMemoryWorkspace(workbenchBack.dataset.workbenchBack, '');
+        });
+    }
+
     function setupMemoryTableScreen() {
         ensureMemoryTemplateStore();
+        const screen = document.getElementById('memory-table-screen');
+        bindMemoryWorkspaceNavigation(screen);
 
         const searchInput = document.getElementById('memory-table-search-input');
         if (searchInput) {
@@ -3618,18 +3677,8 @@ ${tableContext}`;
         const tabButtons = document.querySelectorAll('.memory-table-tab-btn');
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
-                uiState.tab = button.dataset.tab || 'tables';
-                uiState.workspace = MemoryWorkspace.getWorkspaceForView(uiState.tab);
-                renderMemoryTableScreen();
-            });
-        });
-
-        document.querySelectorAll('.memory-workspace-tab-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const normalized = MemoryWorkspace.normalizeState(button.dataset.workspace, '');
-                uiState.workspace = normalized.workspace;
-                uiState.tab = normalized.view;
-                renderMemoryTableScreen();
+                const view = button.dataset.tab || 'tables';
+                selectMemoryWorkspace(MemoryWorkspace.getWorkspaceForView(view), view);
             });
         });
 
@@ -3849,34 +3898,8 @@ ${tableContext}`;
             });
         });
 
-        const screen = document.getElementById('memory-table-screen');
         if (screen) {
             screen.addEventListener('click', async (event) => {
-                const workbenchView = event.target.closest('[data-workbench-view]');
-                if (workbenchView) {
-                    const view = workbenchView.dataset.workbenchView;
-                    if (view === 'manage_settings') {
-                        uiState.workspace = 'memory';
-                        uiState.tab = 'tables';
-                        renderMemoryTableScreen();
-                        const details = document.getElementById('memory-workbench-advanced-settings');
-                        if (details) details.open = true;
-                        document.getElementById('memory-workbench-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        return;
-                    }
-                    uiState.tab = view;
-                    uiState.workspace = MemoryWorkspace.getWorkspaceForView(view);
-                    renderMemoryTableScreen();
-                    return;
-                }
-                const workbenchBack = event.target.closest('[data-workbench-back]');
-                if (workbenchBack) {
-                    const normalized = MemoryWorkspace.normalizeState(workbenchBack.dataset.workbenchBack, '');
-                    uiState.workspace = normalized.workspace;
-                    uiState.tab = normalized.view;
-                    renderMemoryTableScreen();
-                    return;
-                }
                 const feedbackEl = event.target.closest('[data-feedback-action]');
                 if (feedbackEl && MemoryFeedback) {
                     const chat = getCurrentMemoryTableChat();
@@ -3921,7 +3944,7 @@ ${tableContext}`;
                             run = await MemoryQuality.runSuite(chat);
                             await saveCharacter(chat.id);
                         }
-                        uiState.tab = 'quality';
+                        selectMemoryView(chat, 'quality');
                         renderMemoryTableScreen();
                         showToast(run ? `质量测试完成：${run.summary.score} 分` : '质量测试已完成');
                     } catch (error) {
@@ -4027,7 +4050,7 @@ ${tableContext}`;
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryReview) return;
                     MemoryReview.setActiveBatch(chat, actionEl.dataset.batchId || null);
-                    uiState.tab = 'review';
+                    selectMemoryView(chat, 'review');
                     renderMemoryTableScreen();
                 } else if (action === 'retrieval-rebuild') {
                     const chat = getCurrentMemoryTableChat();
@@ -4601,9 +4624,7 @@ ${text}`;
     }
 
     function openMemoryFeedbackTab() {
-        uiState.workspace = 'inbox';
-        uiState.tab = 'feedback';
-        renderMemoryTableScreen();
+        selectMemoryWorkspace('inbox', 'feedback');
         if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
     }
 
@@ -4615,10 +4636,7 @@ ${text}`;
         renderScreen: renderMemoryTableScreen,
         openFeedback: openMemoryFeedbackTab,
         openWorkspace(workspace, view) {
-            const normalized = MemoryWorkspace.normalizeState(workspace, view);
-            uiState.workspace = normalized.workspace;
-            uiState.tab = normalized.view;
-            renderMemoryTableScreen();
+            return selectMemoryWorkspace(workspace, view);
         },
         getContext: getMemoryContextBlock,
         prepareContext: prepareMemoryTableContext,

@@ -13,7 +13,8 @@ const scheduleUi = read('js/modules/memory_table_schedule.js');
 const workspace = read('js/features/memory/workspace.js');
 
 assert(registry.includes("['chat', 'api', 'memory', 'settings']"), 'dock replacement missing');
-assert(registry.includes("appIds: ['appearance', 'data', 'settings']"), 'API should be removed from launcher system section');
+assert(registry.includes("const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data'])"), 'flat phone home app list missing');
+assert(!registry.includes("id: 'characters'") && !registry.includes("id: 'contacts'"), 'retired duplicate chat entries remain');
 assert(html.includes('js/modules/message_content.js'), 'message content parser is not loaded');
 assert(favorites.includes('FavoriteMessageContent.snapshot'), 'favorites do not use shared message parser');
 assert(html.includes('memory-table-auto-schedule-list'), 'memory schedule list missing');
@@ -21,7 +22,6 @@ assert(html.includes('js/modules/memory_table_schedule.js'), 'memory schedule mo
 assert(scheduleUi.includes("Kernel.register('schedule'"), 'memory schedule module is not registered');
 assert(html.includes('id="memory-workbench-advanced-settings" open'), 'memory update panel should be directly visible');
 assert(memoryController.includes("settingsPanel.hidden = uiState.workspace !== 'memory'"), 'update settings were not moved to memory workspace');
-assert(!workspace.includes("['manage_settings', '更新与整理'"), 'manage workspace still owns update settings');
 
 const parserContext = { window: null };
 parserContext.window = parserContext;

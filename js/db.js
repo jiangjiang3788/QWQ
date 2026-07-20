@@ -1304,3 +1304,27 @@ const dataStorage = {
         };
     }
 };
+
+// === 启动契约导出 ===
+// 顶层 const/let 在经典脚本中不会成为 window 属性，不能依赖字符串从 window 查找。
+// 数据层在自身作用域内显式注册核心任务，startup_runtime.js 加载后会接管该注册表。
+const coreDataStartupTasks = Object.freeze({ initDatabase, loadData });
+if (window.OvoStartupRuntime && typeof window.OvoStartupRuntime.registerMany === 'function') {
+    window.OvoStartupRuntime.registerMany(coreDataStartupTasks);
+} else {
+    window.__OCTOPUS_STARTUP_TASKS__ = Object.assign(
+        {},
+        window.__OCTOPUS_STARTUP_TASKS__ || {},
+        coreDataStartupTasks
+    );
+}
+window.OvoDataRuntime = Object.freeze({
+    initDatabase,
+    loadData,
+    saveData,
+    saveCharacter,
+    saveGroup,
+    saveGlobalSettings,
+    dataStorage
+});
+

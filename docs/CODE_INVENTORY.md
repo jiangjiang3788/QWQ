@@ -58,7 +58,7 @@
 - 角色资料、聊天、行为、媒体和扩展拆到 `js/features/settings/character/`。
 - `OvoCharacterSettings.health()` 提供注册和初始化健康检查。
 
-## V2.9-R6 体验与记忆调度边界
+## V2.9-R7 体验与记忆调度边界
 
 - `js/app_registry.js` 的 `dockAppIds` 是 Dock 顺序的唯一配置源。
 - `js/modules/message_content.js` 是消息格式与列表预览的共享解析层。
@@ -66,3 +66,29 @@
 - `memory_table_policy.js` 只负责自动化通道、有效策略、轮次和游标，不操作 DOM。
 - `memory_table.js` 展示表级通道和运行状态；“更新与整理”属于记忆页。
 - 本版不修改 V2.8 记忆模板行数据和 IndexedDB schema。
+
+
+## V2.9-R8 启动契约边界
+
+- `js/core/startup_runtime.js`：任务注册、解析、预检、隔离与报告。
+- `js/db.js`：显式导出 `initDatabase`、`loadData` 核心启动任务。
+- `js/main.js`：只负责编排，不再推断函数的全局暴露方式。
+
+
+## V2.9-R9
+- 统一导航栈与返回按钮契约。
+- 删除角色 App、联系人 App、旧全局底栏入口；聊天仅保留桌面 Dock 入口。
+- 首页改为跨桌面与手机一致的四列手机桌面网格。
+
+
+## V2.9-R10
+
+- `js/app_registry.js`：角色工作区最近选择、dialog 能力适配、记忆入口恢复。
+- `js/modules/memory_table.js`：统一 `selectMemoryWorkspace()` 状态迁移。
+- `js/modules/search.js`：独立启动任务和导航栈返回。
+- `tests/run_v29_r10_memory_search_checks.js`：旧 WebView 角色选择与搜索导航专项回归。
+
+## V2.9-R11
+
+- `js/modules/memory_table.js`：拆分角色 UI 水合与工作区状态提交，统一全部工作区路由。
+- `tests/run_v29_r11_memory_workspace_state_checks.js`：执行真实控制器，覆盖待处理、管理、反馈和角色切换状态回归。
