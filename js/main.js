@@ -140,6 +140,12 @@ const init = async () => {
         await StartupRuntime.call(initializerName, [], { optional: true, critical: false });
     }
 
+    StartupRuntime.defer('resume-memory-task-queues', () => {
+        if (typeof window.resumeQueuedMemoryTasks === 'function') {
+            return window.resumeQueuedMemoryTasks().catch(error => console.warn('[MemoryTable] 全局任务恢复失败:', error));
+        }
+    }, 300);
+
     await StartupRuntime.run('memory-sidecar-ui', () => {
         if (window.MemoryTableSidecar && typeof window.MemoryTableSidecar.bindUi === 'function') {
             window.MemoryTableSidecar.bindUi();
@@ -188,6 +194,21 @@ const init = async () => {
     if (typeof window.checkAndRequestPersistence === 'function') {
         StartupRuntime.defer('request-persistent-storage', window.checkAndRequestPersistence, 2000);
     }
+
+    await StartupRuntime.run('active-ai-task-leave-guard', () => {
+        window.addEventListener('beforeunload', event => {
+            const queue = window.OVOAIRequestRuntime?.getQueueState?.() || { active: 0, queued: 0 };
+            const chatTasks = window.OVOChatReplyTasks?.list?.() || [];
+            const memoryRuntime = window.MemoryTableTasks?.getRuntimeState?.() || { running: 0 };
+            const hasActiveTask = Number(queue.active) > 0
+                || Number(queue.queued) > 0
+                || chatTasks.length > 0
+                || Number(memoryRuntime.running) > 0;
+            if (!hasActiveTask) return;
+            event.preventDefault();
+            event.returnValue = 'AI 或记忆任务仍在运行。留在当前页面可继续完成；关闭或刷新会中断网络请求。';
+        });
+    });
 
     await StartupRuntime.run('save-in-flight-guard', () => {
         if (typeof window.saveData !== 'function' || window.saveData.__ovoSaveGuard) return;

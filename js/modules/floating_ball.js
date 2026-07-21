@@ -1,4 +1,4 @@
-// QuickDock · V2.10-R3.2：结构化档案基础注入与长期记忆分层显示。
+// QuickDock · V2.10-R3.3：全屏操作中心、后台任务稳定性与记忆请求核验。
 (() => {
     'use strict';
 
@@ -461,6 +461,23 @@
         }).join('')}${entries.length > 100 ? `<p class="quick-dock-truncation-note">本次变化超过 100 条，界面只展示最近 100 条；操作摘要仍保留总数。</p>` : ''}</div>`;
     }
 
+    function renderMemoryPayloadAudit(operation) {
+        const audit = operation?.memoryPayloadAudit;
+        if (!audit || typeof audit !== 'object') {
+            return '<p class="quick-dock-operation-muted">该历史记录没有最终请求级记忆核验。新发送的私聊会在模型请求形成后进行核验。</p>';
+        }
+        const item = (title, sent, chars, detail) => `<div class="${sent ? 'is-sent' : 'is-missing'}"><b>${escapeHtml(title)}</b><span>${sent ? `已进入同一次模型请求 · ${escapeHtml(chars || 0)} 字符` : escapeHtml(detail || '本次没有发送')}</span></div>`;
+        const archiveDetail = audit.structuredArchiveExpected
+            ? '已启用档案但最终请求未检测到内容'
+            : '该角色未启用或未绑定结构化档案';
+        return `<div class="quick-dock-memory-audit">
+            ${item('结构化档案', !!audit.structuredArchiveSent, audit.structuredArchiveChars, archiveDetail)}
+            ${item('向量记忆补充', !!audit.vectorSent, audit.vectorChars, '本次没有可用向量结果或未选择向量补充')}
+            ${item('回忆日记补充', !!audit.journalSent, audit.journalChars, '本次没有收藏日记或未选择日记补充')}
+            ${item('实时状态与待办', !!audit.liveContextSent, audit.liveContextChars, '本次没有实时状态或待办')}
+        </div><p class="quick-dock-memory-audit-note">核验位置：Provider 请求体完成后、实际网络调用前。以上内容与聊天消息属于同一次主请求，不是额外的记忆请求。${audit.guardApplied ? '本次检测到模板遗漏，已在最终请求体中自动补入结构化档案。' : ''}</p>`;
+    }
+
     function renderOperationCard(operation, options = {}) {
         if (!operation) return '<div class="quick-dock-operation-empty">还没有操作记录。发送消息、生成小剧场或更新结构化档案后，这里会显示完整进度。</div>';
         const meta = operationStatusMeta(operation.status);
@@ -533,8 +550,8 @@
         const currentApi = getCurrentApi();
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>AI 操作中心</strong><span>V2.10-R3.2 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
-                <button type="button" class="quick-dock-icon-btn" data-qd-action="close" aria-label="关闭">×</button>
+                <div><strong>AI 操作中心</strong><span>V2.10-R3.3 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
+                <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="close" aria-label="返回页面">‹</button>
             </header>
             <section class="quick-dock-operation-current">
                 <div class="quick-dock-section-title"><b>${active.length ? '当前操作' : '最近一次操作'}</b><small>${escapeHtml(currentApi.provider)} · ${escapeHtml(currentApi.model)}</small></div>
@@ -601,8 +618,7 @@
             <header class="quick-dock-panel-header">
                 <div><strong>${escapeHtml(operation.icon || '✨')} ${escapeHtml(operation.title)}</strong><span>${escapeHtml(operation.category || '其他')} · ${escapeHtml(formatOperationTime(operation.createdAt))}</span></div>
                 <div class="quick-dock-header-actions">
-                    <button type="button" class="quick-dock-icon-btn quick-dock-fullscreen-btn" data-qd-action="toggle-detail-fullscreen" aria-label="切换大窗口">⛶</button>
-                    <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
+                    <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="main" aria-label="返回操作中心">‹</button>
                 </div>
             </header>
             <section class="quick-dock-operation-detail-head" data-operation-status="${escapeHtml(meta.className)}">
@@ -623,6 +639,10 @@
             <section class="quick-dock-detail-section quick-dock-mutation-section">
                 <h4>数据变化 <small>${escapeHtml(operation?.mutationSummary?.total || 0)} 项${operation?.mutationSummary?.descendant ? ` · 含后台 ${escapeHtml(operation.mutationSummary.descendant)} 项` : ''}</small></h4>
                 ${renderOperationMutations(operation)}
+            </section>
+            <section class="quick-dock-detail-section quick-dock-memory-audit-section">
+                <h4>本次聊天记忆核验 <small>最终请求体</small></h4>
+                ${renderMemoryPayloadAudit(operation)}
             </section>
             <section class="quick-dock-detail-section quick-dock-request-section">
                 <h4>模型请求（实际网络调用） <small>${requests.length} 次</small></h4>
@@ -696,14 +716,13 @@
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
                 <div><strong>控制台</strong><span>仅捕获 OVO 页面自身日志</span></div>
-                <button type="button" class="quick-dock-icon-btn" data-qd-action="close">×</button>
+                <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="main" aria-label="返回操作中心">‹</button>
             </header>
             <div class="quick-dock-console-toolbar">
                 <select id="quick-dock-console-filter"><option value="all">全部</option><option value="error">错误</option><option value="warn">警告</option><option value="info">信息</option><option value="log">日志</option></select>
                 <button type="button" data-qd-action="copy-console">复制全部</button>
                 <button type="button" data-qd-action="clear-console">清空</button>
-                <button type="button" data-qd-action="toggle-fullscreen">全屏</button>
-                <button type="button" data-qd-action="main">返回</button>
+                <button type="button" data-qd-action="main">返回操作中心</button>
             </div>
             <div id="quick-dock-console-rows" class="quick-dock-console-rows"></div>`;
         panelEl.querySelector('#quick-dock-console-filter').addEventListener('change', renderConsoleRows);
@@ -715,6 +734,8 @@
         rootEl.classList.toggle('quick-dock--open', state.open);
         panelEl.hidden = !state.open;
         panelEl.classList.toggle('quick-dock-panel--console', state.panel === 'console');
+        panelEl.classList.toggle('quick-dock-panel--app-fullscreen', state.open);
+        document.body.classList.toggle('quick-dock-body-open', state.open);
         if (state.panel !== 'operation') panelEl.classList.remove('quick-dock-panel--detail-fullscreen');
         if (!state.open) return;
         refreshOperationBall();
@@ -730,10 +751,6 @@
         if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
         if (action === 'open-tools') { state.panel = 'tools'; render(); return; }
-        if (action === 'toggle-detail-fullscreen') {
-            panelEl.classList.toggle('quick-dock-panel--detail-fullscreen');
-            return;
-        }
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
             state.panel = 'operation';

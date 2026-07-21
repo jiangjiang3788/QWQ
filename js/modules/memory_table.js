@@ -3943,6 +3943,13 @@ ${tableContext}`;
                         showToast(`已清理 ${count} 个已反馈快照`);
                         return;
                     }
+                    if (feedbackAction === 'clear-expired-rounds') {
+                        const count = MemoryFeedback.clearExpiredRounds(chat);
+                        await saveCharacter(chat.id);
+                        renderMemoryTableScreen();
+                        showToast(`已清理 ${count} 个过期反馈请求`);
+                        return;
+                    }
                     if (feedbackAction === 'forget' && !window.confirm('这会停止使用并归档该条记忆。确定继续吗？')) return;
                     const result = MemoryFeedback.applyAction(chat, feedbackEl.dataset.snapshotId, feedbackEl.dataset.feedbackItemId, feedbackAction);
                     if (result.changed) await saveCharacter(chat.id);
@@ -4691,6 +4698,30 @@ ${text}`;
         });
     }
 
+
+    let resumeQueuedMemoryTasksPromise = null;
+    async function resumeQueuedMemoryTasks(options = {}) {
+        if (!MemoryTasks) return { chats: 0, processed: 0 };
+        if (resumeQueuedMemoryTasksPromise && !options.force) return resumeQueuedMemoryTasksPromise;
+        resumeQueuedMemoryTasksPromise = (async () => {
+            let chats = 0, processed = 0;
+            for (const chat of (db.characters || [])) {
+                ensureMemoryTableState(chat);
+                const taskState = MemoryTasks.ensureState(chat);
+                const hasRunnable = taskState.settings.autoResume && !taskState.settings.paused
+                    && taskState.tasks.some(item => item.status === 'queued' && (!item.nextRetryAt || item.nextRetryAt <= Date.now()));
+                if (!hasRunnable) continue;
+                chats += 1;
+                const result = await processMemoryTaskQueue(chat, { skipRender: true, maxTasks: taskState.settings.maxTasksPerCycle });
+                processed += Number(result?.processed) || 0;
+            }
+            return { chats, processed };
+        })();
+        try { return await resumeQueuedMemoryTasksPromise; }
+        finally { resumeQueuedMemoryTasksPromise = null; }
+    }
+    window.resumeQueuedMemoryTasks = resumeQueuedMemoryTasks;
+
     function openMemoryFeedbackTab() {
         selectMemoryWorkspace('inbox', 'feedback');
         if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
@@ -4711,6 +4742,7 @@ ${text}`;
         exportContext: exportMemoryTableContext,
         getBoundTemplateIds: getBoundMemoryTableTemplateIds,
         convertText: convertTextToMemoryTable,
-        checkAutoUpdate: checkAndTriggerAutoTableUpdate
+        checkAutoUpdate: checkAndTriggerAutoTableUpdate,
+        resumeQueues: resumeQueuedMemoryTasks
     });
 })();

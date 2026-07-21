@@ -21,7 +21,10 @@
         scenePenaltyStep: 0.05,
         maxPositiveWeight: 0.24,
         maxNegativeWeight: -0.45,
-        archiveOnForget: true
+        archiveOnForget: true,
+        pendingFeedbackTtlDays: 7,
+        maxVisibleRounds: 12,
+        maxPendingFeedbackRounds: 3
     });
 
     function normalizeSettings(raw) {
@@ -36,7 +39,10 @@
             scenePenaltyStep: clamp(source.scenePenaltyStep, DEFAULT_SETTINGS.scenePenaltyStep, 0, 0.25),
             maxPositiveWeight: clamp(source.maxPositiveWeight, DEFAULT_SETTINGS.maxPositiveWeight, 0, 0.6),
             maxNegativeWeight: clamp(source.maxNegativeWeight, DEFAULT_SETTINGS.maxNegativeWeight, -0.9, 0),
-            archiveOnForget: source.archiveOnForget !== false
+            archiveOnForget: source.archiveOnForget !== false,
+            pendingFeedbackTtlDays: Math.round(clamp(source.pendingFeedbackTtlDays, DEFAULT_SETTINGS.pendingFeedbackTtlDays, 1, 90)),
+            maxVisibleRounds: Math.round(clamp(source.maxVisibleRounds, DEFAULT_SETTINGS.maxVisibleRounds, 3, 60)),
+            maxPendingFeedbackRounds: Math.round(clamp(source.maxPendingFeedbackRounds, DEFAULT_SETTINGS.maxPendingFeedbackRounds, 1, 10))
         };
     }
 
@@ -77,6 +83,43 @@
         return row.meta.feedback;
     }
 
+
+    function expireStaleSnapshots(state, nowValue = Date.now()) {
+        if (!state?.settings || !Array.isArray(state.rounds)) return 0;
+        const ttlMs = Math.max(1, Number(state.settings.pendingFeedbackTtlDays) || DEFAULT_SETTINGS.pendingFeedbackTtlDays) * 86400000;
+        const preparedTtlMs = 2 * 60 * 60 * 1000;
+        const completedOpen = state.rounds
+            .filter(snapshot => snapshot?.status === 'open' && snapshot.requestStatus === 'completed')
+            .sort((a, b) => (Number(b.completedAt || b.createdAt) || 0) - (Number(a.completedAt || a.createdAt) || 0));
+        const keepIds = new Set(completedOpen.slice(0, state.settings.maxPendingFeedbackRounds).map(snapshot => snapshot.id));
+        let expired = 0;
+        state.rounds.forEach(snapshot => {
+            if (!snapshot || snapshot.status !== 'open') return;
+            const createdAt = Number(snapshot.createdAt) || 0;
+            let reason = '';
+            if (snapshot.requestStatus === 'prepared' && createdAt && nowValue - createdAt >= preparedTtlMs) {
+                reason = '请求未完成且已超过 2 小时';
+                snapshot.requestStatus = 'abandoned';
+            } else if (snapshot.requestStatus === 'completed' && !keepIds.has(snapshot.id)) {
+                reason = `只保留最近 ${state.settings.maxPendingFeedbackRounds} 轮可反馈`;
+            } else if (snapshot.requestStatus === 'completed' && createdAt && nowValue - createdAt >= ttlMs) {
+                reason = `已超过 ${state.settings.pendingFeedbackTtlDays} 天有效期`;
+            }
+            if (!reason) return;
+            snapshot.status = 'expired';
+            snapshot.expiredAt = nowValue;
+            snapshot.expiredReason = reason;
+            (snapshot.items || []).forEach(item => {
+                if (item.feedback === 'pending') {
+                    item.feedback = 'expired';
+                    item.feedbackAt = nowValue;
+                }
+            });
+            expired += 1;
+        });
+        return expired;
+    }
+
     function ensureState(chat) {
         if (!chat) return null;
         chat.memoryTables ||= {};
@@ -87,6 +130,7 @@
         state.rounds = Array.isArray(state.rounds) ? state.rounds : [];
         state.events = Array.isArray(state.events) ? state.events : [];
         state.stats = state.stats && typeof state.stats === 'object' ? state.stats : {};
+        expireStaleSnapshots(state);
         state.rounds = state.rounds.slice(-state.settings.maxRoundSnapshots);
         state.events = state.events.slice(-state.settings.maxEvents);
         state.stats.helpful = Math.max(0, Number(state.stats.helpful) || 0);
@@ -428,7 +472,7 @@
 
     function getPendingCount(chat) {
         const state = ensureState(chat);
-        const latest = [...(state?.rounds || [])].reverse().find(item => item.requestStatus === 'completed');
+        const latest = [...(state?.rounds || [])].reverse().find(item => item.requestStatus === 'completed' && item.status === 'open');
         return latest ? (latest.items || []).filter(item => item.feedback === 'pending').length : 0;
     }
 
@@ -439,14 +483,16 @@
         return {
             rounds: rows.length,
             pending: allItems.filter(item => item.feedback === 'pending').length,
-            reviewed: allItems.filter(item => item.feedback !== 'pending').length,
+            reviewed: allItems.filter(item => item.feedback !== 'pending' && item.feedback !== 'expired').length,
+            expired: allItems.filter(item => item.feedback === 'expired').length,
+            expiredRounds: rows.filter(item => item.status === 'expired').length,
             ...state.stats
         };
     }
 
     function feedbackLabel(action) {
         return ({
-            pending: '待反馈', helpful: '有帮助', irrelevant: '无关', outdated: '已过时', inaccurate: '不准确',
+            pending: '待反馈', expired: '反馈已过期', helpful: '有帮助', irrelevant: '无关', outdated: '已过时', inaccurate: '不准确',
             block_scene: '禁用当前场景', no_proactive: '不主动提及', pause: '已暂停', forget: '已忘记', reset_feedback: '已重置'
         })[action] || action;
     }
@@ -477,11 +523,13 @@
     function renderView(chat) {
         const state = ensureState(chat);
         const stats = getStats(chat);
-        const rounds = [...(state?.rounds || [])].filter(item => item.requestStatus !== 'prepared').sort((a, b) => b.createdAt - a.createdAt);
+        const completedRounds = [...(state?.rounds || [])].filter(item => item.requestStatus !== 'prepared').sort((a, b) => b.createdAt - a.createdAt);
+        const expiredRounds = completedRounds.filter(item => item.status === 'expired');
+        const rounds = completedRounds.filter(item => item.status !== 'expired').slice(0, state.settings.maxVisibleRounds);
         return `<div class="memory-feedback-page">
             <div class="memory-feedback-head">
                 <div><h2>记忆使用反馈</h2><p>查看真正进入聊天 Prompt 的记忆，并把你的反馈直接用于后续召回、冷却、时效和场景策略。</p></div>
-                <div class="memory-feedback-toolbar"><button class="btn btn-small btn-secondary" data-feedback-action="undo-last">撤销最近反馈</button><button class="btn btn-small btn-neutral" data-feedback-action="clear-reviewed-rounds">清理已反馈快照</button></div>
+                <div class="memory-feedback-toolbar"><button class="btn btn-small btn-secondary" data-feedback-action="undo-last">撤销最近反馈</button><button class="btn btn-small btn-neutral" data-feedback-action="clear-reviewed-rounds">清理已反馈</button>${expiredRounds.length ? `<button class="btn btn-small btn-neutral" data-feedback-action="clear-expired-rounds">清理过期反馈（${expiredRounds.length}）</button>` : ''}</div>
             </div>
             <div class="memory-feedback-summary">
                 <div><b>使用轮次</b><span>${stats.rounds}</span></div><div><b>待反馈</b><span>${stats.pending}</span></div><div><b>有帮助</b><span>${stats.helpful}</span></div><div><b>无关</b><span>${stats.irrelevant}</span></div><div><b>过时 / 不准确</b><span>${stats.outdated} / ${stats.inaccurate}</span></div><div><b>场景禁用</b><span>${stats.sceneBlocked}</span></div>
@@ -490,8 +538,12 @@
                 <label><span>无关后冷却轮数</span><input type="number" min="0" max="200" data-feedback-setting="irrelevantCooldownRounds" value="${state.settings.irrelevantCooldownRounds}"></label>
                 <label><span>有用加权</span><input type="number" min="0" max="0.3" step="0.01" data-feedback-setting="helpfulBoost" value="${state.settings.helpfulBoost}"></label>
                 <label><span>无关降权</span><input type="number" min="0" max="0.5" step="0.01" data-feedback-setting="irrelevantPenalty" value="${state.settings.irrelevantPenalty}"></label>
+                <label><span>待反馈有效天数</span><input type="number" min="1" max="90" data-feedback-setting="pendingFeedbackTtlDays" value="${state.settings.pendingFeedbackTtlDays}"></label>
+                <label><span>最多待反馈轮次</span><input type="number" min="1" max="10" data-feedback-setting="maxPendingFeedbackRounds" value="${state.settings.maxPendingFeedbackRounds}"></label>
+                <label><span>页面显示轮次</span><input type="number" min="3" max="60" data-feedback-setting="maxVisibleRounds" value="${state.settings.maxVisibleRounds}"></label>
                 <label><span>保留使用快照</span><input type="number" min="5" max="300" data-feedback-setting="maxRoundSnapshots" value="${state.settings.maxRoundSnapshots}"></label>
             </div>
+            ${expiredRounds.length ? `<div class="memory-feedback-expired-note">已自动收起 ${expiredRounds.length} 个失效反馈请求（过旧、已有更新轮次或请求未完成）。它们不会再计入待处理，也不会影响原记忆内容。</div>` : ''}
             ${rounds.length ? rounds.map((snapshot, roundIndex) => `<section class="memory-feedback-round">
                 <div class="memory-feedback-round-head"><div><h3>${roundIndex === 0 ? '最近一轮' : `历史轮次 ${roundIndex + 1}`}</h3><span>${new Date(snapshot.createdAt).toLocaleString()} · ${escapeHtml(snapshot.actualMode || '')} · ${(snapshot.items || []).length} 条</span></div><span>${snapshot.status === 'reviewed' ? '已反馈' : '待反馈'}</span></div>
                 <details ${roundIndex === 0 ? 'open' : ''}><summary>检索上下文：${escapeHtml((snapshot.queryContext?.topic || []).join('、') || '未识别主题')} · ${escapeHtml((snapshot.queryContext?.scene || []).join('、') || '日常聊天')}</summary><pre>${escapeHtml(snapshot.queryText || '')}</pre></details>
@@ -512,6 +564,13 @@
         const state = ensureState(chat);
         const before = state.rounds.length;
         state.rounds = state.rounds.filter(item => item.status !== 'reviewed');
+        return before - state.rounds.length;
+    }
+
+    function clearExpiredRounds(chat) {
+        const state = ensureState(chat);
+        const before = state.rounds.length;
+        state.rounds = state.rounds.filter(item => item.status !== 'expired');
         return before - state.rounds.length;
     }
 
@@ -536,7 +595,9 @@
         discardRound,
         renderView,
         updateSettings,
-        clearReviewedRounds
+        clearReviewedRounds,
+        clearExpiredRounds,
+        expireStaleSnapshots
     };
 
     if (Kernel) Kernel.register('feedback', api, { legacyGlobal: 'MemoryTableFeedback' });

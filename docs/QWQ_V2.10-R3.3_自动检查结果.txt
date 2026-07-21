@@ -1,0 +1,92 @@
+QWQ V2.10-R3.3 自动检查结果
+生成时间: 2026-07-21 15:47:52 UTC
+
+一、聊天任务稳定性
+- 每个聊天使用独立任务键与 AbortController: PASS
+- 页面切换只解绑 UI，不删除任务: PASS
+- 回复按明确 chatId/chatType 保存，不依赖当前页面: PASS
+- 返回原聊天后恢复输入中与暂停状态: PASS
+- 同一聊天重复任务阻止，不同聊天互不覆盖: PASS
+- 浏览器关闭/刷新存在活动任务时离开警告: PASS
+
+二、结构化记忆任务恢复
+- 中断中的 running 任务恢复为 queued: PASS
+- 应用初始化后全局扫描并自动续跑队列: PASS
+- 不要求进入结构化记忆页面: PASS
+- 任务运行态可供离开保护读取: PASS
+
+三、悬浮球产品 UI
+- 打开即全屏覆盖视口: PASS（CSS/DOM 静态与专项断言）
+- 打开时隐藏原悬浮球并锁定背景滚动: PASS
+- 顶部返回按钮关闭页面: PASS
+- 操作详情和工具子页返回操作中心: PASS
+
+四、记忆使用反馈治理
+- 默认只保留最近 3 轮可反馈: PASS
+- 超过 7 天的待反馈自动过期: PASS
+- prepared 超过 2 小时自动标记 abandoned/expired: PASS
+- 过期反馈不再计入待处理: PASS
+- 过期反馈不修改底层结构化记忆: PASS
+- 清理过期反馈入口: PASS
+- 实际备份模拟: 16 轮中自动收起 13 轮，保留最近 3 轮
+
+五、聊天同请求记忆核验
+- 核验发生在 Provider payload 形成后、网络调用前: PASS
+- OpenAI-compatible 最终 system message 注入: PASS
+- Gemini system_instruction 注入: PASS
+- 已存在档案时不重复注入: PASS
+- 结构化档案缺失时最终 payload 补入: PASS
+- 操作中心记录 memoryPayloadAudit: PASS
+- 主聊天 OVOAIRequestRuntime.request 调用数量: 1
+- 实际备份档案上下文: 2880 字符，OpenAI/Gemini 均核验为已发送
+- 实际备份向量条目: 0；结构化档案仍正常发送
+
+六、JavaScript 语法检查
+PASS: 83 个 JavaScript 文件
+
+七、Python 静态架构检查
+STATIC CHECKS: PASS
+
+八、Node 回归与专项检查
+PASS: 30 组
+- BACKUP ENCODING CHECKS: PASS
+- BACKUP CHECKS: PASS (9)
+- V2.10-R0 OPERATION CENTER CHECKS: PASS
+- V2.10-R1 PROMPT SOURCE CHECKS: PASS
+- V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS
+- V2.10-R2 BACKGROUND OPERATION CHECKS: PASS
+- V2.10-R3.1 QUICK HOTFIX CHECKS: PASS
+- V2.10-R3.2 ARCHIVE INJECTION CHECKS: PASS
+- V2.10-R3.3 STABILITY + MEMORY PAYLOAD CHECKS: PASS
+- V2.10-R3 MUTATION RECEIPT CHECKS: PASS
+- V2.1 REVIEW CHECKS: PASS
+- V2.2 RETRIEVAL CHECKS: PASS
+- V2.3 SIDECAR CHECKS: PASS
+- V2.4 EFFECT ROUTING CHECKS: PASS
+- V2.5 LIFECYCLE CHECKS: PASS
+- V2.6 TASK QUEUE CHECKS: PASS
+- V2.7 FEEDBACK CHECKS: PASS
+- V2.8 QUALITY CHECKS: PASS
+- V2.9-R0 APP REGISTRY CHECKS: PASS
+- V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+- V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+- V2.9-R1 MEMORY KERNEL CHECKS: PASS
+- V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+- V2.9-R3 APP WORKSPACE CHECKS: PASS
+- V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+- V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+- V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+- V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+- V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+- V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS
+- STATIC CHECKS: PASS
+
+九、兼容性
+- IndexedDB schema 未修改
+- 角色/聊天/结构化档案/向量/日记格式未修改
+- 备份格式未修改
+- V2.1—V2.10-R3.2 历史回归全部通过
+
+边界说明:
+- 未调用用户真实外部模型 API；最终请求核验使用实际备份配置和正式 chat_ai.js payload 构造函数。
+- 浏览器真正关闭或刷新后，未返回的聊天网络响应无法继续；本版提供离开警告。持久化的结构化记忆队列可在刷新后恢复。

@@ -77,3 +77,6 @@ V2.10-R3.1 快速修复：
 V2.10-R3.2 档案记忆注入修复：
 - node tests/run_v210_r32_archive_injection_checks.js
 - 验证结构化档案在 vector/journal 模式下仍作为基础上下文注入，并与补充记忆分层展示。
+
+V2.10-R3.3 任务稳定与记忆核验：
+- run_v210_r33_stability_memory_checks.js：页面切换任务隔离、全局记忆队列恢复、悬浮球全屏、反馈过期治理、OpenAI/Gemini 最终请求记忆核验。

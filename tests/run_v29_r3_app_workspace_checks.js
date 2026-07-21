@@ -31,7 +31,7 @@ for (const id of ['chat', 'memory', 'automation', 'perception']) {
 assert(api.includes("section.dataset.apiGroup = classify(section)"), 'API sections are not grouped');
 assert(css.includes('.settings-hub-list'), 'settings list style missing');
 assert(css.includes('.api-workspace-tabs'), 'API workspace tabs style missing');
-assert(/^V?2\.10-R(?:1|2(?:\.1)?|3(?:\.[12])?)$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
+assert(/^V?2\.10-R(?:1|2(?:\.1)?|3(?:\.[123])?)$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);

@@ -49,6 +49,8 @@ function activateScreen(targetId) {
         if (mainScreens.includes(targetId)) {
             if (typeof currentChatId !== 'undefined') currentChatId = null;
             if (typeof currentChatType !== 'undefined') currentChatType = null;
+            // 页面离开聊天后只解绑当前界面控制器，不取消按 chatId 独立运行的任务。
+            try { window.OVOChatReplyTasks?.syncUi?.(); } catch (_) {}
         }
     } else if (typeof currentChatId !== 'undefined' && currentChatId) {
         const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);

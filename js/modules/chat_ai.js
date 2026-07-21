@@ -1,5 +1,87 @@
 // --- AI 交互模块 ---
 
+
+// V2.10-R3.3：聊天任务与页面解耦。
+// 页面切换只影响 UI，不再改变任务控制器、目标角色或持久化目标。
+const activeChatReplyTasks = window.__ovoActiveChatReplyTasks instanceof Map
+    ? window.__ovoActiveChatReplyTasks
+    : new Map();
+window.__ovoActiveChatReplyTasks = activeChatReplyTasks;
+
+function getChatReplyTaskKey(chatId, chatType) {
+    return `${chatType || 'private'}:${chatId || ''}`;
+}
+
+function isTargetChatViewOpen(chatId, chatType) {
+    return chatId === currentChatId
+        && chatType === currentChatType
+        && !!document.getElementById('chat-room-screen')?.classList.contains('active');
+}
+
+async function persistChatEntity(chat, chatType) {
+    if (!chat?.id) return false;
+    const resolvedType = chatType
+        || ((db.groups || []).some(item => item === chat || item?.id === chat.id) ? 'group' : 'private');
+    if (resolvedType === 'group') {
+        if (typeof saveGroup === 'function') await saveGroup(chat.id);
+    } else if (typeof saveCharacter === 'function') {
+        await saveCharacter(chat.id);
+    }
+    return true;
+}
+
+function appendMessageBubbleForTarget(message, chatId, chatType) {
+    if (!isTargetChatViewOpen(chatId, chatType)) return false;
+    if (typeof addMessageBubble === 'function') addMessageBubble(message, chatId, chatType);
+    return true;
+}
+
+function syncChatReplyUiState(chatId = currentChatId, chatType = currentChatType) {
+    const task = chatId ? activeChatReplyTasks.get(getChatReplyTaskKey(chatId, chatType)) : null;
+    isGenerating = !!task;
+    currentReplyAbortController = task?.controller || null;
+    if (typeof getReplyBtn !== 'undefined' && getReplyBtn) getReplyBtn.disabled = !!task;
+    if (typeof regenerateBtn !== 'undefined' && regenerateBtn) regenerateBtn.disabled = !!task;
+    if (typeof typingIndicator !== 'undefined' && typingIndicator) {
+        if (task && isTargetChatViewOpen(chatId, chatType)) {
+            typingIndicator.textContent = `“${task.displayName || '角色'}”正在输入中...`;
+            typingIndicator.style.display = 'block';
+        } else if (typingIndicator.getAttribute('data-theater-generating') !== 'true') {
+            typingIndicator.style.display = 'none';
+        }
+    }
+    return !!task;
+}
+
+window.OVOChatReplyTasks = {
+    isActive(chatId, chatType) {
+        return activeChatReplyTasks.has(getChatReplyTaskKey(chatId, chatType));
+    },
+    get(chatId, chatType) {
+        return activeChatReplyTasks.get(getChatReplyTaskKey(chatId, chatType)) || null;
+    },
+    list() {
+        return Array.from(activeChatReplyTasks.values()).map(item => ({
+            chatId: item.chatId,
+            chatType: item.chatType,
+            displayName: item.displayName,
+            operationId: item.operationId || null,
+            startedAt: item.startedAt
+        }));
+    },
+    cancel(chatId, chatType) {
+        const task = activeChatReplyTasks.get(getChatReplyTaskKey(chatId, chatType));
+        if (!task?.controller) return false;
+        try {
+            task.controller.abort();
+            return true;
+        } catch (_) {
+            return false;
+        }
+    },
+    syncUi: syncChatReplyUiState
+};
+
 // 检查角色是否在免打扰时段内
 function isInQuietHours(charId) {
     const char = db.characters.find(c => c.id === charId);
@@ -195,6 +277,89 @@ function ensureStructuredArchivePromptInjection(character, systemPrompt) {
     const archive = getStructuredArchiveMemoryContext(character);
     if (!archive) return prompt;
     return `${prompt}\n\n<memoir data-source="structured-archive-guard">\n${archive}\n</memoir>`;
+}
+
+
+function readSystemPromptFromRequestBody(requestBody, provider) {
+    if (!requestBody || typeof requestBody !== 'object') return '';
+    if (provider === 'gemini') {
+        const instruction = requestBody.system_instruction || requestBody.systemInstruction;
+        const parts = Array.isArray(instruction?.parts) ? instruction.parts : [];
+        return parts.map(part => String(part?.text || '')).join('\n');
+    }
+    return (Array.isArray(requestBody.messages) ? requestBody.messages : [])
+        .filter(message => message?.role === 'system')
+        .map(message => typeof message.content === 'string'
+            ? message.content
+            : (Array.isArray(message.content) ? message.content.map(part => part?.text || '').join('') : ''))
+        .join('\n\n');
+}
+
+function writeSystemPromptToRequestBody(requestBody, provider, systemPrompt) {
+    const prompt = String(systemPrompt || '');
+    if (provider === 'gemini') {
+        requestBody.system_instruction = { parts: [{ text: prompt }] };
+        if ('systemInstruction' in requestBody) delete requestBody.systemInstruction;
+        return;
+    }
+    if (!Array.isArray(requestBody.messages)) requestBody.messages = [];
+    const systemIndexes = [];
+    requestBody.messages.forEach((message, index) => {
+        if (message?.role === 'system') systemIndexes.push(index);
+    });
+    if (!systemIndexes.length) {
+        requestBody.messages.unshift({ role: 'system', content: prompt });
+        return;
+    }
+    const firstIndex = systemIndexes[0];
+    requestBody.messages[firstIndex] = { ...requestBody.messages[firstIndex], role: 'system', content: prompt };
+    for (let i = systemIndexes.length - 1; i >= 1; i--) requestBody.messages.splice(systemIndexes[i], 1);
+}
+
+function auditAndEnsurePrivateChatMemoryPayload(character, requestBody, provider, operationId) {
+    let finalSystemPrompt = readSystemPromptFromRequestBody(requestBody, provider);
+    const beforeChars = finalSystemPrompt.length;
+    finalSystemPrompt = ensureStructuredArchivePromptInjection(character, finalSystemPrompt);
+    if (finalSystemPrompt.length !== beforeChars) {
+        writeSystemPromptToRequestBody(requestBody, provider, finalSystemPrompt);
+    }
+
+    const structured = extractPromptTagContent(finalSystemPrompt, 'structured_archive_memory');
+    const vector = extractPromptTagContent(finalSystemPrompt, 'vector_memory_context');
+    const journal = extractPromptTagContent(finalSystemPrompt, 'journal_memory_context');
+    const live = extractPromptTagContent(finalSystemPrompt, 'memory_live_context');
+    const audit = {
+        version: 'memory-payload-audit.v1',
+        capturedAt: Date.now(),
+        characterId: character?.id || '',
+        provider: provider || '',
+        operationId: operationId || null,
+        structuredArchiveExpected: hasStructuredArchiveMemory(character),
+        structuredArchiveSent: !!structured,
+        structuredArchiveChars: structured.length,
+        supplementalMode: character?.memoryMode || 'table',
+        vectorSent: !!vector,
+        vectorChars: vector.length,
+        journalSent: !!journal,
+        journalChars: journal.length,
+        liveContextSent: !!live,
+        liveContextChars: live.length,
+        systemPromptChars: finalSystemPrompt.length,
+        guardApplied: finalSystemPrompt.length !== beforeChars
+    };
+    try {
+        window.__ovoLastMemoryPayloadAudit = audit;
+        sessionStorage.setItem('ovo_last_memory_payload_audit', JSON.stringify(audit));
+    } catch (_) {}
+    if (operationId && window.OVOOperationRuntime?.update) {
+        window.OVOOperationRuntime.update(operationId, {
+            memoryPayloadAudit: audit
+        }, 'memory-payload-audit');
+    }
+    if (audit.structuredArchiveExpected && !audit.structuredArchiveSent) {
+        throw new Error('结构化档案已启用，但最终聊天请求中仍未找到 structured_archive_memory');
+    }
+    return { requestBody, systemPrompt: finalSystemPrompt, audit };
 }
 
 function getJournalMemoryContext(character) {
@@ -520,8 +685,8 @@ async function generateImageDescription(msg, chat, apiConfig) {
                     updated = true;
                 }
             });
-            if (updated && typeof saveCurrentChat === 'function') {
-                await saveCurrentChat();
+            if (updated) {
+                await persistChatEntity(chat);
                 console.log('[Auto-Description] 图片描述生成成功:', description);
                 if (typeof showToast === 'function') showToast('✅ 图片描述已生成');
             }
@@ -537,7 +702,12 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     let operationFinished = false;
     let historyCountBefore = 0;
     let historyIdsBefore = new Set();
-    if (isGenerating && !isBackground) return;
+    let replyAbortController = null;
+    let replyTaskKey = '';
+    if (!isBackground && activeChatReplyTasks.has(getChatReplyTaskKey(chatId, chatType))) {
+        if (typeof showToast === 'function') showToast('这个聊天已有回复任务在进行中');
+        return;
+    }
 
     // 拉黑检查：被拉黑的角色不回复（角色拉黑用户后的「让TA说说」不在此列）
     if (chatType === 'private' && !isCharBlockedMonologue) {
@@ -613,14 +783,21 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         : null;
 
     if (!isBackground) {
-        currentReplyAbortController = new AbortController();
-        isGenerating = true;
-        getReplyBtn.disabled = true;
-        regenerateBtn.disabled = true;
-        const typingName = chatType === 'private' ? chat.remarkName : chat.name;
-        typingIndicator.textContent = `“${typingName}”正在输入中...`;
-        typingIndicator.style.display = 'block';
-        messageArea.scrollTop = messageArea.scrollHeight;
+        replyAbortController = new AbortController();
+        replyTaskKey = getChatReplyTaskKey(chatId, chatType);
+        const typingName = chatType === 'private' ? (chat.remarkName || chat.realName || chat.name) : chat.name;
+        activeChatReplyTasks.set(replyTaskKey, {
+            chatId,
+            chatType,
+            displayName: typingName || '角色',
+            controller: replyAbortController,
+            operationId: operationRecord?.id || null,
+            startedAt: Date.now()
+        });
+        syncChatReplyUiState();
+        if (isTargetChatViewOpen(chatId, chatType) && typeof messageArea !== 'undefined' && messageArea) {
+            messageArea.scrollTop = messageArea.scrollHeight;
+        }
     }
 
     try {
@@ -791,7 +968,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                     originalMsg.isImageRecognitionTriggered = true;
                     lastUserMsg.isImageRecognitionTriggered = true; 
                     
-                    if (typeof saveCurrentChat === 'function') await saveCurrentChat(); // 先保存一下标记
+                    await persistChatEntity(chat, chatType); // 先保存一下标记；不依赖当前页面
                     
                     // 同步调用识图，等待结果后再继续，以便本轮主模型能看到图片描述
                     await generateImageDescription(originalMsg, chat, descApiConfig);
@@ -1188,6 +1365,11 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             }
         }
         }
+        if (chatType === 'private') {
+            const memoryPayloadResult = auditAndEnsurePrivateChatMemoryPayload(chat, requestBody, provider, operationRecord?.id || null);
+            requestBody = memoryPayloadResult.requestBody;
+            systemPrompt = memoryPayloadResult.systemPrompt;
+        }
         const promptSources = chatType === 'private'
             ? buildPrivateChatPromptSources(chat, systemPrompt)
             : [];
@@ -1211,15 +1393,15 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 body: requestBody,
                 operationId: operationRecord?.id || null,
                 promptSources,
-                signal: currentReplyAbortController ? currentReplyAbortController.signal : undefined,
-                dedupeKey: isBackground ? '' : `chat-reply:${currentChatId || 'current'}:${isSummary ? 'summary' : 'reply'}`,
+                signal: replyAbortController ? replyAbortController.signal : undefined,
+                dedupeKey: isBackground ? '' : `chat-reply:${chatType}:${chatId}:${isSummary ? 'summary' : 'reply'}`,
                 dedupeWindowMs: 1200
             })
             : await fetch(endpoint, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(requestBody),
-                signal: currentReplyAbortController ? currentReplyAbortController.signal : undefined
+                signal: replyAbortController ? replyAbortController.signal : undefined
             });
         if (!window.OVOAIRequestRuntime && !response.ok) {
             const error = new Error(`API Error: ${response.status} ${await response.text()}`);
@@ -1327,14 +1509,10 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         operationFinished = true;
     } finally {
         if (!isBackground) {
-            currentReplyAbortController = null;
-            isGenerating = false;
-            getReplyBtn.disabled = false;
-            regenerateBtn.disabled = false;
-            // 如果正在生成小剧场，不隐藏提示（让小剧场生成过程显示提示）
-            if (!typingIndicator || typingIndicator.getAttribute('data-theater-generating') !== 'true') {
-                typingIndicator.style.display = 'none';
+            if (replyTaskKey && activeChatReplyTasks.get(replyTaskKey)?.controller === replyAbortController) {
+                activeChatReplyTasks.delete(replyTaskKey);
             }
+            syncChatReplyUiState();
         }
     }
 }
@@ -1712,7 +1890,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             }
             
             // 添加到界面气泡（由于 regex 设置，会被隐藏，仅 Debug 模式可见）
-            addMessageBubble(thinkingMsg, targetChatId, targetChatType);
+            appendMessageBubbleForTarget(thinkingMsg, targetChatId, targetChatType);
             
             // 从即将显示的文本中移除思考内容
             fullResponse = fullResponse.replace(thinkingContent, "");
@@ -1812,7 +1990,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     timestamp: Date.now()
                 };
                 chat.history.push(message);
-                addMessageBubble(message, targetChatId, targetChatType);
+                appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                 continue; // 跳过后续处理
             }
 
@@ -1896,7 +2074,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             chat.useCustomBubbleCss = true;
                             char.currentBubbleCssPresetName = preset.name;
                             if (typeof updateCustomBubbleStyle === 'function') updateCustomBubbleStyle(targetChatId, preset.css, true);
-                            if (typeof saveCurrentChat === 'function') await saveCurrentChat();
+                            await persistChatEntity(chat, targetChatType);
                             contentAfterStrip = contentAfterStrip.replace(themeSwitchMatch[0], '').replace(/\n{3,}/g, '\n\n').trim();
                         }
                     }
@@ -1953,17 +2131,16 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 }
 
                 chat.history.push(message);
-                addMessageBubble(message, targetChatId, targetChatType);
+                appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                 
                 setTimeout(async () => {
                     message.isWithdrawn = true;
                     message.content = `[${characterName}撤回了一条消息：${originalContent}]`;
                     
-                    await saveCurrentChat();
+                    await persistChatEntity(chat, targetChatType);
                     
-                    if ((targetChatType === 'private' && currentChatId === chat.id) || 
-                        (targetChatType === 'group' && currentChatId === chat.id)) {
-                         renderMessages(false, true);
+                    if (isTargetChatViewOpen(targetChatId, targetChatType) && typeof renderMessages === 'function') {
+                        renderMessages(false, true);
                     }
                 }, 2000);
 
@@ -2013,7 +2190,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         };
                         if (isCharBlockedMonologue) message.sentWhileCharBlocked = true;
                         chat.history.push(message);
-                        addMessageBubble(message, targetChatId, targetChatType);
+                        appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     } else {
                         let filteredReplyText2 = replyText;
                         if (typeof applyRegexFilter === 'function') {
@@ -2032,7 +2209,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         };
                         if (isCharBlockedMonologue) message.sentWhileCharBlocked = true;
                         chat.history.push(message);
-                        addMessageBubble(message, targetChatId, targetChatType);
+                        appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     }
                 } else {
                     const receivedTransferRegex = new RegExp(`\\[${character.realName}的转账：.*?元；备注：.*?\\]`);
@@ -2088,7 +2265,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     }
 
                     chat.history.push(message);
-                    addMessageBubble(message, targetChatId, targetChatType);
+                    appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                 }
 
             } else if (targetChatType === 'group') {
@@ -2127,7 +2304,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         senderId: senderId
                     };
                     group.history.push(message);
-                    addMessageBubble(message, targetChatId, targetChatType);
+                    appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     continue; // 私聊消息处理完毕，跳过后续普通消息匹配
                 }
 
@@ -2149,7 +2326,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             isTransferAction: true
                         };
                         group.history.push(message);
-                        addMessageBubble(message, targetChatId, targetChatType);
+                        appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     }
                     continue;
                 }
@@ -2174,7 +2351,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             transferStatus: 'pending'
                         };
                         group.history.push(message);
-                        addMessageBubble(message, targetChatId, targetChatType);
+                        appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     }
                 } else if (nameMatch || item.char) {
                     const senderName = item.char || (nameMatch[1]);
@@ -2190,7 +2367,7 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                             senderId: sender.id
                         };
                         group.history.push(message);
-                        addMessageBubble(message, targetChatId, targetChatType);
+                        appendMessageBubbleForTarget(message, targetChatId, targetChatType);
                     }
                 }
             }
@@ -2205,13 +2382,13 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 timestamp: Date.now()
             };
             chat.history.push(summaryMsg);
-            addMessageBubble(summaryMsg, targetChatId, targetChatType);
+            appendMessageBubbleForTarget(summaryMsg, targetChatId, targetChatType);
         }
 
         if (targetChatType === 'private' && memoryRoundToken && window.MemoryTablePolicy) {
             window.MemoryTablePolicy.finishRound(chat, memoryRoundToken);
         }
-        await saveCurrentChat();
+        await persistChatEntity(chat, targetChatType);
         renderChatList();
 
         // 增量 DOM 追加在特殊消息、界面切换或异步分支中可能漏渲染。

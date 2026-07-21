@@ -451,6 +451,13 @@
             runningChats.delete(chat.id);
         }
     }
+    function getRuntimeState() {
+        return {
+            running: runningChats.size,
+            runningChatIds: Array.from(runningChats)
+        };
+    }
+
     function setPaused(chat, paused) {
         const state = ensureState(chat);
         state.settings.paused = !!paused;
@@ -602,6 +609,7 @@
         getTask,
         getCounts,
         getPendingCount,
+        getRuntimeState,
         estimateTokensFromText,
         estimateTokensFromChars,
         renderView

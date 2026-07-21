@@ -19,8 +19,8 @@ assert(trace.includes('verificationView: true'), 'combined prompt verification v
 assert(trace.includes('不代表再次发送') || dock.includes('不是第二次发送'), 'UI does not explain combined/itemized views are one request');
 assert(dock.includes('模型请求（实际网络调用）'), 'actual network call count label is missing');
 assert(dock.includes('quick-dock-source-item-flat'), 'prompt source items were not flattened');
-assert(dock.includes('toggle-detail-fullscreen'), 'detail fullscreen control is missing');
-assert(dockCss.includes('quick-dock-panel--detail-fullscreen'), 'detail fullscreen CSS is missing');
+assert(dock.includes('quick-dock-panel--app-fullscreen'), 'full-screen operation center class is missing');
+assert(dockCss.includes('quick-dock-panel--app-fullscreen'), 'full-screen operation center CSS is missing');
 assert(dockCss.includes('.quick-dock-source-content{margin:0 0 8px;padding:10px;max-height:none'), 'source content still uses a tiny nested scroll box');
 assert(dockCss.includes('.quick-dock-raw-request pre,.quick-dock-result-pre{max-height:none'), 'raw request/result feedback still truncates visually');
 

@@ -200,7 +200,7 @@ body.night-mode-active .memory-life-source-line,body.night-mode-active .memory-l
 .memory-feedback-summary>div{display:flex;flex-direction:column;gap:5px;padding:12px;border:1px solid #e9edf5;border-radius:14px;background:#fff;}
 .memory-feedback-summary b{font-size:11px;color:#667085;font-weight:600;}
 .memory-feedback-summary span{font-size:18px;color:#101828;font-weight:750;}
-.memory-feedback-settings{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px;padding:13px;border:1px solid #e9edf5;border-radius:16px;background:#fff;}
+.memory-feedback-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:13px;border:1px solid #e9edf5;border-radius:16px;background:#fff;}
 .memory-feedback-settings label{display:flex;flex-direction:column;gap:6px;color:#475467;font-size:11px;}
 .memory-feedback-settings input{width:100%;border:1px solid #dfe4ec;border-radius:10px;padding:8px 10px;background:#fff;color:#344054;}
 .memory-feedback-round{padding:14px;border:1px solid #e7ebf2;border-radius:18px;background:#f9fbff;}
@@ -261,3 +261,7 @@ body.night-mode-active .memory-live-feedback-chip{background:rgba(115,142,255,.1
 .memory-review-final-actions .btn:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.25)}
 .memory-review-proposal-actions .btn-primary{box-shadow:0 0 0 2px rgba(51,94,234,.14)}
 .memory-review-proposal-actions .btn-danger{box-shadow:0 0 0 2px rgba(194,65,65,.12)}
+
+/* V2.10-R3.3 · 过期记忆使用反馈治理 */
+.memory-feedback-expired-note{padding:10px 12px;border:1px solid #e6e9ef;border-radius:12px;background:#f7f8fa;color:#667085;font-size:11px;line-height:1.55}
+body.night-mode-active .memory-feedback-expired-note{background:rgba(28,31,38,.82);border-color:rgba(255,255,255,.08);color:#b6bdc9}

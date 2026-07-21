@@ -318,6 +318,7 @@ function setupChatRoom() {
     const abortReplyBtn = document.getElementById('abort-reply-btn');
     if (abortReplyBtn) {
         abortReplyBtn.addEventListener('click', () => {
+            if (window.OVOChatReplyTasks?.cancel?.(currentChatId, currentChatType)) return;
             if (typeof currentReplyAbortController !== 'undefined' && currentReplyAbortController) {
                 currentReplyAbortController.abort();
             }
@@ -632,10 +633,14 @@ function openChatRoom(chatId, type) {
     }
     getReplyBtn.style.display = 'inline-flex';
     chatRoomScreen.style.backgroundImage = chat.chatBg ? `url(${chat.chatBg})` : (db.globalChatWallpaper ? `url(${db.globalChatWallpaper})` : 'none');
-    typingIndicator.style.display = 'none';
-    isGenerating = false;
-    getReplyBtn.disabled = false;
     currentPage = 1;
+    if (window.OVOChatReplyTasks?.syncUi) {
+        window.OVOChatReplyTasks.syncUi(chatId, type);
+    } else {
+        typingIndicator.style.display = 'none';
+        isGenerating = false;
+        getReplyBtn.disabled = false;
+    }
     chatRoomScreen.className = chatRoomScreen.className.replace(/\bchat-active-[^ ]+\b/g, '');
     chatRoomScreen.classList.add(`chat-active-${chatId}`);
     
