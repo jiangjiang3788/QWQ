@@ -440,8 +440,8 @@
         if (updateBtn) updateBtn.hidden = uiState.workspace !== 'memory';
         if (createTemplateBtn) createTemplateBtn.hidden = uiState.workspace !== 'manage';
         const modeLabel = chat.memoryMode === 'table'
-            ? '结构化档案模式'
-            : (chat.memoryMode === 'vector' ? '向量记忆模式' : '日记模式');
+            ? '结构化档案'
+            : (chat.memoryMode === 'vector' ? '档案 + 向量补充' : '档案 + 日记补充');
         summary.textContent = `${chat.remarkName || chat.realName || '当前角色'} · 已绑定 ${boundTemplates.length} 个模板`;
         modePill.textContent = modeLabel;
         modePill.style.background = chat.memoryMode === 'table'
@@ -1440,7 +1440,9 @@
 
     function getMemoryContextBlock(chat, options = {}) {
         ensureMemoryTableState(chat);
-        if (chat.memoryMode !== 'table' && !options.force) return '';
+        const allowInactiveMode = !!options.allowInactiveMode;
+        if (chat.memoryTables?.enabled === false) return '';
+        if (chat.memoryMode !== 'table' && !options.force && !allowInactiveMode) return '';
         const templateIds = Array.isArray(options.templateIds) && options.templateIds.length > 0 ? options.templateIds : null;
         const templates = getBoundTemplates(chat).filter(template => !templateIds || templateIds.includes(template.id));
         if (templates.length === 0) return '';
@@ -1478,7 +1480,9 @@
 
     async function prepareMemoryTableContext(chat, options = {}) {
         ensureMemoryTableState(chat);
-        if (chat.memoryMode !== 'table' && !options.force && !options.preview) return '';
+        const allowInactiveMode = !!options.allowInactiveMode;
+        if (chat.memoryTables?.enabled === false) return '';
+        if (chat.memoryMode !== 'table' && !options.force && !options.preview && !allowInactiveMode) return '';
         const queryText = options.queryText || (MemoryPolicy ? MemoryPolicy.buildQueryText(chat) : '');
         const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
@@ -3913,8 +3917,8 @@ ${tableContext}`;
                 await saveCharacter(chat.id);
                 renderMemoryTableScreen();
                 showToast(chat.memoryMode === 'table'
-                    ? '已切换为结构化档案模式'
-                    : (chat.memoryMode === 'vector' ? '已切换为向量记忆模式' : '已切换为日记模式'));
+                    ? '已使用：仅结构化档案'
+                    : (chat.memoryMode === 'vector' ? '已使用：结构化档案 + 向量补充' : '已使用：结构化档案 + 日记补充'));
             });
         });
 

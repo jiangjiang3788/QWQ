@@ -266,7 +266,7 @@
 
     function buildSystemPrompt(chat) {
         const state = ensureMemoryTables(chat);
-        if (!state?.enabled || chat.memoryMode !== 'table') return '';
+        if (!state?.enabled || chat.memoryTables?.enabled === false || getBoundTemplates(chat).length === 0) return '';
         migratePolicies(chat);
         const statusDescriptor = findTable(chat, isCurrentStateTable);
         const taskDescriptor = findTable(chat, isTaskTable);
@@ -535,7 +535,7 @@
     function refreshStateBar(chat) {
         const bar = document.getElementById('memory-live-state-bar');
         if (!bar) return;
-        if (!chat || chat.memoryMode !== 'table' || ensureMemoryTables(chat).showStatusBar === false) {
+        if (!chat || chat.memoryTables?.enabled === false || getBoundTemplates(chat).length === 0 || ensureMemoryTables(chat).showStatusBar === false) {
             bar.style.display = 'none';
             return;
         }

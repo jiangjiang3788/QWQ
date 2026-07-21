@@ -3336,23 +3336,23 @@
 <section class="memory-mode-card" id="setting-memory-mode-card" aria-labelledby="setting-memory-mode-title">
 <div class="memory-mode-card-head">
 <div>
-<div class="memory-mode-card-title" id="setting-memory-mode-title">聊天实际使用的长期记忆</div>
-<p>三选一：每次聊天只读取下面一种长期记忆来源。</p>
+<div class="memory-mode-card-title" id="setting-memory-mode-title">聊天实际使用的档案与长期记忆</div>
+<p>结构化档案作为基础档案；下面选择一种额外补充来源。</p>
 </div>
 <span class="memory-mode-current" id="setting-memory-mode-current">当前：回忆日记</span>
 </div>
 <div class="memory-mode-options" role="radiogroup" aria-label="长期记忆读取模式">
 <button class="memory-mode-option" data-setting-memory-mode="journal" type="button" role="radio" aria-checked="false">
 <span class="memory-mode-option-icon">📖</span>
-<span><b>回忆日记</b><small>读取已收藏的日记</small></span>
+<span><b>档案 + 回忆日记</b><small>基础档案并补充收藏日记</small></span>
 </button>
 <button class="memory-mode-option" data-setting-memory-mode="table" type="button" role="radio" aria-checked="false">
 <span class="memory-mode-option-icon">🗂️</span>
-<span><b>结构化档案</b><small>读取绑定的表格字段</small></span>
+<span><b>仅结构化档案</b><small>只读取绑定的档案字段</small></span>
 </button>
 <button class="memory-mode-option" data-setting-memory-mode="vector" type="button" role="radio" aria-checked="false">
 <span class="memory-mode-option-icon">🧭</span>
-<span><b>向量记忆</b><small>按语义检索相关记忆</small></span>
+<span><b>档案 + 向量记忆</b><small>基础档案并补充语义检索</small></span>
 </button>
 </div>
 <select id="setting-memory-mode" hidden aria-hidden="true" tabindex="-1">
@@ -3361,8 +3361,8 @@
 <option value="vector">向量记忆</option>
 </select>
 <div class="memory-mode-explanation" id="setting-memory-mode-explanation">
-<strong id="setting-memory-mode-injection">聊天将注入：已收藏的回忆日记</strong>
-<span id="setting-memory-mode-help">自动生成日记只负责创建日记，不代表聊天正在使用日记。</span>
+<strong id="setting-memory-mode-injection">基础档案：结构化档案；补充来源：已收藏的回忆日记</strong>
+<span id="setting-memory-mode-help">结构化档案在启用并绑定模板后始终进入上下文。</span>
 </div>
 <div class="memory-mode-manage-row">
 <button class="btn btn-small btn-secondary" id="setting-open-journal-memory-btn" type="button">管理回忆日记</button>
@@ -5603,7 +5603,7 @@
 <button class="btn btn-small btn-primary" data-vector-memory-mode-switch="vector" type="button">向量记忆</button>
 </div>
 </div>
-<p class="memory-mode-inline-hint">这是同一个“三选一”读取模式；高亮项才会进入真实聊天 Prompt。</p>
+<p class="memory-mode-inline-hint">结构化档案是基础上下文；高亮项只决定额外补充回忆日记或向量检索。</p>
 <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
 <button class="btn btn-small btn-secondary" id="vector-memory-import-btn" type="button">导入模板/记忆包</button>
 <button class="btn btn-small btn-secondary" id="vector-memory-export-all-btn" type="button">导出模板</button>
@@ -5909,7 +5909,7 @@
 <label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>最多读取</small></span><input id="proment-history-count" min="1" max="200" type="number" value="30"></label>
 <label class="proment-policy-card"><span><b>状态栏</b><small>注入当前角色状态</small></span><input id="proment-status-enabled" type="checkbox" checked></label>
 </div>
-<div class="proment-independent-note"><b>真实长期记忆由角色设置里的“三选一模式”决定</b><span>本页的结构化档案开关只影响设计预览；向量条目、模板、检索与自动总结仍在“向量记忆”页面管理。</span></div>
+<div class="proment-independent-note"><b>结构化档案会作为真实聊天的基础记忆</b><span>角色设置只决定是否额外补充回忆日记或向量检索；本页的结构化档案开关仍只影响设计预览。</span></div>
 <div class="proment-quick-links">
 <button class="btn btn-secondary" id="proment-open-worldbook" type="button">世界书</button>
 <button class="btn btn-secondary" id="proment-open-structured" type="button">结构化档案</button>
@@ -5925,7 +5925,7 @@
 <div class="proment-preview-head"><b>Prompt / 注入诊断</b><div class="proment-preview-actions"><button class="btn btn-small btn-secondary" id="proment-copy-preview" type="button">复制</button><button class="btn btn-small btn-secondary" id="proment-clear-runtime" type="button">清除快照</button></div></div>
 <pre id="proment-preview-content"></pre>
 </div>
-<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。世界书开关与预算会作用于真实请求；结构化档案、最近聊天和状态栏在此处仅用于设计预览，不会替代角色设置中的长期记忆三选一模式。AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。</p>
+<p class="proment-stage-note">设计预览用于核对预算与顺序；最近真实 Prompt 来自最近一次私聊请求；世界书命中诊断显示实际候选、命中原因与输出字符。结构化档案在启用并绑定模板后会作为真实聊天的基础记忆，角色设置只决定日记或向量补充层；本页的结构化档案开关仅控制设计预览。AI 请求诊断不会展示 API Key，并可查看排队、首字节、流完成与取消原因。</p>
 </div>
 <div style="margin-bottom: 15px; padding-top: 5px; padding-left: 8px;">
 <div class="kkt-item-label" style="font-weight: bold; color: var(--primary-color);">系统提示词自定义</div>

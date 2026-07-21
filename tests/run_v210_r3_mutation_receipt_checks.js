@@ -17,7 +17,7 @@ const windowMock = {
 const context = vm.createContext({ window: windowMock, sessionStorage: windowMock.sessionStorage, CustomEvent: CustomEventMock, console, Date, Math, JSON, Map, Set, Array, String, Number, Boolean, Error, Promise });
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
-assert(['2.10-R3', '2.10-R3.1'].includes(runtime.VERSION));
+assert(['2.10-R3', '2.10-R3.1', '2.10-R3.2'].includes(runtime.VERSION));
 assert.strictEqual(typeof runtime.recordMutation, 'function');
 assert.strictEqual(typeof runtime.recordMutations, 'function');
 const parent = runtime.start('chat.reply', { title: '生成角色回复' });

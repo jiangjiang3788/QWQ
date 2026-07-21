@@ -23,7 +23,7 @@ const context = vm.createContext({ window: windowMock, sessionStorage: windowMoc
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
 assert(runtime, 'operation runtime missing');
-assert(/^2\.10-R(?:[23](?:\.1)?)$/.test(runtime.VERSION));
+assert(/^2\.10-R(?:[23](?:\.[12])?)$/.test(runtime.VERSION));
 
 const parent = runtime.start('chat.reply', { title: '生成阿墨的回复' });
 runtime.complete(parent.id, { summary: '回复已完成' });

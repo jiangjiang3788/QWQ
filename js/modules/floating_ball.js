@@ -1,4 +1,4 @@
-// QuickDock · V2.10-R3.1 快速修复：时间元数据、即时渲染与档案记忆上下文。
+// QuickDock · V2.10-R3.2：结构化档案基础注入与长期记忆分层显示。
 (() => {
     'use strict';
 
@@ -533,7 +533,7 @@
         const currentApi = getCurrentApi();
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>AI 操作中心</strong><span>V2.10-R3.1 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
+                <div><strong>AI 操作中心</strong><span>V2.10-R3.2 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
                 <button type="button" class="quick-dock-icon-btn" data-qd-action="close" aria-label="关闭">×</button>
             </header>
             <section class="quick-dock-operation-current">
@@ -648,8 +648,8 @@
         const policy = Object.assign({ worldBookEnabled: true, structuredEnabled: true }, db.magicRoom?.contextPolicy || {});
         const vectorPolicy = char?.vectorMemory?.injectionPolicy || { budget: 2600, priority: 40 };
         const memoryModeLabel = char?.memoryMode === 'table'
-            ? '结构化档案'
-            : (char?.memoryMode === 'vector' ? '向量记忆' : '回忆日记');
+            ? '仅结构化档案'
+            : (char?.memoryMode === 'vector' ? '结构化档案 + 向量补充' : '结构化档案 + 回忆日记');
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
                 <div><strong>Proment 状态</strong><span>R3 · 与操作来源、后台回执和数据变化互通</span></div>
@@ -658,8 +658,8 @@
             <div class="quick-dock-section quick-dock-proment-status">
                 <p><b>当前角色</b><span>${escapeHtml(char ? (char.remarkName || char.name || '未命名') : '暂无角色')}</span></p>
                 <p><b>世界书</b><span>${policy.worldBookEnabled ? `开启 · 预算 ${policy.worldBookBudget || 2400}` : '关闭'}</span></p>
-                <p><b>长期记忆模式</b><span>当前使用：${memoryModeLabel}（三选一）</span></p>
-                <p><b>档案设计预览</b><span>${policy.structuredEnabled ? `显示 · 预算 ${policy.structuredBudget || 1800}` : '隐藏'}，不控制真实聊天</span></p>
+                <p><b>长期记忆组合</b><span>当前使用：${memoryModeLabel}</span></p>
+                <p><b>结构化档案</b><span>真实聊天始终按绑定模板与注入预算读取；本页开关只控制设计预览</span></p>
                 <p><b>向量记忆设置</b><span>独立管理 · 预算 ${vectorPolicy.budget || 2600}</span></p>
                 <p><b>最近聊天</b><span>${policy.historyEnabled === false ? '关闭' : `${policy.historyCount || 30} 条`}</span></p>
             </div>

@@ -162,6 +162,79 @@ function extractPromptTagContent(systemPrompt, tagName) {
     return match ? String(match[1] || '').trim() : '';
 }
 
+// V2.10-R3.2：结构化档案是角色的基础档案，不再被 journal/table/vector 三选一开关排除。
+// memoryMode 只决定额外补充来源：journal=收藏日记，vector=向量检索，table=不额外补充。
+function getStructuredArchiveContextApi() {
+    const contextApi = window.OvoMemory?.context;
+    if (contextApi && typeof contextApi.get === 'function') return contextApi;
+    if (typeof getMemoryTableContextBlock === 'function') {
+        return {
+            get: getMemoryTableContextBlock,
+            prepare: typeof prepareMemoryTableContext === 'function' ? prepareMemoryTableContext : null
+        };
+    }
+    return null;
+}
+
+function hasStructuredArchiveMemory(character) {
+    if (!character || character.memoryTables?.enabled === false) return false;
+    const boundIds = character.memoryTables?.boundTemplateIds;
+    return Array.isArray(boundIds) && boundIds.length > 0 && !!getStructuredArchiveContextApi();
+}
+
+function getStructuredArchiveMemoryContext(character) {
+    if (!hasStructuredArchiveMemory(character)) return '';
+    const contextApi = getStructuredArchiveContextApi();
+    const block = contextApi?.get(character, { allowInactiveMode: true }) || '';
+    return block ? `<structured_archive_memory>\n${block}\n</structured_archive_memory>` : '';
+}
+
+function ensureStructuredArchivePromptInjection(character, systemPrompt) {
+    const prompt = String(systemPrompt || '');
+    if (prompt.includes('<structured_archive_memory>')) return prompt;
+    const archive = getStructuredArchiveMemoryContext(character);
+    if (!archive) return prompt;
+    return `${prompt}\n\n<memoir data-source="structured-archive-guard">\n${archive}\n</memoir>`;
+}
+
+function getJournalMemoryContext(character) {
+    const journals = (character?.memoryJournals || []).filter(journal => journal.isFavorited);
+    if (!journals.length) return '';
+    const text = journals.map(journal => `标题：${journal.title}\n内容：${journal.content}`).join('\n\n---\n\n');
+    return `<journal_memory_context>\n【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${text}\n</journal_memory_context>`;
+}
+
+function getSupplementalLongTermMemoryContext(character) {
+    if (!character) return '';
+    if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
+        const block = getVectorMemoryContextBlock(character) || '';
+        return block ? `<vector_memory_context>\n${block}\n</vector_memory_context>` : '';
+    }
+    if (character.memoryMode === 'journal') return getJournalMemoryContext(character);
+    return '';
+}
+
+function buildCombinedLongTermMemoryContext(character) {
+    return [
+        getStructuredArchiveMemoryContext(character),
+        getSupplementalLongTermMemoryContext(character)
+    ].filter(Boolean).join('\n\n');
+}
+
+async function prepareCombinedLongTermMemoryContext(character) {
+    if (!character) return '';
+    if (hasStructuredArchiveMemory(character)) {
+        const contextApi = getStructuredArchiveContextApi();
+        if (typeof contextApi?.prepare === 'function') {
+            await contextApi.prepare(character, { allowInactiveMode: true });
+        }
+    }
+    if (character.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
+        await prepareVectorMemoryContext(character);
+    }
+    return buildCombinedLongTermMemoryContext(character);
+}
+
 function buildPrivateChatPromptSources(character, systemPrompt) {
     if (!character) return [];
     const sources = [];
@@ -185,12 +258,12 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         const hasActualArchiveData = !/^当前没有已记录的实时状态或活跃待办[。.]?$/.test(liveArchiveMemory.trim());
         sources.push({
             type: 'character_memory',
-            title: hasActualArchiveData ? '角色档案记忆（实时状态与待办）' : '角色档案记忆',
+            title: '实时档案状态与待办',
             content: liveArchiveMemory,
             sent: true,
             count: hasActualArchiveData ? undefined : 0,
             reason: hasActualArchiveData
-                ? '从最终 system prompt 的 memory_live_context 中提取，已实际发送'
+                ? '从最终 system prompt 的 memory_live_context 中提取；这是实时状态/待办，不等同于结构化档案正文'
                 : '本次已发送档案记忆区块，但当前没有可用的实时状态或活跃待办',
             traceMode: 'request_exact',
             sourceId: character.id
@@ -237,34 +310,40 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         });
     }
 
-    let memoryText = '';
-    let memoryType = '';
-    let memoryTitle = '';
-    if (character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
-        memoryText = getMemoryTableContextBlock(character) || '';
-        memoryType = 'structured_memory';
-        memoryTitle = '结构化记忆';
-    } else if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
-        memoryText = getVectorMemoryContextBlock(character) || '';
-        memoryType = 'vector_memory';
-        memoryTitle = '向量记忆';
-    } else {
-        const journals = (character.memoryJournals || []).filter(journal => journal.isFavorited);
-        if (journals.length) {
-            memoryText = `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${journals.map(journal => `标题：${journal.title}\n内容：${journal.content}`).join('\n\n---\n\n')}`;
-            memoryType = 'journal_memory';
-            memoryTitle = `日记记忆（${journals.length} 条）`;
-        }
-    }
-    if (memoryText) {
-        const probe = memoryText.length > 80 ? memoryText.slice(0, 80) : memoryText;
+    const structuredArchive = extractPromptTagContent(systemPrompt, 'structured_archive_memory');
+    if (structuredArchive) {
         sources.push({
-            type: memoryType,
-            title: memoryTitle,
-            content: memoryText,
-            sent: !!probe && String(systemPrompt || '').includes(probe),
-            reason: '来自当前角色启用的长期记忆模式；已与最终 system prompt 核对',
-            traceMode: 'source_verified'
+            type: 'structured_memory',
+            title: '角色档案记忆（结构化档案）',
+            content: structuredArchive,
+            sent: true,
+            reason: '从最终 system prompt 的 structured_archive_memory 中提取，已实际发送；不受补充记忆模式影响',
+            traceMode: 'request_exact',
+            sourceId: character.id
+        });
+    }
+
+    const vectorMemory = extractPromptTagContent(systemPrompt, 'vector_memory_context');
+    if (vectorMemory) {
+        sources.push({
+            type: 'vector_memory',
+            title: '向量记忆（补充检索）',
+            content: vectorMemory,
+            sent: true,
+            reason: '当前补充记忆模式为向量记忆，内容从最终请求中提取',
+            traceMode: 'request_exact'
+        });
+    }
+
+    const journalMemory = extractPromptTagContent(systemPrompt, 'journal_memory_context');
+    if (journalMemory) {
+        sources.push({
+            type: 'journal_memory',
+            title: '回忆日记（补充记忆）',
+            content: journalMemory,
+            sent: true,
+            reason: '当前补充记忆模式为回忆日记，内容从最终请求中提取',
+            traceMode: 'request_exact'
         });
     }
 
@@ -650,21 +729,14 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         let systemPrompt;
         window.OVOOperationRuntime?.stage(operationRecord?.id, chatType === 'private' ? '读取角色档案与长期记忆' : '读取群聊设定');
         if (chatType === 'private') {
-            if (chat.memoryMode === 'table' && typeof prepareMemoryTableContext === 'function') {
-                try {
-                    await prepareMemoryTableContext(chat);
-                } catch (error) {
-                    console.warn('[MemoryTable] failed to prepare relevant prompt context:', error);
-                }
-            }
-            if (chat.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
-                try {
-                    await prepareVectorMemoryContext(chat);
-                } catch (error) {
-                    console.warn('[VectorMemory] failed to prepare prompt context:', error);
-                }
+            try {
+                await prepareCombinedLongTermMemoryContext(chat);
+            } catch (error) {
+                console.warn('[MemoryContext] failed to prepare layered long-term memory:', error);
             }
             systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText, enableMemorySidecar: !isBackground && !isSummary });
+            // 最终 payload 防线：结构化档案启用且已绑定模板时，任何自定义模板或节点分支都不能静默丢失档案。
+            systemPrompt = ensureStructuredArchivePromptInjection(chat, systemPrompt);
             // V14.7: capture the exact private-chat system prompt for Proment diagnostics.
             // This is a read-only runtime snapshot and does not alter request construction.
             try {
@@ -2567,20 +2639,7 @@ function generatePrivateSystemPrompt(character, opts) {
         
         // 构建共同回忆字符串。即使用户自定义模板遗漏占位符，也会在末尾安全补入。
         const hadMemoryPlaceholder = /\{\{共同回忆\}\}/.test(template);
-        let commonMemories = '';
-        if (character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
-            commonMemories = getMemoryTableContextBlock(character) || '';
-        } else if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
-            commonMemories = getVectorMemoryContextBlock(character) || '';
-        } else {
-            let favoritedJournals = (character.memoryJournals || [])
-                .filter(j => j.isFavorited)
-                .map(j => `标题：${j.title}\n内容：${j.content}`)
-                .join('\n\n---\n\n');
-            if (favoritedJournals) {
-                commonMemories = `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}`;
-            }
-        }
+        let commonMemories = buildCombinedLongTermMemoryContext(character);
         
         // 构建群聊记忆互通字符串
         if (character.syncGroupMemory) {
@@ -2775,23 +2834,9 @@ function generatePrivateSystemPrompt(character, opts) {
         
         if (activeNode.readMemory) {
             nodePrompt += `<memoir>\n`;
-            const tableMemoryText = character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
-                ? getMemoryTableContextBlock(character)
-                : (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
-                    ? getVectorMemoryContextBlock(character)
-                    : '');
-            if (tableMemoryText) {
-                nodePrompt += `${tableMemoryText}\n`;
-            } else {
-                const favoritedJournals = (character.memoryJournals || [])
-                    .filter(j => j.isFavorited)
-                    .map(j => `标题：${j.title}\n内容：${j.content}`)
-                    .join('\n\n---\n\n');
-                if (favoritedJournals) {
-                    nodePrompt += `<journal_memories>\n【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n</journal_memories>\n\n`;
-                }
-                
-                // 提取过往线上聊天记录
+            const combinedNodeMemory = buildCombinedLongTermMemoryContext(character);
+            if (combinedNodeMemory) nodePrompt += `${combinedNodeMemory}\n`;
+
                 let startIndex = -1;
                 for (let i = character.history.length - 1; i >= 0; i--) {
                     const m = character.history[i];
@@ -2866,7 +2911,6 @@ function generatePrivateSystemPrompt(character, opts) {
                         }
                     }
                 }
-            }
             nodePrompt += `</memoir>\n\n`;
         }
         
@@ -3256,24 +3300,9 @@ function generatePrivateSystemPrompt(character, opts) {
     }
 
     prompt += `<memoir>\n`
-    const tableMemoryText = character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
-        ? getMemoryTableContextBlock(character)
-        : (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
-            ? getVectorMemoryContextBlock(character)
-            : '');
-    if (tableMemoryText) {
-        prompt += `${tableMemoryText}\n`;
-    } else {
-        const favoritedJournals = (character.memoryJournals || [])
-            .filter(j => j.isFavorited)
-            .map(j => `标题：${j.title}\n内容：${j.content}`)
-            .join('\n\n---\n\n');
+    const combinedMemoryText = buildCombinedLongTermMemoryContext(character);
+    if (combinedMemoryText) prompt += `${combinedMemoryText}\n`;
 
-        if (favoritedJournals) {
-            prompt += `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n\n`;
-        }
-        
-        // 群聊记忆互通功能
         if (character.syncGroupMemory) {
             // 查找该角色所在的所有群聊
             let groupsWithCharacter = db.groups.filter(group => 
@@ -3347,7 +3376,6 @@ function generatePrivateSystemPrompt(character, opts) {
                 }
             }
         }
-    }
     prompt += `</memoir>\n\n`
 
     prompt += `<logic_rules>\n`
@@ -3509,12 +3537,9 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
     }
     const stickerTokens = estimateTokenFromText(stickerText);
 
-    // 5) 长期记忆（共同回忆 / 收藏日记）
-    const favoritedJournals = (character.memoryJournals || [])
-        .filter(j => j.isFavorited)
-        .map(j => `标题：${j.title}\n内容：${j.content}`)
-        .join('\n\n---\n\n');
-    const memoirTokens = estimateTokenFromText(favoritedJournals);
+    // 5) 长期记忆（结构化档案始终作为基础；日记/向量按当前模式补充）
+    const layeredMemoryText = buildCombinedLongTermMemoryContext(character);
+    const memoirTokens = estimateTokenFromText(layeredMemoryText);
 
     // 6) 窥屏知晓 + 代发消息（冒充）知晓
     let peekText = '';
@@ -3674,7 +3699,7 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
         { key: 'charPersona',    name: '角色人设',     value: charPersonaTokens,  desc: '角色的性格、背景、说话风格等设定文本。' },
         { key: 'userPersona',    name: '用户人设',     value: userPersonaTokens,  desc: '你自己的人设描述，让角色了解你是谁。' },
         { key: 'sticker',        name: '表情包',       value: stickerTokens,      desc: '已绑定的表情包名称列表，角色可从中选择发送。' },
-        { key: 'memoir',         name: '共同回忆',     value: memoirTokens,       desc: '已收藏的日记摘要，作为长期记忆保留在上下文中。' },
+        { key: 'memoir',         name: '档案与长期记忆', value: memoirTokens,       desc: '结构化档案作为基础记忆，并按当前模式补充回忆日记或向量检索。' },
         { key: 'peek',           name: '窥屏知晓',     value: peekTokens,         desc: '用户偷看手机后注入的应用内容摘要。' },
         { key: 'theme',          name: '对话主题',     value: themeTokens,        desc: '聊天界面主题列表，角色可主动切换。' },
         { key: 'altMemory',      name: '记忆互通',     value: altMemoryTokens,    desc: '大号/小号之间的聊天记忆同步内容。' },
@@ -3800,25 +3825,15 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
         systemPrompt += HUMAN_RUN_PROMPT + '\n';
     }
 
-    systemPrompt += `<memoir>\n`
-    const tableMemoryText = chat.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function'
-        ? getMemoryTableContextBlock(chat)
-        : (chat.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function'
-            ? getVectorMemoryContextBlock(chat)
-            : '');
-    if (tableMemoryText) {
-        systemPrompt += `${tableMemoryText}\n`;
-    } else {
-        const favoritedJournals = (chat.memoryJournals || [])
-            .filter(j => j.isFavorited)
-            .map(j => `标题：${j.title}\n内容：${j.content}`)
-            .join('\n\n---\n\n');
-
-        if (favoritedJournals) {
-            systemPrompt += `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${favoritedJournals}\n\n`;
-        }
+    try {
+        await prepareCombinedLongTermMemoryContext(chat);
+    } catch (error) {
+        console.warn('[MemoryContext] failed to prepare call memory:', error);
     }
-    systemPrompt += `</memoir>\n\n`
+    systemPrompt += `<memoir>\n`;
+    const combinedCallMemory = buildCombinedLongTermMemoryContext(chat);
+    if (combinedCallMemory) systemPrompt += `${combinedCallMemory}\n`;
+    systemPrompt += `</memoir>\n\n`;
 
     // --- 注入最近聊天记录 ---
     const maxMemory = chat.maxMemory || 20;

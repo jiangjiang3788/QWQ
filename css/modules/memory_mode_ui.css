@@ -1,4 +1,4 @@
-/* 长期记忆模式清晰化 UI：只处理显示与选择同步，不改变底层 memoryMode 数据结构。 */
+/* 长期记忆分层 UI：结构化档案为基础，memoryMode 仅选择额外补充来源。 */
 .memory-mode-card {
     margin: 12px 0;
     padding: 14px;

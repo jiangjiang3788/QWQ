@@ -48,5 +48,8 @@ vm.runInThisContext(fs.readFileSync(path.join(root, 'js/modules/memory_table_sid
   if (stateTable.updatePolicy.enabled !== false || stateTable.injectionPolicy.mode !== 'never') throw new Error('live table policy migration failed');
   const prompt = MemoryTableSidecar.buildSystemPrompt(chat);
   if (!prompt.includes('<memory_sidecar>') || !prompt.includes('活跃待办')) throw new Error('sidecar prompt missing');
+  chat.memoryMode = 'vector';
+  const layeredPrompt = MemoryTableSidecar.buildSystemPrompt(chat);
+  if (!layeredPrompt.includes('<memory_sidecar>')) throw new Error('sidecar was incorrectly disabled by vector supplemental mode');
   console.log('V2.3 SIDECAR CHECKS: PASS');
 })().catch(error => { console.error(error); process.exit(1); });

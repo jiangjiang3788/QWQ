@@ -1,4 +1,4 @@
-// OVO Operation Runtime - V2.10-R3.1 quick hotfix
+// OVO Operation Runtime - V2.10-R3.2 quick hotfix
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
@@ -588,7 +588,7 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.10-R3.1',
+        VERSION: '2.10-R3.2',
         start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
         complete, skip, fail, cancel, get, getChildren, list, getActive, getCurrent,
         resolveOperationId, recalculateParent, clear, subscribe

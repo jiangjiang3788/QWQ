@@ -72,3 +72,8 @@ V2.10-R3 数据变化回执：
 V2.10-R3.1 快速修复：
 - node tests/run_v210_r31_quick_hotfix_checks.js
 - 检查时间元数据防回显、聊天即时渲染对账、自定义 Prompt 记忆兜底注入及档案记忆来源展示。
+
+
+V2.10-R3.2 档案记忆注入修复：
+- node tests/run_v210_r32_archive_injection_checks.js
+- 验证结构化档案在 vector/journal 模式下仍作为基础上下文注入，并与补充记忆分层展示。
