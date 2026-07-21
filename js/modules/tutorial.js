@@ -593,14 +593,9 @@ function renderTutorialContent() {
         try {
             showToast('正在准备导出数据...');
 
-            const fullBackupData = await createFullBackupData();
-
-            const jsonString = JSON.stringify(fullBackupData);
-            const dataBlob = new Blob([jsonString]);
-
-            const compressionStream = new CompressionStream('gzip');
-            const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
-            const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
+            // 完整备份统一交给 BackupService。不要在 UI 层重新维护字段清单，
+            // 否则新增数据表或字段后容易再次出现“能使用但无法备份”的遗漏。
+            const compressedBlob = await BackupService.createBackupBlob();
 
             const url = URL.createObjectURL(compressedBlob);
             const a = document.createElement('a');
@@ -1362,13 +1357,11 @@ function renderTutorialContent() {
             try {
                 showToast('正在导入数据，请稍候...');
 
-                const decompressionStream = new DecompressionStream('gzip');
-                const decompressedStream = file.stream().pipeThrough(decompressionStream);
-                const jsonString = await new Response(decompressedStream).text();
-
-                let data = JSON.parse(jsonString);
-
-                const importResult = await importBackupData(data);
+                // 先完整校验，再进入事务恢复。校验失败时绝不能修改当前数据库。
+                const preview = await BackupService.parseAndValidate(file);
+                const summary = Object.entries(preview.counts || {}).map(([name, count]) => `${name}: ${count}`).join('，');
+                showToast(`校验通过：${summary}`);
+                const importResult = await BackupService.restoreBackupBlob(file);
 
                 if (importResult.success) {
                     showToast(`数据导入成功！${importResult.message} 应用即将刷新。`);
@@ -2432,14 +2425,8 @@ const GitHubMgr = {
         }
 
         onProgress('正在打包数据...');
-        const backupData = await createFullBackupData();
-        const jsonString = JSON.stringify(backupData);
-        
-        onProgress('正在压缩...');
-        const dataBlob = new Blob([jsonString]);
-        const compressionStream = new CompressionStream('gzip');
-        const compressedStream = dataBlob.stream().pipeThrough(compressionStream);
-        const compressedBlob = await new Response(compressedStream, { headers: { 'Content-Type': 'application/octet-stream' } }).blob();
+        // GitHub 与本地下载必须使用同一种完整备份格式。
+        const compressedBlob = await BackupService.createBackupBlob();
         
         onProgress('正在编码...');
         const base64Content = await new Promise((resolve, reject) => {
@@ -2569,8 +2556,7 @@ const GitHubMgr = {
         } else if(targetSingle){
             const rr=await fetch(`${baseUrl}/${encodeURIComponent(targetSingle.name)}`,{headers:auth}); if(!rr.ok) throw new Error('下载备份失败'); const rd=await rr.json(); const bin=atob(rd.content.replace(/\s/g,'')); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); compressedBlob=new Blob([bytes]);
         } else throw new Error('仓库中没有可恢复的备份');
-        const decompressed=compressedBlob.stream().pipeThrough(new DecompressionStream('gzip')); const data=JSON.parse(await new Response(decompressed).text());
-        const result=await importBackupData(data); if(!result.success) throw new Error(result.error||'导入失败'); showToast('GitHub 恢复成功，正在刷新…'); setTimeout(()=>location.reload(),1200); return result;
+        const result = await BackupService.restoreBackupBlob(compressedBlob); showToast('GitHub 恢复成功，正在刷新…'); setTimeout(()=>location.reload(),1200); return result;
     },
 
     restoreLatest: async () => {
@@ -2641,7 +2627,7 @@ const GitHubMgr = {
                 }
             }
 
-            let data;
+            let backupBlob;
             if (restoreChunked && targetManifest) {
                 showToast('正在下载分片清单...');
                 const manifestPath = `${GitHubMgr._CHUNKS_DIR}/${targetManifest.name}`;
@@ -2670,10 +2656,7 @@ const GitHubMgr = {
                 for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
                 const blob = new Blob([bytes], { type: 'application/octet-stream' });
 
-                const decompressionStream = new DecompressionStream('gzip');
-                const decompressedStream = blob.stream().pipeThrough(decompressionStream);
-                const jsonString = await new Response(decompressedStream).text();
-                data = JSON.parse(jsonString);
+                backupBlob = blob;
             } else {
                 if (!targetSingle) throw new Error('未找到可恢复的备份文件');
                 showToast('正在下载: ' + targetSingle.name);
@@ -2681,16 +2664,12 @@ const GitHubMgr = {
                     headers: { ...auth, 'Accept': 'application/vnd.github.v3.raw' }
                 });
                 if (!dlRes.ok) throw new Error('下载文件失败: ' + dlRes.status);
-                showToast('下载完成，正在解压...');
-                const blob = await dlRes.blob();
-                const decompressionStream = new DecompressionStream('gzip');
-                const decompressedStream = blob.stream().pipeThrough(decompressionStream);
-                const jsonString = await new Response(decompressedStream).text();
-                data = JSON.parse(jsonString);
+                showToast('下载完成，正在校验...');
+                backupBlob = await dlRes.blob();
             }
 
-            showToast('解压完成，开始导入...');
-            const importResult = await importBackupData(data);
+            showToast('校验完成，开始导入...');
+            const importResult = await BackupService.restoreBackupBlob(backupBlob);
 
             if (importResult.success) {
                 showToast(`恢复成功！${importResult.message} 应用即将刷新。`);
