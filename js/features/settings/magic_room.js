@@ -163,7 +163,36 @@ function setupMagicRoomApp() {
         box.hidden = false;
     }
 
+    function getLatestOperationPromptTrace() {
+        const operations = window.OVOOperationRuntime?.list?.({ limit: 30 }) || [];
+        for (const operation of operations) {
+            const requests = Array.isArray(operation?.requests) ? operation.requests.slice().reverse() : [];
+            const request = requests.find(item => item?.promptTrace?.sections?.length);
+            if (request) return { operation, request, trace: request.promptTrace };
+        }
+        return null;
+    }
+
     function getLastPromptSnapshot() {
+        const traced = getLatestOperationPromptTrace();
+        if (traced) {
+            const systemSection = (traced.trace.sections || []).find(section => section.type === 'system_rules' && section.content)
+                || (traced.trace.sections || []).find(section => section.type === 'output_rules' && section.content);
+            return {
+                version: 'prompt-snapshot.v2',
+                capturedAt: traced.trace.capturedAt || traced.request.createdAt || traced.operation.createdAt,
+                taskType: traced.operation.type || traced.request.task || '',
+                characterId: traced.operation.scope?.characterId || '',
+                characterName: traced.operation.scope?.characterName || traced.operation.title || '未命名',
+                provider: traced.request.provider || '',
+                model: traced.request.model || '',
+                systemPrompt: systemSection?.content || '',
+                systemPromptChars: systemSection?.chars || 0,
+                historyCount: traced.request.messageCount || 0,
+                promptTrace: traced.trace,
+                operationId: traced.operation.id
+            };
+        }
         if (window.__ovoLastPromptSnapshot) return window.__ovoLastPromptSnapshot;
         try {
             const raw = sessionStorage.getItem('ovo_last_prompt_snapshot');
@@ -209,20 +238,30 @@ function setupMagicRoomApp() {
             box.hidden = false;
             return;
         }
-        const sections = extractPromptSections(snapshot.systemPrompt);
+        const tracedSections = Array.isArray(snapshot.promptTrace?.sections) ? snapshot.promptTrace.sections : [];
+        const sections = tracedSections.length
+            ? tracedSections.map(section => ({
+                name: `${section.icon || ''} ${section.title || section.type || '来源'}`.trim(),
+                content: section.content || (section.items || []).map(item => `${item.title}: ${item.content || item.reason || ''}`).join('\n'),
+                chars: section.chars || 0,
+                sent: section.sent !== false,
+                reason: section.reason || ''
+            }))
+            : extractPromptSections(snapshot.systemPrompt);
         const captured = new Date(snapshot.capturedAt || Date.now()).toLocaleString();
-        pre.textContent = `# 最近真实 Prompt
-角色：${snapshot.characterName || '未命名'}
+        pre.textContent = `# 最近真实 Prompt 来源
+角色/操作：${snapshot.characterName || '未命名'}
 时间：${captured}
 Provider：${snapshot.provider || '未记录'}
 模型：${snapshot.model || '未记录'}
 System Prompt：${snapshot.systemPromptChars || String(snapshot.systemPrompt).length} 字符
-历史消息：${snapshot.historyCount ?? '未记录'} 条
-区块：${sections.length}
+模型消息：${snapshot.historyCount ?? '未记录'} 条
+来源区块：${sections.length}
+说明：R1 优先读取 AI 操作中心的真实来源记录；完整原始 payload 可在悬浮球操作详情中核对。
 
-` + sections.map(section => `## ${section.name}
-实际字符：${section.chars}
-${section.content}`).join('\n\n');
+` + sections.map(section => `## ${section.name}${section.sent === false ? '（未发送）' : ''}
+实际字符：${section.chars}${section.reason ? `\n来源说明：${section.reason}` : ''}
+${section.content || '[未保留正文]'}`).join('\n\n');
         box.hidden = false;
     }
 
@@ -349,7 +388,9 @@ ${recentLines.length ? recentLines.join('\n') : '无'}
         const policy = readPromentPolicy();
         let diag = window.__ovoLastWorldBookDiagnostic;
         if (!diag) { try { const raw=sessionStorage.getItem('ovo_last_worldbook_diagnostic'); diag=raw?JSON.parse(raw):null; } catch (_) {} }
-        const sections = extractPromptSections(snapshot.systemPrompt);
+        const sections = Array.isArray(snapshot.promptTrace?.sections) && snapshot.promptTrace.sections.length
+            ? snapshot.promptTrace.sections.map(section => ({ name: section.title || section.type, content: section.content || '', chars: section.chars || 0 }))
+            : extractPromptSections(snapshot.systemPrompt);
         const lines = [
             '# Proment 设计 / 真实对照',
             `角色：${snapshot.characterName || char?.remarkName || char?.name || '未命名'}`,

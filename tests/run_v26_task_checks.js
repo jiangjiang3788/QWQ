@@ -47,6 +47,7 @@ function assert(condition, message) {
       throw error;
     }
     if (payload.review) return { status: 'pending_review', batchId: 'batch1' };
+    if (payload.huge) return { status: 'success', changedFields: ['x'], range: { start: 1, end: 2, info: { runtime: { taskQueue: 'x'.repeat(200000) }, history: ['y'.repeat(200000)] } } };
     return { status: 'success', changedFields: ['x'] };
   });
   Tasks.registerExecutor('local_test', async () => ({ status: 'success' }));
@@ -59,6 +60,11 @@ function assert(condition, message) {
   await Tasks.process(chat, { maxTasks: 1, force: true, ignoreRoundLimit: true });
   assert(first.task.status === 'succeeded', 'task succeeded');
   assert(first.task.actual && first.task.actual.requestChars === 2100, 'diagnostic captured');
+
+  const hugeTask = Tasks.enqueue(chat, 'table_update', { chatId: chat.id, templateId: 'tpl', tableId: 'huge', range: { start: 1, end: 2 }, source: 'manual', apiMode: 'main', huge: true }, { apiMode: 'main', force: true }).task;
+  await Tasks.process(chat, { taskId: hugeTask.id, maxTasks: 1, force: true, ignoreRoundLimit: true });
+  assert(JSON.stringify(hugeTask.result).length < 10000, 'persisted result compact');
+  assert(!hugeTask.result.range.info, 'runtime/history removed from persisted range');
 
   const retryTask = Tasks.enqueue(chat, 'table_update', { chatId: chat.id, templateId: 'tpl', tableId: 'retry', range: { start: 21, end: 30 }, source: 'auto', apiMode: 'main', failOnce: true }, { apiMode: 'main', force: true }).task;
   calls = 0;

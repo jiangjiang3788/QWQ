@@ -1,9 +1,9 @@
-// QuickDock adapted from OWO v0.3.0. V14.6: current API model list, Git status, console and Proment; no presets, recent chats or full API shortcut.
+// QuickDock · V2.10-R1 AI 操作中心：操作来源、最终请求、API/Git、Proment 与开发日志。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const state = { open: false, panel: 'main', x: null, y: null, status: '' };
+    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null };
     let rootEl = null;
     let panelEl = null;
     let ballEl = null;
@@ -248,6 +248,140 @@
         if (el) el.textContent = state.status || '快捷工具已就绪';
     }
 
+
+    function getOperationRuntime() {
+        return window.OVOOperationRuntime || null;
+    }
+
+    function formatOperationTime(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatDuration(ms) {
+        const value = Number(ms) || 0;
+        if (value < 1000) return `${Math.max(0, Math.round(value))}ms`;
+        if (value < 60000) return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}秒`;
+        return `${Math.floor(value / 60000)}分${Math.round((value % 60000) / 1000)}秒`;
+    }
+
+    function operationStatusMeta(status) {
+        const map = {
+            running: { label: '进行中', className: 'running' },
+            queued: { label: '等待中', className: 'queued' },
+            success: { label: '已完成', className: 'success' },
+            failed: { label: '失败', className: 'failed' },
+            cancelled: { label: '已取消', className: 'cancelled' },
+            interrupted: { label: '已中断', className: 'interrupted' }
+        };
+        return map[status] || { label: status || '未知', className: 'unknown' };
+    }
+
+    function operationDuration(operation) {
+        if (!operation?.createdAt) return 0;
+        const start = new Date(operation.createdAt).getTime();
+        const end = new Date(operation.completedAt || operation.updatedAt || Date.now()).getTime();
+        return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0;
+    }
+
+    function operationResultText(operation) {
+        if (operation?.summary) return operation.summary;
+        if (operation?.status === 'running' || operation?.status === 'queued') return operation.stage || '正在处理';
+        if (operation?.error?.message) return operation.error.message;
+        return operation?.stage || '暂无结果摘要';
+    }
+
+
+    function formatSourceChars(value) {
+        const chars = Math.max(0, Number(value) || 0);
+        if (chars < 1000) return `${chars} 字符`;
+        return `${(chars / 1000).toFixed(chars < 10000 ? 1 : 0)}k 字符`;
+    }
+
+    function promptSourceMeta(type) {
+        const meta = window.OVOPromptTrace?.TYPE_META?.[type];
+        return meta || { title: '其他上下文', icon: '📎' };
+    }
+
+    function renderPromptSourceItems(section) {
+        const items = Array.isArray(section?.items) ? section.items : [];
+        if (!items.length) return '';
+        return `<div class="quick-dock-source-items">${items.map(item => `
+            <details class="quick-dock-source-item ${item.sent === false ? 'is-excluded' : ''}">
+                <summary><span>${escapeHtml(item.title || '来源条目')}</span><em>${item.sent === false ? '未发送' : escapeHtml(formatSourceChars(item.chars))}</em></summary>
+                ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ''}
+                ${item.content ? `<pre>${escapeHtml(item.content)}</pre>` : '<p>本条没有进入最终请求，因此不保留正文。</p>'}
+            </details>`).join('')}</div>`;
+    }
+
+    function renderPromptTrace(request) {
+        const trace = request?.promptTrace;
+        const sections = Array.isArray(trace?.sections) ? trace.sections : [];
+        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求还没有可解释的来源记录，可继续查看下方原始请求。</p>';
+        const groups = Array.isArray(trace?.summary?.byType) ? trace.summary.byType : [];
+        return `
+            <div class="quick-dock-prompt-overview">
+                <div class="quick-dock-prompt-overview-head"><b>发送内容来源</b><span>${sections.filter(section => section.sent !== false).length} 类已发送</span></div>
+                <div class="quick-dock-source-chips">
+                    ${groups.map(group => { const meta = promptSourceMeta(group.type); return `<span>${escapeHtml(meta.icon)} ${escapeHtml(group.title || meta.title)} · ${escapeHtml(group.count || group.sections || 0)}</span>`; }).join('')}
+                </div>
+                <p>来源视图展示参与本次实际请求的档案、记忆和上下文；“完整系统提示词”和“原始请求”用于最终核对。</p>
+            </div>
+            <div class="quick-dock-source-list">
+                ${sections.map(section => {
+                    const meta = promptSourceMeta(section.type);
+                    const status = section.sent === false ? '未发送' : (['request_exact', 'inferred_exact', 'source_exact'].includes(section.traceMode) ? '实际发送' : (section.traceMode === 'source_verified' ? '已核对' : '参与组装'));
+                    return `<details class="quick-dock-source-card ${section.sent === false ? 'is-excluded' : ''}">
+                        <summary>
+                            <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon)}</span>
+                            <span class="quick-dock-source-title"><b>${escapeHtml(section.title || meta.title)}</b><small>${escapeHtml(section.reason || '本次请求来源')}</small></span>
+                            <em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(section.chars))}</em>
+                        </summary>
+                        ${section.summary ? `<p class="quick-dock-source-summary">${escapeHtml(section.summary)}</p>` : ''}
+                        ${section.content ? `<pre class="quick-dock-source-content">${escapeHtml(section.content)}</pre>` : (!section.items?.length ? '<p class="quick-dock-operation-muted">该来源没有保留正文。</p>' : '')}
+                        ${renderPromptSourceItems(section)}
+                    </details>`;
+                }).join('')}
+            </div>`;
+    }
+
+    function renderOperationCard(operation, options = {}) {
+        if (!operation) return '<div class="quick-dock-operation-empty">还没有操作记录。发送消息、生成小剧场或更新结构化档案后，这里会显示完整进度。</div>';
+        const meta = operationStatusMeta(operation.status);
+        const request = Array.isArray(operation.requests) ? operation.requests[operation.requests.length - 1] : null;
+        const requestLine = request
+            ? `${request.provider || 'API'} · ${request.model || '未指定模型'} · ${request.requestChars || request.bodyChars || 0} 字符`
+            : '尚未发送模型请求';
+        return `
+            <article class="quick-dock-operation-card ${options.compact ? 'is-compact' : ''}" data-operation-status="${escapeHtml(meta.className)}">
+                <button type="button" class="quick-dock-operation-open" data-qd-action="open-operation" data-operation-id="${escapeHtml(operation.id)}">
+                    <div class="quick-dock-operation-head">
+                        <span class="quick-dock-operation-icon">${escapeHtml(operation.icon || '✨')}</span>
+                        <span class="quick-dock-operation-title"><b>${escapeHtml(operation.title || '执行操作')}</b><small>${escapeHtml(operation.category || '其他')} · ${escapeHtml(formatOperationTime(operation.createdAt))}</small></span>
+                        <em class="quick-dock-operation-status">${escapeHtml(meta.label)}</em>
+                    </div>
+                    <p class="quick-dock-operation-stage">${escapeHtml(operation.status === 'running' || operation.status === 'queued' ? operation.stage : operationResultText(operation))}</p>
+                    ${options.compact ? '' : `<div class="quick-dock-operation-meta"><span>${escapeHtml(requestLine)}</span><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>`}
+                </button>
+                ${(operation.status === 'running' || operation.status === 'queued') && !options.compact ? `<button type="button" class="quick-dock-operation-cancel" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消</button>` : ''}
+            </article>`;
+    }
+
+    function refreshOperationBall() {
+        if (!ballEl || !rootEl) return;
+        const runtime = getOperationRuntime();
+        const active = runtime?.getActive?.() || [];
+        const recent = runtime?.list?.({ limit: 1 }) || [];
+        const hasFailure = recent[0] && (recent[0].status === 'failed' || recent[0].status === 'interrupted');
+        rootEl.classList.toggle('quick-dock--operation-active', active.length > 0);
+        rootEl.classList.toggle('quick-dock--operation-error', !active.length && hasFailure);
+        ballEl.textContent = active.length ? String(Math.min(active.length, 9)) : 'AI';
+        ballEl.setAttribute('aria-label', active.length ? `${active.length} 个操作正在进行` : '打开 AI 操作中心');
+        ballEl.setAttribute('aria-expanded', state.open ? 'true' : 'false');
+    }
+
     async function refreshModelSelect(forceFetch = false) {
         const modelSelect = panelEl && panelEl.querySelector('#quick-dock-model-select');
         if (!modelSelect) return;
@@ -275,13 +409,44 @@
     }
 
     function renderMain() {
+        const runtime = getOperationRuntime();
+        const operations = runtime?.list?.({ limit: 8 }) || [];
+        const active = operations.filter(item => item.status === 'running' || item.status === 'queued');
+        const current = active[0] || operations[0] || null;
+        const history = current ? operations.filter(item => item.id !== current.id).slice(0, 5) : operations.slice(0, 5);
+        const currentApi = getCurrentApi();
+        panelEl.innerHTML = `
+            <header class="quick-dock-panel-header">
+                <div><strong>AI 操作中心</strong><span>V2.10-R1 · ${active.length ? `${active.length} 项正在进行` : '当前没有运行中的操作'}</span></div>
+                <button type="button" class="quick-dock-icon-btn" data-qd-action="close" aria-label="关闭">×</button>
+            </header>
+            <section class="quick-dock-operation-current">
+                <div class="quick-dock-section-title"><b>${active.length ? '当前操作' : '最近一次操作'}</b><small>${escapeHtml(currentApi.provider)} · ${escapeHtml(currentApi.model)}</small></div>
+                ${renderOperationCard(current)}
+            </section>
+            <section class="quick-dock-operation-history">
+                <div class="quick-dock-section-title"><b>最近操作</b>${operations.length ? '<button type="button" class="quick-dock-clear-history" data-qd-action="clear-operations">清除已完成</button>' : ''}</div>
+                <div class="quick-dock-operation-list">
+                    ${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">完成更多操作后会显示在这里。</p>'}
+                </div>
+            </section>
+            <div class="quick-dock-grid quick-dock-grid--primary quick-dock-operation-tools">
+                <button type="button" data-qd-action="open-tools"><b>API 与 Git</b><small>模型切换和数据同步</small></button>
+                <button type="button" data-qd-action="open-proment"><b>Proment</b><small>Prompt 与记忆状态</small></button>
+                <button type="button" data-qd-action="open-console"><b>开发日志</b><small>错误排查和复制</small></button>
+                ${current ? `<button type="button" data-qd-action="open-operation" data-operation-id="${escapeHtml(current.id)}"><b>操作详情</b><small>阶段、请求与结果</small></button>` : '<button type="button" disabled><b>操作详情</b><small>暂无可查看记录</small></button>'}
+            </div>
+            <p class="quick-dock-status">可按来源查看角色档案、用户档案、世界书、记忆、聊天历史和本次输入；原始请求仍可用于核对。</p>`;
+    }
+
+    function renderTools() {
         const current = getCurrentApi();
         const config = normalizeCurrentApiConfig();
         const apiLabel = config.url ? `${current.provider} · ${config.url}` : `${current.provider} · 未配置地址`;
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>QuickDock 2.0</strong><span>${escapeHtml(current.provider)} · ${escapeHtml(current.model)}</span></div>
-                <button type="button" class="quick-dock-icon-btn" data-qd-action="close" aria-label="关闭">×</button>
+                <div><strong>API 与数据工具</strong><span>${escapeHtml(current.provider)} · ${escapeHtml(current.model)}</span></div>
+                <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
             </header>
             <div class="quick-dock-section">
                 <div class="quick-dock-current-api"><b>当前 API</b><span>${escapeHtml(apiLabel)}</span></div>
@@ -293,14 +458,58 @@
                 <button type="button" class="quick-dock-primary-wide quick-dock-switch-btn" data-qd-action="switch-api">切换到所选模型</button>
             </div>
             <div class="quick-dock-grid quick-dock-grid--primary">
-                <button type="button" data-qd-action="git-upload"><b>Git 上传</b><small>同步当前完整数据</small></button>
+                <button type="button" data-qd-action="git-upload"><b>Git 上传</b><small>同步当前精简数据</small></button>
                 <button type="button" data-qd-action="git-restore"><b>Git 下载</b><small>下载最新备份并恢复</small></button>
-                <button type="button" data-qd-action="open-console"><b>控制台</b><small>日志、复制、全屏</small></button>
-                <button type="button" data-qd-action="open-proment"><b>Proment</b><small>只读状态与完整入口</small></button>
+                <button type="button" data-qd-action="open-git-settings"><b>Git 设置</b><small>仓库、分支和 Token</small></button>
+                <button type="button" data-qd-action="main"><b>返回操作中心</b><small>查看当前进度</small></button>
             </div>
             <p class="quick-dock-git-status"><b>Git 状态：</b>${escapeHtml(formatGitStatus())}</p>
             <p class="quick-dock-status">${escapeHtml(state.status || '点击“拉取”读取当前 API 的模型列表。')}</p>`;
         setTimeout(() => refreshModelSelect(false), 0);
+    }
+
+    function renderOperationDetail() {
+        const runtime = getOperationRuntime();
+        const operation = runtime?.get?.(state.selectedOperationId) || runtime?.getCurrent?.() || null;
+        if (!operation) {
+            state.panel = 'main';
+            renderMain();
+            return;
+        }
+        state.selectedOperationId = operation.id;
+        const meta = operationStatusMeta(operation.status);
+        const steps = Array.isArray(operation.steps) ? operation.steps : [];
+        const requests = Array.isArray(operation.requests) ? operation.requests : [];
+        const resultText = operation.result ? JSON.stringify(operation.result, null, 2) : '';
+        panelEl.innerHTML = `
+            <header class="quick-dock-panel-header">
+                <div><strong>${escapeHtml(operation.icon || '✨')} ${escapeHtml(operation.title)}</strong><span>${escapeHtml(operation.category || '其他')} · ${escapeHtml(formatOperationTime(operation.createdAt))}</span></div>
+                <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
+            </header>
+            <section class="quick-dock-operation-detail-head" data-operation-status="${escapeHtml(meta.className)}">
+                <div><b>${escapeHtml(meta.label)}</b><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>
+                <p>${escapeHtml(operationResultText(operation))}</p>
+                ${(operation.status === 'running' || operation.status === 'queued') ? `<button type="button" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消本次操作</button>` : ''}
+            </section>
+            <section class="quick-dock-detail-section">
+                <h4>执行阶段</h4>
+                <div class="quick-dock-step-list">
+                    ${steps.length ? steps.map(step => `<div class="quick-dock-step" data-step-status="${escapeHtml(step.status || '')}"><i></i><span><b>${escapeHtml(step.title || '处理')}</b>${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}</span><time>${escapeHtml(formatOperationTime(step.at))}</time></div>`).join('') : '<p class="quick-dock-operation-muted">暂无阶段记录</p>'}
+                </div>
+            </section>
+            <section class="quick-dock-detail-section">
+                <h4>模型请求 <small>${requests.length} 次</small></h4>
+                ${requests.length ? requests.map((request, index) => `
+                    <details class="quick-dock-request-card" ${index === requests.length - 1 ? 'open' : ''}>
+                        <summary><span><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></span><em>${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em></summary>
+                        <div class="quick-dock-request-meta"><span>来源：${escapeHtml(request.source || '未标记')}</span><span>消息：${escapeHtml(request.messageCount || 0)} 条</span><span>耗时：${escapeHtml(formatDuration(request.durationMs))}</span></div>
+                        ${request.errorMessage ? `<p class="quick-dock-request-error">${escapeHtml(request.errorMessage)}</p>` : ''}
+                        ${renderPromptTrace(request)}
+                        ${request.bodyPreview ? `<details class="quick-dock-raw-request"><summary>查看最终原始请求${request.bodyTruncated ? '（已截断）' : ''}</summary><pre>${escapeHtml(request.bodyPreview)}</pre></details>` : '<p class="quick-dock-operation-muted">该历史记录未保留请求正文。</p>'}
+                    </details>`).join('') : '<p class="quick-dock-operation-muted">本次操作尚未发送模型请求，或属于本地操作。</p>'}
+            </section>
+            ${(resultText || operation.error) ? `<section class="quick-dock-detail-section"><h4>${operation.error ? '错误信息' : '结果摘要'}</h4><pre class="quick-dock-result-pre">${escapeHtml(operation.error ? (operation.error.message || JSON.stringify(operation.error, null, 2)) : resultText)}</pre></section>` : ''}
+            <button type="button" class="quick-dock-text-link" data-qd-action="copy-operation" data-operation-id="${escapeHtml(operation.id)}">复制本次操作报告</button>`;
     }
 
 
@@ -313,7 +522,7 @@
             : (char?.memoryMode === 'vector' ? '向量记忆' : '回忆日记');
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>Proment 状态</strong><span>只读快捷视图</span></div>
+                <div><strong>Proment 状态</strong><span>R1 · 与操作来源记录互通</span></div>
                 <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
             </header>
             <div class="quick-dock-section quick-dock-proment-status">
@@ -325,7 +534,7 @@
                 <p><b>最近聊天</b><span>${policy.historyEnabled === false ? '关闭' : `${policy.historyCount || 30} 条`}</span></p>
             </div>
             <button type="button" class="quick-dock-primary-wide" data-qd-action="open-proment-full">打开完整 Proment</button>
-            <p class="quick-dock-status">QuickDock 不直接编辑 Prompt 或记忆数据。</p>`;
+            <p class="quick-dock-status">操作详情显示本次真实来源；完整 Proment 继续负责 Prompt 与记忆的深度查看。</p>`;
     }
 
     function filteredLogs() {
@@ -377,15 +586,48 @@
         panelEl.hidden = !state.open;
         panelEl.classList.toggle('quick-dock-panel--console', state.panel === 'console');
         if (!state.open) return;
+        refreshOperationBall();
         if (state.panel === 'console') renderConsole();
         else if (state.panel === 'proment') renderPromentStatus();
+        else if (state.panel === 'tools') renderTools();
+        else if (state.panel === 'operation') renderOperationDetail();
         else renderMain();
     }
 
-    async function runAction(action) {
+    async function runAction(action, trigger) {
         if (action === 'close') { state.open = false; state.panel = 'main'; render(); return; }
-        if (action === 'main') { state.panel = 'main'; render(); return; }
+        if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
+        if (action === 'open-tools') { state.panel = 'tools'; render(); return; }
+        if (action === 'open-operation') {
+            state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
+            state.panel = 'operation';
+            render();
+            return;
+        }
+        if (action === 'cancel-operation') {
+            const operationId = trigger?.dataset?.operationId || state.selectedOperationId;
+            if (operationId) getOperationRuntime()?.cancel?.(operationId, '用户从操作中心取消');
+            render();
+            return;
+        }
+        if (action === 'clear-operations') {
+            getOperationRuntime()?.clear?.({ keepActive: true });
+            state.selectedOperationId = null;
+            render();
+            return;
+        }
+        if (action === 'copy-operation') {
+            const operationId = trigger?.dataset?.operationId || state.selectedOperationId;
+            const operation = getOperationRuntime()?.get?.(operationId);
+            if (operation) {
+                const text = JSON.stringify(operation, null, 2);
+                try { await navigator.clipboard.writeText(text); }
+                catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+                toast('本次操作报告已复制');
+            }
+            return;
+        }
         if (action === 'open-git-settings') { openGitSettings(); return; }
         if (action === 'open-proment') { state.panel = 'proment'; render(); return; }
         if (action === 'open-proment-full') {
@@ -416,13 +658,13 @@
             toast(state.status);
         } finally {
             rootEl.classList.remove('quick-dock--busy');
-            if (state.panel === 'main') render();
+            if (state.panel === 'main' || state.panel === 'tools') render();
         }
     }
 
     function onPanelClick(event) {
         const action = event.target.closest('[data-qd-action]');
-        if (action) runAction(action.dataset.qdAction);
+        if (action) runAction(action.dataset.qdAction, action);
     }
 
     function onPointerDown(event) {
@@ -464,11 +706,21 @@
         ballEl.addEventListener('pointercancel', () => { drag = null; });
         document.addEventListener('pointerdown', event => { if (state.open && !rootEl.contains(event.target)) { state.open = false; state.panel = 'main'; render(); } });
         window.addEventListener('resize', () => { applyPosition(state.x, state.y); savePosition(); });
+        window.addEventListener('ovo:operation-change', () => {
+            refreshOperationBall();
+            if (state.open && (state.panel === 'main' || state.panel === 'operation')) render();
+        });
+        refreshOperationBall();
         render();
     }
 
     installConsoleCapture();
-    window.QuickDock = { init, open: panel => { state.panel = panel || 'main'; state.open = true; render(); }, close: () => { state.open = false; render(); } };
+    window.QuickDock = {
+        init,
+        open: panel => { state.panel = panel || 'main'; state.open = true; render(); },
+        openOperation: id => { state.selectedOperationId = id || getOperationRuntime()?.getCurrent?.()?.id || null; state.panel = 'operation'; state.open = true; render(); },
+        close: () => { state.open = false; render(); }
+    };
     // Compatibility with the V12.9-V13.4 initialization call.
     window.FloatingBall = window.QuickDock;
 })();

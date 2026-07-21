@@ -83,7 +83,7 @@ for file in (root / 'js/modules').glob('memory_table*.js'):
     if found:
         errors.append(f'duplicate shared helpers in {file.name}: {found}')
 
-template = root / '章鱼机_分层可检索记忆模板V2.8_含原数据.json'
+template = root / 'memory_templates' / '当前默认记忆模板_V2.8.json'
 if not template.exists():
     errors.append('current V2.8 memory template is missing')
 else:

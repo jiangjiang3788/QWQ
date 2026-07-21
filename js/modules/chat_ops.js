@@ -587,9 +587,9 @@ async function saveMessageEdit() {
                     chat.statusPanel.currentStatusHtml = html;
                     
                     chat.history[messageIndex].isStatusUpdate = true;
+                    // replacePattern 由角色当前状态栏配置持有，不再复制到每条消息。
                     chat.history[messageIndex].statusSnapshot = {
                         regex: pattern,
-                        replacePattern: chat.statusPanel.replacePattern,
                         oldRaw: rawStatus
                     };
                 } else {

@@ -15,7 +15,7 @@ const facade = read('js/features/settings/facade.js');
 const components = read('js/core/ui_components.js');
 const css = read('css/components/settings_components.css');
 
-assert(/^V2\.9-R(?:[4-9]|1[01])$/.test(read('VERSION.txt').trim()), 'release compatibility version mismatch');
+assert(/^(?:V2\.9-R(?:[4-9]|1[01])|V2\.10-R[01])$/.test(read('VERSION.txt').trim()), 'release compatibility version mismatch');
 for (const file of [
   'js/core/ui_components.js',
   'js/features/settings/magic_room.js',

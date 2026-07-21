@@ -61,7 +61,7 @@ function setTheaterPromptPresets(list) {
  * 之前这里调用了未定义的 callChatCompletion，导致 “callChatCompletion is not defined”。
  * 这里复用 utils.js 的 fetchAiResponse() 发请求，然后包装成 {choices:[{message:{content}}]}。
  */
-async function callChatCompletion(apiPayload, overrideSettings) {
+async function callChatCompletion(apiPayload, overrideSettings, runtimeMeta = {}) {
     // 如果提供了独立API覆盖设置，则优先使用
     let settings;
     if (overrideSettings && overrideSettings.url && overrideSettings.key && overrideSettings.model) {
@@ -122,7 +122,13 @@ async function callChatCompletion(apiPayload, overrideSettings) {
         throw new Error('缺少 fetchAiResponse()：请确认 utils.js 已被正确加载');
     }
 
-    const runtimeSettings = { ...settings, runtimeTask: 'theater-generation', runtimeSource: 'theater' };
+    const runtimeSettings = {
+        ...settings,
+        runtimeTask: runtimeMeta.task || 'theater-generation',
+        runtimeSource: runtimeMeta.source || 'theater',
+        runtimeOperationId: runtimeMeta.operationId || null,
+        runtimePromptSources: runtimeMeta.promptSources || []
+    };
     const content = await fetchAiResponse(runtimeSettings, requestBody, headers, endpoint, false);
     return { choices: [{ message: { content: (content || '').toString() } }] };
 }
@@ -979,6 +985,21 @@ async function generateTheaterScenario() {
         return;
     }
 
+    let operationRecord = null;
+    let operationFinished = false;
+    if (window.OVOOperationRuntime) {
+        const selectedNames = charIds.map(id => {
+            const char = db.characters.find(item => item.id === id);
+            return char?.remarkName || char?.realName || char?.name || '';
+        }).filter(Boolean);
+        operationRecord = window.OVOOperationRuntime.start('theater.generate', {
+            title: theaterCurrentMode === 'html' ? '生成 HTML 小剧场' : '生成小剧场',
+            source: 'theater-manual',
+            scope: { mode: theaterCurrentMode, characterIds: charIds, characterNames: selectedNames, category },
+            stage: '整理小剧场素材'
+        });
+    }
+
     try {
         generateBtn.disabled = true;
         const originalText = generateBtn.textContent;
@@ -1014,6 +1035,22 @@ async function generateTheaterScenario() {
 3. 直接输出剧本正文，不要输出任何开场白或说明（例如不要输出「好的，作家。这是一段根据你提供的提示词和设定生成的短篇小说。」等句子）。`;
 
         let finalPrompt = customPrompt;
+        const theaterPromptSources = [
+            {
+                type: 'output_rules',
+                title: isHtmlMode ? 'HTML 小剧场输出规则' : '文字小剧场创作规则',
+                content: systemPrompt,
+                reason: '本次小剧场请求实际发送的 system 消息',
+                traceMode: 'source_exact'
+            },
+            {
+                type: 'user_input',
+                title: '用户剧情提示',
+                content: customPrompt,
+                reason: '用户在小剧场页面输入的本次创作要求',
+                traceMode: 'source_exact'
+            }
+        ];
 
         // 如果选择了角色，注入角色信息
         if (charIds.length > 0) {
@@ -1023,6 +1060,21 @@ async function generateTheaterScenario() {
                     `角色名：${char.realName || char.remarkName || '未命名角色'}\n角色人设：${char.persona || '未设定'}`
                 ).join('\n\n');
                 finalPrompt = `【角色信息】\n${charInfoText}\n\n【用户提示】\n${customPrompt}`;
+                theaterPromptSources.push({
+                    type: 'character_profile',
+                    title: `角色档案（${chars.length} 人）`,
+                    content: charInfoText,
+                    count: chars.length,
+                    reason: '来自本次选中的角色及其人设',
+                    traceMode: 'source_exact',
+                    items: chars.map(char => ({
+                        id: char.id,
+                        title: char.realName || char.remarkName || char.name || '未命名角色',
+                        content: char.persona || '未设定',
+                        sourceId: char.id,
+                        reason: '用户在小剧场中选中该角色'
+                    }))
+                });
             }
         }
 
@@ -1031,6 +1083,13 @@ async function generateTheaterScenario() {
             const persona = db.myPersonaPresets.find(p => (p.id || p.name) === personaId);
             if (persona) {
                 finalPrompt += `\n\n【用户人设】\n名称：${persona.name}\n人设内容：${persona.content}\n\n注意：在生成的小说中，如果提到用户角色，请使用"${persona.name}"作为用户的名字，或使用{{user_name}}占位符（后续会自动替换）。`;
+                theaterPromptSources.push({
+                    type: 'user_profile',
+                    content: `名称：${persona.name}\n人设内容：${persona.content || ''}`,
+                    reason: '用户为本次小剧场选择的人设预设',
+                    traceMode: 'source_exact',
+                    sourceId: persona.id || persona.name
+                });
             }
         }
 
@@ -1046,6 +1105,21 @@ async function generateTheaterScenario() {
                         .map(wb => `【${wb.name || wb.title || '未命名世界书'}】\n${wb.content || ''}`)
                         .join('\n\n');
                     finalPrompt += `\n\n【世界观设定参考】\n${worldbookText}`;
+                    theaterPromptSources.push({
+                        type: 'worldbook',
+                        title: `世界书（${selectedBooks.length} 条）`,
+                        content: worldbookText,
+                        count: selectedBooks.length,
+                        reason: '用户在小剧场中主动选择的世界书条目',
+                        traceMode: 'source_exact',
+                        items: selectedBooks.map(wb => ({
+                            id: wb.id,
+                            title: wb.name || wb.title || '未命名世界书',
+                            content: wb.content || '',
+                            sourceId: wb.id,
+                            reason: '本次请求已注入'
+                        }))
+                    });
                 }
             }
         }
@@ -1126,12 +1200,28 @@ async function generateTheaterScenario() {
             if (allHistoryTexts.length > 0) {
                 const combinedHistoryText = allHistoryTexts.join('\n\n---\n\n');
                 finalPrompt += `\n\n【用户与所有角色的最近聊天记录（共${totalHistoryCount}条）】\n${combinedHistoryText}`;
+                theaterPromptSources.push({
+                    type: 'chat_history',
+                    title: `最近聊天（${totalHistoryCount} 条）`,
+                    content: combinedHistoryText,
+                    count: totalHistoryCount,
+                    reason: '小剧场页面已开启聊天记录读取',
+                    traceMode: 'source_exact'
+                });
             }
 
             // 将所有角色的日记总结合并到提示词中
             if (allJournalTexts.length > 0) {
                 const combinedJournalText = allJournalTexts.join('\n\n---\n\n');
                 finalPrompt += `\n\n【用户与所有角色的日记总结（共${totalJournalCount}条）】\n${combinedJournalText}`;
+                theaterPromptSources.push({
+                    type: 'journal_memory',
+                    title: `日记记忆（${totalJournalCount} 条）`,
+                    content: combinedJournalText,
+                    count: totalJournalCount,
+                    reason: '小剧场页面已开启日记总结读取',
+                    traceMode: 'source_exact'
+                });
             }
         }
 
@@ -1168,7 +1258,13 @@ async function generateTheaterScenario() {
             model: effectiveModel
         };
 
-        const response = await callChatCompletion(apiPayload, overrideSettings);
+        window.OVOOperationRuntime?.stage(operationRecord?.id, '发送小剧场生成请求', { detail: effectiveModel });
+        const response = await callChatCompletion(apiPayload, overrideSettings, {
+            operationId: operationRecord?.id,
+            task: 'theater-generation',
+            source: 'theater-manual',
+            promptSources: theaterPromptSources
+        });
         if (response && response.choices && response.choices[0] && response.choices[0].message) {
             const content = response.choices[0].message.content.trim();
 
@@ -1269,10 +1365,22 @@ async function generateTheaterScenario() {
             showToast('剧情生成成功！');
             switchScreen('theater-screen');
             renderTheaterScenarios();
+            if (operationRecord) {
+                window.OVOOperationRuntime.complete(operationRecord.id, {
+                    summary: `小剧场「${scenario.title}」已保存`,
+                    result: { scenarioId: scenario.id, mode: scenario.mode, category: scenario.category }
+                });
+                operationFinished = true;
+            }
         } else {
+            const responseError = new Error('模型没有返回可用的小剧场内容');
+            if (operationRecord) window.OVOOperationRuntime.fail(operationRecord.id, responseError);
+            operationFinished = true;
             showToast('生成失败，请重试');
         }
     } catch (error) {
+        if (operationRecord && !operationFinished) window.OVOOperationRuntime?.fail(operationRecord.id, error);
+        operationFinished = true;
         console.error('生成剧情失败:', error);
         showToast('生成失败：' + (error.message || '未知错误'));
     } finally {
@@ -2388,6 +2496,17 @@ async function generateCharTheater(charId) {
     const char = db.characters.find(c => c.id === charId);
     if (!char || !char.charTheaterEnabled) return;
 
+    const charNameForOperation = char.realName || char.remarkName || '角色';
+    const parentOperationId = window.OVOOperationRuntime?.resolveOperationId?.({ source: 'chat-ai-reply', task: 'private-chat' }) || null;
+    const operationRecord = window.OVOOperationRuntime?.start('theater.character', {
+        title: `${charNameForOperation}创作小剧场`,
+        source: 'theater-character-auto',
+        parentId: parentOperationId,
+        scope: { characterId: charId, characterName: charNameForOperation },
+        stage: '读取角色档案与最近聊天'
+    }) || null;
+    let operationFinished = false;
+
     const format = char.charTheaterFormat || 'text';
     const customPrompt = (char.charTheaterPrompt || '').trim();
     const charName = char.realName || char.remarkName || '角色';
@@ -2505,6 +2624,57 @@ async function generateCharTheater(charId) {
 
     userPrompt += `\n\n请现在写一段小剧场作品，题材和风格由你自由发挥，但需要体现你（${charName}）的性格特点，以及你与用户（${myName}）之间的关系和最近发生的事。`;
 
+    const characterTheaterPromptSources = [
+        {
+            type: 'output_rules',
+            title: useHtml ? 'HTML 小剧场输出规则' : '文字小剧场创作规则',
+            content: systemPrompt,
+            reason: '角色主动创作请求实际发送的 system 消息',
+            traceMode: 'source_exact'
+        },
+        {
+            type: 'character_profile',
+            content: `角色名：${charName}\n角色人设：${charPersona || '（未设定）'}`,
+            reason: '来自当前角色档案',
+            traceMode: 'source_exact',
+            sourceId: char.id
+        }
+    ];
+    if (userPersonaText) characterTheaterPromptSources.push({
+        type: 'user_profile',
+        content: `用户名：${myName}\n${userPersonaText}`,
+        reason: '来自角色绑定的用户人设或默认用户人设',
+        traceMode: 'source_exact'
+    });
+    if (worldBookText) characterTheaterPromptSources.push({
+        type: 'worldbook',
+        content: worldBookText,
+        count: wbIds.length,
+        reason: '来自角色主动小剧场绑定的世界书',
+        traceMode: 'source_exact'
+    });
+    if (journalText) characterTheaterPromptSources.push({
+        type: 'journal_memory',
+        content: journalText,
+        count: journalCount,
+        reason: '来自角色最近的日记总结',
+        traceMode: 'source_exact'
+    });
+    if (recentHistory) characterTheaterPromptSources.push({
+        type: 'chat_history',
+        content: recentHistory,
+        count: recentHistory.split('\n').filter(Boolean).length,
+        reason: '来自角色主动小剧场设置的最近聊天范围',
+        traceMode: 'source_exact'
+    });
+    if (customPrompt) characterTheaterPromptSources.push({
+        type: 'task_instruction',
+        title: '角色主动创作附加要求',
+        content: customPrompt,
+        reason: '角色小剧场设置中的自定义创作要求',
+        traceMode: 'source_exact'
+    });
+
     const isCurrentChat = () => (typeof currentChatId !== 'undefined' && currentChatId === charId
         && typeof currentChatType !== 'undefined' && currentChatType === 'private');
 
@@ -2543,8 +2713,17 @@ async function generateCharTheater(charId) {
         if (char.charTheaterUseCustomApi && char.charTheaterApiUrl && char.charTheaterApiKey && char.charTheaterApiModel) {
             charApiOverride = { url: char.charTheaterApiUrl, key: char.charTheaterApiKey, model: char.charTheaterApiModel };
         }
-        const response = await callChatCompletion(apiPayload, charApiOverride);
+        window.OVOOperationRuntime?.stage(operationRecord?.id, '发送角色创作请求', { detail: mode === 'html' ? 'HTML 小剧场' : '文字小剧场' });
+        const response = await callChatCompletion(apiPayload, charApiOverride, {
+            operationId: operationRecord?.id,
+            task: 'theater-character-generation',
+            source: 'theater-character-auto',
+            promptSources: characterTheaterPromptSources
+        });
         if (!response || !response.choices || !response.choices[0]) {
+            const responseError = new Error('模型没有返回小剧场内容');
+            if (operationRecord) window.OVOOperationRuntime?.fail(operationRecord.id, responseError);
+            operationFinished = true;
             _hideTheaterTyping();
             return;
         }
@@ -2641,8 +2820,17 @@ async function generateCharTheater(charId) {
 
         _hideTheaterTyping();
         await saveData();
+        if (operationRecord) {
+            window.OVOOperationRuntime?.complete(operationRecord.id, {
+                summary: `${charName}创作了「${title}」`,
+                result: { scenarioId: scenario.id, characterId: charId, mode, selfAware: isSelfAware }
+            });
+            operationFinished = true;
+        }
         console.log(`[小剧场] ${charName} 主动创作了小剧场：${title}`);
     } catch (err) {
+        if (operationRecord && !operationFinished) window.OVOOperationRuntime?.fail(operationRecord.id, err);
+        operationFinished = true;
         _hideTheaterTyping();
         console.warn('[小剧场] 角色主动生成小剧场失败：', err);
     }

@@ -1,0 +1,49 @@
+== STATIC ==
+STATIC CHECKS: PASS
+== REFACTOR BASELINE ==
+memory-template-sha256=7d2c23eb473c3dd8fb8893500859a646c5f181f5f41b224bedc4bccded586e7b
+V2.9-R11 REFACTOR BASELINE: PASS
+== tests/run_backup_encoding_checks.js ==
+BACKUP ENCODING CHECKS: PASS
+== tests/run_backup_service_checks.js ==
+BACKUP CHECKS: PASS (9)
+== tests/run_v21_review_checks.js ==
+V2.1 REVIEW CHECKS: PASS
+== tests/run_v22_retrieval_checks.js ==
+V2.2 RETRIEVAL CHECKS: PASS
+== tests/run_v23_sidecar_checks.js ==
+V2.3 SIDECAR CHECKS: PASS
+== tests/run_v24_effects_checks.js ==
+V2.4 EFFECT ROUTING CHECKS: PASS
+== tests/run_v25_lifecycle_checks.js ==
+V2.5 LIFECYCLE CHECKS: PASS
+== tests/run_v26_task_checks.js ==
+V2.6 TASK QUEUE CHECKS: PASS
+== tests/run_v27_feedback_checks.js ==
+V2.7 FEEDBACK CHECKS: PASS
+== tests/run_v28_quality_checks.js ==
+V2.8 QUALITY CHECKS: PASS
+== tests/run_v29_r0_app_registry_checks.js ==
+V2.9-R0 APP REGISTRY CHECKS: PASS
+== tests/run_v29_r10_memory_search_checks.js ==
+V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+== tests/run_v29_r11_memory_workspace_state_checks.js ==
+V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+== tests/run_v29_r1_memory_kernel_checks.js ==
+V2.9-R1 MEMORY KERNEL CHECKS: PASS
+== tests/run_v29_r2_memory_workspace_checks.js ==
+V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+== tests/run_v29_r3_app_workspace_checks.js ==
+V2.9-R3 APP WORKSPACE CHECKS: PASS
+== tests/run_v29_r4_settings_components_checks.js ==
+V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+== tests/run_v29_r5_character_settings_checks.js ==
+V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+== tests/run_v29_r6_experience_memory_checks.js ==
+V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+== tests/run_v29_r7_startup_checks.js ==
+V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+== tests/run_v29_r8_startup_contract_checks.js ==
+V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+== tests/run_v29_r9_navigation_launcher_checks.js ==
+V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS

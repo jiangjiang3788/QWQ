@@ -92,6 +92,7 @@
             task.createdAt = Number(task.createdAt) || now();
             task.nextRetryAt = Number(task.nextRetryAt) || 0;
             task.apiTask = task.apiTask !== false;
+            task.result = sanitizeTaskResult(task, task.result);
             if (task.status === 'running') {
                 task.status = state.settings.autoResume ? 'queued' : 'paused';
                 task.recoveredAt = now();
@@ -99,6 +100,7 @@
                 recovered += 1;
             }
         });
+        state.history = state.history.map(item => archiveTask(item));
         if (recovered) {
             state.stats.recovered += recovered;
             state.lastRecoveryAt = now();
@@ -132,6 +134,68 @@
         const outputCost = apiMode === 'embedding' ? 0 : output * getPrice(settings, apiMode, 'output') / 1000000;
         return { inputTokens: input, outputTokens: output, cost: inputCost + outputCost };
     }
+
+    const MAX_PERSISTED_RESULT_CHARS = 32000;
+    const MAX_PERSISTED_CHANGED_FIELDS = 200;
+
+    function compactRange(range) {
+        if (!range || typeof range !== 'object') return null;
+        const start = Number(range.start);
+        const end = Number(range.end);
+        return {
+            start: Number.isFinite(start) ? start : 0,
+            end: Number.isFinite(end) ? end : 0
+        };
+    }
+
+    function compactChangedFields(fields) {
+        if (!Array.isArray(fields)) return [];
+        return fields.slice(0, MAX_PERSISTED_CHANGED_FIELDS).map(item => {
+            if (item === null || item === undefined) return item;
+            if (typeof item !== 'object') return String(item).slice(0, 300);
+            return {
+                templateId: item.templateId || '',
+                tableId: item.tableId || '',
+                rowId: item.rowId || '',
+                fieldId: item.fieldId || '',
+                label: String(item.label || '').slice(0, 300)
+            };
+        });
+    }
+
+    function sanitizeTaskResult(task, result) {
+        if (!result || typeof result !== 'object') return null;
+        if (task?.type === 'table_update') {
+            return {
+                status: result.status || '',
+                changedFields: compactChangedFields(result.changedFields),
+                changedFieldCount: Array.isArray(result.changedFields) ? result.changedFields.length : 0,
+                batchId: result.batchId || null,
+                proposedCount: Number(result.proposedCount) || 0,
+                templateId: result.templateId || task.payload?.templateId || '',
+                tableId: result.tableId || task.payload?.tableId || '',
+                range: compactRange(result.range || task.payload?.range)
+            };
+        }
+        let cloned;
+        try { cloned = clone(result); } catch (_) { cloned = null; }
+        if (!cloned) return { status: result.status || '', truncated: true };
+        try {
+            if (JSON.stringify(cloned).length <= MAX_PERSISTED_RESULT_CHARS) return cloned;
+        } catch (_) {}
+        return {
+            status: result.status || '',
+            summary: String(result.summary || result.message || '').slice(0, 1200),
+            truncated: true
+        };
+    }
+
+    function archiveTask(task) {
+        const archived = { ...clone(task), payload: undefined };
+        archived.result = sanitizeTaskResult(task, task?.result);
+        return archived;
+    }
+
     function getCurrentRoundId(chat) {
         return chat?.memoryTables?.lastRoundId
             || chat?.memoryTables?.engineSettings?.lastRoundId
@@ -166,7 +230,7 @@
         if (completed.length > 30) {
             const keepIds = new Set(completed.slice(-30).map(item => item.id));
             const removed = state.tasks.filter(item => ['succeeded', 'cancelled'].includes(item.status) && !keepIds.has(item.id));
-            state.history.push(...removed.map(item => ({ ...clone(item), payload: undefined })));
+            state.history.push(...removed.map(archiveTask));
             state.tasks = state.tasks.filter(item => !removed.some(old => old.id === item.id));
         }
         state.tasks = state.tasks.slice(-TASK_LIMIT);
@@ -324,7 +388,7 @@
             const result = await executor(chat, clone(task.payload), task);
             const afterDiagnostic = task.apiTask ? captureDiagnostic(task) : null;
             task.actual = afterDiagnostic && afterDiagnostic.requestId !== beforeDiagnosticId ? afterDiagnostic : null;
-            task.result = result ? clone(result) : null;
+            task.result = sanitizeTaskResult(task, result);
             if (result?.status === 'pending_review') {
                 task.status = 'waiting_review';
                 task.reviewBatchId = result.batchId || null;
@@ -419,7 +483,7 @@
     function clearCompleted(chat) {
         const state = ensureState(chat);
         const removed = state.tasks.filter(item => ['succeeded', 'cancelled'].includes(item.status));
-        state.history.push(...removed.map(item => ({ ...clone(item), payload: undefined })));
+        state.history.push(...removed.map(archiveTask));
         state.tasks = state.tasks.filter(item => !['succeeded', 'cancelled'].includes(item.status));
         compactTasks(state);
         return removed.length;

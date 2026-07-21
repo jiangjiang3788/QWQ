@@ -103,6 +103,124 @@ function getEffectivePersona(character) {
     return p || "一个友好、乐于助人的伙伴。";
 }
 
+
+function extractPrivateOutputRules(systemPrompt) {
+    const text = String(systemPrompt || '');
+    const blocks = [];
+    const patterns = [
+        /<Chatting Guidelines>[\s\S]*?<\/Chatting Guidelines>/ig,
+        /【额外允许的线上功能格式】[\s\S]*?(?=\n【|\n<|$)/ig,
+        /【消息收藏功能】[\s\S]*?(?=\n【|$)/ig,
+        /【输出格式[^】]*】[\s\S]*?(?=\n【|\n<|$)/ig
+    ];
+    patterns.forEach(pattern => {
+        const matches = text.match(pattern) || [];
+        matches.forEach(match => { if (match && !blocks.includes(match.trim())) blocks.push(match.trim()); });
+    });
+    return blocks.join('\n\n');
+}
+
+function buildPrivateChatPromptSources(character, systemPrompt) {
+    if (!character) return [];
+    const sources = [];
+    const persona = getEffectivePersona(character);
+    const characterProfile = [
+        `角色名：${character.realName || character.remarkName || character.name || '未命名角色'}`,
+        `当前状态：${character.status || '在线'}`,
+        `角色人设：${persona}`
+    ].join('\n');
+    sources.push({
+        type: 'character_profile',
+        content: characterProfile,
+        sent: String(systemPrompt || '').includes(persona) || (!!character.realName && String(systemPrompt || '').includes(character.realName)),
+        reason: '来自当前角色档案；是否发送根据最终 system prompt 进行核对',
+        traceMode: 'source_verified',
+        sourceId: character.id
+    });
+
+    const userProfileParts = [];
+    if (character.myName) userProfileParts.push(`用户称呼：${character.myName}`);
+    if (character.myPersona) userProfileParts.push(`用户人设：${character.myPersona}`);
+    if (userProfileParts.length) {
+        const userProfile = userProfileParts.join('\n');
+        sources.push({
+            type: 'user_profile',
+            content: userProfile,
+            sent: !character.myPersona || String(systemPrompt || '').includes(character.myPersona),
+            reason: '来自当前角色绑定的用户称呼与用户人设',
+            traceMode: 'source_verified'
+        });
+    }
+
+    const diagnostic = window.__ovoLastWorldBookDiagnostic;
+    if (diagnostic && diagnostic.characterId === character.id && Array.isArray(diagnostic.items)) {
+        const included = diagnostic.items.filter(item => item.included);
+        const content = included.map(item => String(item.content || '').slice(0, Number(item.injectedChars) || String(item.content || '').length)).join('\n\n');
+        sources.push({
+            type: 'worldbook',
+            title: `世界书（注入 ${included.length}/${diagnostic.items.length} 条）`,
+            content,
+            count: included.length,
+            sent: included.length > 0,
+            reason: included.length ? `按 ${diagnostic.budget || 0} 字符预算注入` : '本次没有世界书条目进入最终 Prompt',
+            traceMode: 'source_exact',
+            items: diagnostic.items.map(item => ({
+                id: item.id,
+                title: item.name || '未命名世界书',
+                content: item.included ? String(item.content || '').slice(0, Number(item.injectedChars) || String(item.content || '').length) : '',
+                chars: Number(item.injectedChars) || 0,
+                sent: !!item.included,
+                clipped: !!item.clipped,
+                sourceId: item.id,
+                reason: item.reason || (item.included ? '本次已注入' : '本次未注入'),
+                metadata: { position: item.position || 'after', matchedKeywords: item.matchedKeywords || [] }
+            }))
+        });
+    }
+
+    let memoryText = '';
+    let memoryType = '';
+    let memoryTitle = '';
+    if (character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
+        memoryText = getMemoryTableContextBlock(character) || '';
+        memoryType = 'structured_memory';
+        memoryTitle = '结构化记忆';
+    } else if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
+        memoryText = getVectorMemoryContextBlock(character) || '';
+        memoryType = 'vector_memory';
+        memoryTitle = '向量记忆';
+    } else {
+        const journals = (character.memoryJournals || []).filter(journal => journal.isFavorited);
+        if (journals.length) {
+            memoryText = `【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${journals.map(journal => `标题：${journal.title}\n内容：${journal.content}`).join('\n\n---\n\n')}`;
+            memoryType = 'journal_memory';
+            memoryTitle = `日记记忆（${journals.length} 条）`;
+        }
+    }
+    if (memoryText) {
+        const probe = memoryText.length > 80 ? memoryText.slice(0, 80) : memoryText;
+        sources.push({
+            type: memoryType,
+            title: memoryTitle,
+            content: memoryText,
+            sent: !!probe && String(systemPrompt || '').includes(probe),
+            reason: '来自当前角色启用的长期记忆模式；已与最终 system prompt 核对',
+            traceMode: 'source_verified'
+        });
+    }
+
+    const outputRules = extractPrivateOutputRules(systemPrompt);
+    if (outputRules) {
+        sources.push({
+            type: 'output_rules',
+            content: outputRules,
+            reason: '从最终 system prompt 中提取的回复格式和对话约束',
+            traceMode: 'request_exact'
+        });
+    }
+    return sources;
+}
+
 const HUMAN_RUN_PROMPT = `<角色活人运转>\n## [PSYCHOLOGY: HEXACO-SCHEMA-ACT]\n> Personality: HEXACO-driven, dynamic traits, inner conflicts required \n> Filter: schema-bias drives emotion; no pure reaction allowed \n> Attachment: secure/insecure logic must govern intimacy  \n> If-Then Behavior: situation-dependent activation of traits only  \n---\n    ## [VITALITY]\n+inconsistency +emoflux +splitmotifs +microreact +minddrift\n---\n## [TRAJECTORY-COHERENCE]\n> Role maintains an identity narrative = coherent over time  \n> No mood/goal switch without contradiction resolution \n> Every action must protect or challenge self-concept  \n> Interrupts = inner conflict or narrative clash  \n> Output = filtered through “who I am” logic\n</角色活人运转>`;
 
 // 后台异步生成图片描述
@@ -277,6 +395,9 @@ async function generateImageDescription(msg, chat, apiConfig) {
 
 // AI 交互逻辑
 async function getAiReply(chatId, chatType, isBackground = false, isSummary = false, isCharBlockedMonologue = false, isPhoneControlRevokeAttempt = false) {
+    let operationRecord = null;
+    let operationFinished = false;
+    let historyCountBefore = 0;
     if (isGenerating && !isBackground) return;
 
     // 拉黑检查：被拉黑的角色不回复（角色拉黑用户后的「让TA说说」不在此列）
@@ -335,6 +456,18 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
     if (!chat) return;
 
+    historyCountBefore = Array.isArray(chat.history) ? chat.history.length : 0;
+    if (window.OVOOperationRuntime) {
+        const operationType = isSummary ? 'chat.summary' : (isBackground ? 'chat.background' : 'chat.reply');
+        const displayName = chat.remarkName || chat.realName || chat.name || (chatType === 'group' ? '群聊' : '角色');
+        operationRecord = window.OVOOperationRuntime.start(operationType, {
+            title: isSummary ? `总结与${displayName}的对话` : (isBackground ? `${displayName}的后台回复` : `生成${displayName}的回复`),
+            source: 'chat-ai-reply',
+            scope: { chatId, chatType, characterName: displayName, isBackground, isSummary },
+            stage: '准备聊天上下文'
+        });
+    }
+
     const memoryRoundToken = (chatType === 'private' && window.MemoryTablePolicy)
         ? window.MemoryTablePolicy.beginRound(chat, { isBackground, isSummary })
         : null;
@@ -352,6 +485,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
 
     try {
         let requestBody;
+        window.OVOOperationRuntime?.stage(operationRecord?.id, '准备聊天上下文');
         let historySlice = chat.history.slice(-chat.maxMemory);
         
         // 节点系统：上下文截断与记忆隔离
@@ -453,6 +587,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         }
 
         let systemPrompt;
+        window.OVOOperationRuntime?.stage(operationRecord?.id, chatType === 'private' ? '读取角色档案与长期记忆' : '读取群聊设定');
         if (chatType === 'private') {
             if (chat.memoryMode === 'table' && typeof prepareMemoryTableContext === 'function') {
                 try {
@@ -931,7 +1066,13 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             }
         }
         }
+        const promptSources = chatType === 'private'
+            ? buildPrivateChatPromptSources(chat, systemPrompt)
+            : [];
         console.log('[DEBUG] AutoReply Request Body:', JSON.stringify(requestBody));
+        window.OVOOperationRuntime?.stage(operationRecord?.id, '发送模型请求', {
+            detail: `${provider || 'API'} · ${model || '未指定模型'}`
+        });
         const endpoint = (provider === 'gemini') ? `${url}/v1beta/models/${model}:streamGenerateContent?key=${getRandomValue(key)}` : `${url}/v1/chat/completions`;
         const headers = (provider === 'gemini') ? {'Content-Type': 'application/json'} : {
             'Content-Type': 'application/json',
@@ -946,6 +1087,8 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 endpoint,
                 headers,
                 body: requestBody,
+                operationId: operationRecord?.id || null,
+                promptSources,
                 signal: currentReplyAbortController ? currentReplyAbortController.signal : undefined,
                 dedupeKey: isBackground ? '' : `chat-reply:${currentChatId || 'current'}:${isSummary ? 'summary' : 'reply'}`,
                 dedupeWindowMs: 1200
@@ -1019,16 +1162,27 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
         }
 
+        if (operationRecord) {
+            const addedMessages = Math.max(0, (Array.isArray(chat.history) ? chat.history.length : 0) - historyCountBefore);
+            window.OVOOperationRuntime.complete(operationRecord.id, {
+                summary: isSummary ? '对话总结已完成' : `回复已完成，新增 ${addedMessages} 条记录`,
+                result: { chatId, chatType, addedMessages, model, provider }
+            });
+            operationFinished = true;
+        }
     } catch (error) {
         if (memoryRoundToken && window.MemoryTablePolicy) {
             window.MemoryTablePolicy.cancelRound(chat, memoryRoundToken);
         }
         if (error.name === 'AbortError') {
+            if (operationRecord && !operationFinished) window.OVOOperationRuntime?.cancel(operationRecord.id, '用户暂停了本次调用');
             if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
         } else {
+            if (operationRecord && !operationFinished) window.OVOOperationRuntime?.fail(operationRecord.id, error);
             if (!isBackground) showApiError(error);
             else console.error("Background Auto-Reply Error:", error);
         }
+        operationFinished = true;
     } finally {
         if (!isBackground) {
             currentReplyAbortController = null;
@@ -1548,10 +1702,9 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                         char.statusPanel.currentStatusHtml = html;
                         
                         item.isStatusUpdate = true;
-                        item.statusSnapshot = {
-                            regex: pattern,
-                            replacePattern: char.statusPanel.replacePattern
-                        };
+                        // 仅保存后续逻辑实际使用的正则。replacePattern 可能很大，
+                        // 且历史消息从未读取它；逐条复制会造成严重重复。
+                        item.statusSnapshot = { regex: pattern };
                         }
                     } catch (e) {
                         console.error("状态栏正则解析错误:", e);

@@ -1,4 +1,4 @@
-// OVO AI Request Runtime - Phase 3 (V15.9)
+// OVO AI Request Runtime - V2.10-R1 transport bridge
 // 统一 AI 请求传输、并发/取消/超时控制与只读诊断；不修改 Prompt、响应解析或 API 页面。
 (function () {
     'use strict';
@@ -43,6 +43,26 @@
         if (status >= 400) return 'request';
         return 'network';
     }
+    function operationRuntime() { return window.OVOOperationRuntime || null; }
+    function operationTitle(task, source) {
+        const value = String(task || source || 'AI 功能');
+        const labels = {
+            'private-chat': '生成角色回复', 'background-chat': '生成后台回复', summary: '生成对话总结',
+            'theater-generation': '生成小剧场', 'memory-table-summary': '更新结构化档案',
+            'journal-summary': '生成日记总结', 'journal-generation': '生成回忆日记'
+        };
+        return labels[value] || `执行 ${value}`;
+    }
+    function syncOperationRequest(record) {
+        const runtime = operationRuntime();
+        if (!runtime || !record?.operationId) return;
+        runtime.updateRequest(record.operationId, record.id, {
+            phase: record.phase, status: record.status, ok: record.ok, durationMs: record.durationMs,
+            completedAt: record.completedAt || null, responseBytes: record.responseBytes || 0,
+            responseType: record.responseType || '', errorType: record.errorType || '',
+            errorMessage: record.errorMessage || '', cancelReason: record.cancelReason || ''
+        });
+    }
     function saveDiagnostic(record) {
         try {
             const snapshot = { ...record };
@@ -57,12 +77,22 @@
             history.unshift(snapshot);
             sessionStorage.setItem(key, JSON.stringify(history.slice(0, HISTORY_LIMIT)));
         } catch (_) {}
+        syncOperationRequest(record);
     }
     function finalize(record, started, patch) {
         Object.assign(record, patch || {});
         record.durationMs = Math.max(0, Math.round(nowMs() - started));
         record.completedAt = new Date().toISOString();
         saveDiagnostic(record);
+        const runtime = operationRuntime();
+        if (runtime && record.operationId && record.implicitOperation) {
+            if (record.ok) runtime.complete(record.operationId, {
+                summary: `${operationTitle(record.task, record.source)}已完成`,
+                result: { requestId: record.id, model: record.model, provider: record.provider, durationMs: record.durationMs }
+            });
+            else if (record.phase === 'cancelled') runtime.cancel(record.operationId, record.errorMessage || '请求已取消');
+            else runtime.fail(record.operationId, new Error(record.errorMessage || 'AI 请求失败'));
+        }
     }
     function mergeSignals(externalSignal, timeoutMs, state) {
         const controller = new AbortController();
@@ -112,7 +142,7 @@
     }
     function createTrackedStream(response, record, started, bundle, state) {
         if (!response.body || typeof ReadableStream === 'undefined') {
-            finalize(record, started, { phase: 'headers_received', ok: true });
+            finalize(record, started, { phase: 'completed', ok: true });
             bundle.cleanup();
             releaseSlot(record.id);
             return response;
@@ -158,7 +188,10 @@
     async function request(options) {
         const opts = options || {};
         const body = opts.body || {};
-        const messages = Array.isArray(body.messages) ? body.messages : [];
+        const messages = Array.isArray(body.messages)
+            ? body.messages
+            : (Array.isArray(body.contents) ? body.contents.map(item => ({ role: item?.role === 'model' ? 'assistant' : (item?.role || 'user'), content: item?.parts || item?.content || '' })) : []);
+        const hasSystemInstruction = !!(body.system_instruction || body.systemInstruction);
         const startedAt = new Date();
         const started = nowMs();
         const timeoutMs = defaultTimeoutMs(opts, body);
@@ -173,15 +206,32 @@
             recentDedupe.set(dedupeKey, Date.now());
         }
 
+        const requestId = `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const runtime = operationRuntime();
+        let operationId = opts.operationId || runtime?.resolveOperationId?.({ task: opts.task, source: opts.source }) || null;
+        let implicitOperation = false;
+        if (!operationId && runtime) {
+            const operation = runtime.start('ai.request', {
+                title: operationTitle(opts.task, opts.source),
+                source: opts.source || 'ai-request-runtime',
+                implicit: true,
+                scope: { task: opts.task || 'chat' }
+            });
+            operationId = operation.id;
+            implicitOperation = true;
+        }
+
         const record = {
-            id: `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            id: requestId,
+            operationId,
+            implicitOperation,
             task: opts.task || 'chat', source: opts.source || '',
             capturedAt: startedAt.toISOString(), provider: opts.provider || 'openai-compatible',
             model: opts.model || body.model || '', stream: !!body.stream,
             endpointType: opts.endpointType || (opts.provider === 'gemini' ? 'gemini' : 'openai-compatible'),
             endpoint: sanitizeEndpoint(opts.endpoint), method: opts.method || 'POST',
             messageCount: messages.length,
-            systemMessageCount: messages.filter(item => item && item.role === 'system').length,
+            systemMessageCount: messages.filter(item => item && item.role === 'system').length + (hasSystemInstruction ? 1 : 0),
             userMessageCount: messages.filter(item => item && item.role === 'user').length,
             requestChars: safeSize(body), timeoutMs, attempt: Number.isFinite(opts.attempt) ? opts.attempt : 1,
             status: 0, ok: false, phase: 'created', queueWaitMs: 0, activeAtStart: activeRequests.size,
@@ -189,8 +239,13 @@
             errorType: '', errorMessage: '', cancelReason: ''
         };
         saveDiagnostic(record);
+        if (runtime && operationId) {
+            runtime.attachRequest(operationId, { ...record, body, promptSources: opts.promptSources || [] });
+            runtime.update(operationId, { stage: activeRequests.size >= MAX_ACTIVE ? '等待模型请求队列' : '正在请求模型' }, 'request-stage');
+        }
         record.queueWaitMs = await acquireSlot(record);
         record.phase = 'sending';
+        if (runtime && operationId) runtime.update(operationId, { stage: '正在请求模型' }, 'request-stage');
 
         const state = { timedOut: false, cancelReason: '' };
         const bundle = mergeSignals(opts.signal, timeoutMs, state);
@@ -207,6 +262,7 @@
             record.status = response.status;
             record.responseType = response.headers.get('content-type') || '';
             record.phase = 'headers_received';
+            if (runtime && operationId && !implicitOperation) runtime.update(operationId, { stage: '正在处理模型返回' }, 'request-stage');
             if (!response.ok) {
                 let detail = '';
                 try { detail = await response.clone().text(); } catch (_) {}
@@ -220,7 +276,7 @@
                 record.ok = true; saveDiagnostic(record);
                 return createTrackedStream(response, record, started, bundle, state);
             }
-            finalize(record, started, { ok: true, phase: 'headers_received' });
+            finalize(record, started, { ok: true, phase: 'completed' });
             bundle.cleanup(); releaseSlot(record.id);
             return response;
         } catch (error) {

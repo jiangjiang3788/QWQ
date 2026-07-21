@@ -1161,6 +1161,8 @@ async function fetchAiResponse(settings, requestBody, headers, endpoint, forceSt
             headers,
             body: requestBody,
             signal: settings.runtimeSignal || null,
+            operationId: settings.runtimeOperationId || null,
+            promptSources: settings.runtimePromptSources || [],
             timeoutMs: settings.runtimeTimeoutMs,
             dedupeKey: settings.runtimeDedupeKey || '',
             dedupeWindowMs: settings.runtimeDedupeWindowMs

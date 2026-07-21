@@ -582,40 +582,47 @@ function renderTutorialContent() {
         return el;
     };
 
-    const backupDataBtn = createActionItem('button', '备份数据', 'btn btn-primary');
-    backupDataBtn.disabled = loadingBtn;
+    function downloadBackupBlob(blob, suffix = '') {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const now = new Date();
+        const date = now.toISOString().slice(0, 10);
+        const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+        a.href = url;
+        a.download = `章鱼喷墨_备份数据_${date}_${time}${suffix}.ee`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 
-    backupDataBtn.addEventListener('click', async () => {
-        if(loadingBtn){
-            return
-        }
-        loadingBtn = true
+    async function exportBackup(compact) {
+        if (loadingBtn) return;
+        loadingBtn = true;
         try {
-            showToast('正在准备导出数据...');
-
-            // 完整备份统一交给 BackupService。不要在 UI 层重新维护字段清单，
+            showToast(compact ? '正在准备精简备份...' : '正在准备原始完整备份...');
+            // 备份统一交给 BackupService。不要在 UI 层维护字段清单，
             // 否则新增数据表或字段后容易再次出现“能使用但无法备份”的遗漏。
-            const compressedBlob = await BackupService.createBackupBlob();
-
-            const url = URL.createObjectURL(compressedBlob);
-            const a = document.createElement('a');
-            const now = new Date();
-            const date = now.toISOString().slice(0, 10);
-            const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
-            a.href = url;
-            a.download = `章鱼喷墨_备份数据_${date}_${time}.ee`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            loadingBtn = false
-            showToast('聊天记录导出成功');
-        }catch (e){
-            loadingBtn = false
+            const compressedBlob = compact
+                ? await BackupService.createCompactBackupBlob()
+                : await BackupService.createBackupBlob();
+            downloadBackupBlob(compressedBlob, compact ? '_精简' : '');
+            showToast(compact ? '精简备份导出成功' : '完整备份导出成功');
+        } catch (e) {
             showToast(`导出失败, 发生错误: ${e.message}`);
             console.error('导出错误详情:', e);
+        } finally {
+            loadingBtn = false;
         }
-    });
+    }
+
+    const compactBackupDataBtn = createActionItem('button', '精简备份（推荐）', 'btn btn-primary');
+    compactBackupDataBtn.disabled = loadingBtn;
+    compactBackupDataBtn.addEventListener('click', () => exportBackup(true));
+
+    const backupDataBtn = createActionItem('button', '原始完整备份', 'btn btn-neutral');
+    backupDataBtn.disabled = loadingBtn;
+    backupDataBtn.addEventListener('click', () => exportBackup(false));
 
     // 分类导出：可选数据表多选导出
     const PARTIAL_EXPORT_OPTIONS = [
@@ -1390,11 +1397,12 @@ function renderTutorialContent() {
         if (loadingBtn) return;
 
         const msg = '此操作将清除以下无用数据：\n\n' +
-            '• 无聊天记录的角色\n' +
-            '• 无聊天记录的群聊\n' +
+            '• 无聊天记录的角色与群聊\n' +
             '• 未被任何角色/群聊使用的世界书\n' +
-            '• 无效的表情包（无链接等）\n\n' +
-            '⚠️ 不会影响有聊天记录的角色和正在使用的数据。\n\n确定继续吗？';
+            '• 无效的表情包（无链接等）\n' +
+            '• 已停用的 unifiedMemory 旧数据\n' +
+            '• 重复状态栏模板、已完成任务的过程快照\n\n' +
+            '⚠️ 保留聊天正文、结构化记忆正文、待审核/排队任务与回滚历史。\n\n确定继续吗？';
 
         const confirmed = await customConfirm(msg, '清除无用数据');
         if (!confirmed) return;
@@ -1460,6 +1468,31 @@ function renderTutorialContent() {
                 if (removed > 0) {
                     report.push(`清理了 ${removed} 个未使用的世界书`);
                     cleanCount += removed;
+                }
+            }
+
+            // 清理记忆系统产生的派生/停用数据；保留聊天正文与结构化记忆正文。
+            if (db.characters && Array.isArray(db.characters) && window.BackupService?.compactCharacterRow) {
+                let memoryItems = 0;
+                let memoryBytesSaved = 0;
+                db.characters = db.characters.map(char => {
+                    const beforeText = JSON.stringify(char);
+                    if (char?.unifiedMemory) memoryItems += 1;
+                    (Array.isArray(char?.history) ? char.history : []).forEach(message => {
+                        if (message?.statusSnapshot?.replacePattern !== undefined) memoryItems += 1;
+                    });
+                    const queue = char?.memoryTables?.taskQueue;
+                    (Array.isArray(queue?.tasks) ? queue.tasks : []).forEach(task => {
+                        if (['succeeded', 'cancelled'].includes(task?.status)) memoryItems += 1;
+                    });
+                    const compacted = BackupService.compactCharacterRow(char);
+                    memoryBytesSaved += Math.max(0, beforeText.length - JSON.stringify(compacted).length);
+                    return compacted;
+                });
+                if (memoryBytesSaved > 0) {
+                    const mib = (memoryBytesSaved / 1024 / 1024).toFixed(2);
+                    report.push(`清理了 ${memoryItems} 项记忆派生数据，约 ${mib} MB`);
+                    cleanCount += Math.max(1, memoryItems);
                 }
             }
 
@@ -1545,6 +1578,7 @@ function renderTutorialContent() {
         }
     });
 
+    tutorialContentArea.appendChild(compactBackupDataBtn);
     tutorialContentArea.appendChild(backupDataBtn);
     tutorialContentArea.appendChild(partialExportBtn);
     tutorialContentArea.appendChild(importDataBtn);
@@ -1589,6 +1623,7 @@ function renderTutorialContent() {
         });
     }
     if (isModern) {
+        modernGroups.data.appendChild(compactBackupDataBtn);
         modernGroups.data.appendChild(backupDataBtn);
         modernGroups.data.appendChild(partialExportBtn);
         modernGroups.data.appendChild(importDataBtn);
@@ -1600,6 +1635,7 @@ function renderTutorialContent() {
         modernGroups.clean.appendChild(cleanRedundantDataBtn);
         modernGroups.clean.appendChild(clearDataBtn);
     } else {
+        tutorialContentArea.appendChild(compactBackupDataBtn);
         tutorialContentArea.appendChild(backupDataBtn);
         tutorialContentArea.appendChild(partialExportBtn);
         tutorialContentArea.appendChild(importDataBtn);
@@ -2425,8 +2461,8 @@ const GitHubMgr = {
         }
 
         onProgress('正在打包数据...');
-        // GitHub 与本地下载必须使用同一种完整备份格式。
-        const compressedBlob = await BackupService.createBackupBlob();
+        // 自动云备份默认使用精简模式：格式与完整备份兼容，但不上传停用/派生快照。
+        const compressedBlob = await BackupService.createCompactBackupBlob();
         
         onProgress('正在编码...');
         const base64Content = await new Promise((resolve, reject) => {

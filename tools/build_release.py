@@ -29,8 +29,6 @@ def build(source: Path, output: Path) -> None:
         src = source / name
         if src.exists():
             shutil.copytree(src, output / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for template in source.glob('章鱼机_分层可检索记忆模板V2.8_含原数据.json'):
-        shutil.copy2(template, output / template.name)
     files = sorted(path.relative_to(output).as_posix() for path in output.rglob('*') if path.is_file())
     (output / 'PACKAGE_MANIFEST.txt').write_text('\n'.join(files) + '\n', encoding='utf-8')
 

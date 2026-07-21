@@ -2081,7 +2081,7 @@ ${historyText}`;
                 MemoryPolicy.markTableProcessed(chat, template.id, table.id, range.end, 'success');
                 setMemoryTableAutoUpdateCursorByEndIndex(chat, range.end); // V1 兼容游标
             }
-            return { ...result, range, templateId: template.id, tableId: table.id };
+            return { ...result, range: { start: range.start, end: range.end }, templateId: template.id, tableId: table.id };
         } catch (error) {
             state.lastRunStatus = 'failed';
             state.lastError = error.message || String(error);
@@ -3692,10 +3692,10 @@ ${tableContext}`;
                     showToast('请先绑定并选择一张表格');
                     return;
                 }
-                await updateSelectedMemoryTable(chat, active.template.id, active.table.id);
+                const updateAction = () => updateSelectedMemoryTable(chat, active.template.id, active.table.id);
+                await (window.OVOOperationRuntime?.run ? window.OVOOperationRuntime.run('memory.table.update', { title: `更新${chat.remarkName || chat.realName || chat.name || '角色'}的结构化档案`, source: 'memory-table-manual', scope: { characterId: chat.id, templateId: active.template.id, tableId: active.table.id, tableName: active.table.name || '' }, stage: '读取聊天范围与档案规则', successSummary: '结构化档案更新流程已完成' }, updateAction) : updateAction());
             });
         }
-
         const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
         const jsonModeBtn = document.getElementById('memory-table-json-mode-btn');
         const setViewMode = async mode => {

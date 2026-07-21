@@ -1,0 +1,2 @@
+{"file":"章鱼喷墨_备份数据_2026-07-21_143428.ee","mode":"single-user-full","counts":{"archives":0,"characters":2,"globalSettings":67,"groups":0,"myStickers":0,"storage":0,"worldBooks":5},"messages":19140,"normalizedPaths":["database/characters.json"]}
+{"file":"章鱼喷墨_备份数据_2026-07-21_清理优化版.ee","mode":"single-user-compact","counts":{"archives":0,"characters":2,"globalSettings":67,"groups":0,"myStickers":0,"storage":0,"worldBooks":5},"messages":19140,"normalizedPaths":[]}

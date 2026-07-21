@@ -48,3 +48,11 @@ V2.9-R10 记忆入口与搜索导航：
 V2.9-R11 记忆工作区状态机：
   node tests/run_v29_r11_memory_workspace_state_checks.js
 验证角色运行态水合、显式工作区切换、待处理/管理/反馈路由不会互相覆盖。
+
+V2.10-R0 AI 操作中心：
+  node tests/run_v210_r0_operation_center_checks.js
+验证统一操作运行时、请求关联、悬浮球详情、取消与脱敏。
+
+V2.10-R1 Prompt 来源视图：
+  node tests/run_v210_r1_prompt_source_checks.js
+验证最终请求拆分、显式来源合并、结构化档案 Prompt 解析、深层来源条目保留，以及私聊/小剧场/Proment 接入。
