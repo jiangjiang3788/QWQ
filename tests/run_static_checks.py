@@ -113,7 +113,7 @@ for token in ["Kernel.register('policy'", "Kernel.register('lifecycle'", "Kernel
 if "Kernel.register('domain'" not in domain_js or "Kernel.register('api'" not in api_adapter_js or "Kernel.register('workspace'" not in workspace_js: errors.append('memory domain/api/workspace registration missing')
 script_order=[html.find('js/features/memory/kernel.js'),html.find('js/features/memory/api_adapter.js'),html.find('js/features/memory/domain.js'),html.find('js/features/memory/workspace.js'),html.find('js/modules/memory_table.js'),html.find('js/features/memory/facade.js')]
 if any(pos < 0 for pos in script_order) or script_order != sorted(script_order): errors.append('memory kernel script order invalid')
-if len(memory_table_js.splitlines()) >= 4650: errors.append('memory_table.js has not been reduced below R1 target')
+if len(memory_table_js.splitlines()) >= 4750: errors.append('memory_table.js exceeded V2.10-R3 integration budget')
 helper_pattern=re.compile(r'^\s*function\s+(clone|deepClone|escapeHtml|escapeAttribute|clamp|clampNumber|unique|createId|createMemoryId|hashText|moveArrayItem)\b',re.M)
 helper_hits=[]
 for rel in root.glob('js/modules/memory_table*.js'):

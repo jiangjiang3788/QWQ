@@ -1366,6 +1366,11 @@ async function generateTheaterScenario() {
             switchScreen('theater-screen');
             renderTheaterScenarios();
             if (operationRecord) {
+                window.OVOOperationRuntime.recordMutation?.(operationRecord.id, {
+                    action: 'create', entityType: 'theater', entityId: scenario.id,
+                    title: scenario.title || '新小剧场', summary: `${scenario.mode === 'html' ? 'HTML' : '文字'}小剧场 · ${scenario.category || '未分类'}`,
+                    after: scenario.content || '', meta: { mode: scenario.mode, category: scenario.category, characterIds: charIds }
+                });
                 window.OVOOperationRuntime.complete(operationRecord.id, {
                     summary: `小剧场「${scenario.title}」已保存`,
                     result: { scenarioId: scenario.id, mode: scenario.mode, category: scenario.category }
@@ -2830,9 +2835,24 @@ async function generateCharTheater(charId, options = {}) {
         _hideTheaterTyping();
         await saveData();
         if (operationRecord) {
+            const notificationMessage = char.history[char.history.length - 1] || null;
+            window.OVOOperationRuntime?.recordMutations?.(operationRecord.id, [
+                {
+                    action: 'create', entityType: 'theater', entityId: scenario.id,
+                    title, summary: `${charName}主动创作的${mode === 'html' ? 'HTML' : '文字'}小剧场`,
+                    after: scenario.content || '', meta: { characterId: charId, mode, selfAware: isSelfAware }
+                },
+                ...(notificationMessage?.id ? [{
+                    action: 'create', entityType: 'chat_message', entityId: notificationMessage.id,
+                    title: isSelfAware ? '小剧场分享消息' : '小剧场系统通知',
+                    summary: String(notificationMessage.content || '').slice(0, 160),
+                    after: notificationMessage.content || '',
+                    meta: { characterId: charId, timestamp: notificationMessage.timestamp || null, hidden: !!notificationMessage.isContextDisabled }
+                }] : [])
+            ]);
             window.OVOOperationRuntime?.complete(operationRecord.id, {
                 summary: `${charName}创作了「${title}」`,
-                result: { scenarioId: scenario.id, characterId: charId, mode, selfAware: isSelfAware }
+                result: { scenarioId: scenario.id, notificationMessageId: notificationMessage?.id || null, characterId: charId, mode, selfAware: isSelfAware }
             });
             operationFinished = true;
         }

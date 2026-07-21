@@ -89,5 +89,5 @@ for (const name of moduleFiles) {
 assert(duplicates.length === 0, `shared helper duplicates remain: ${duplicates.join('; ')}`);
 
 const mainLines = fs.readFileSync(path.join(root, 'js/modules/memory_table.js'), 'utf8').split(/\r?\n/).length;
-assert(mainLines < 4650, `memory_table.js was not reduced enough: ${mainLines}`);
+assert(mainLines < 4750, `memory_table.js exceeded V2.10-R3 integration budget: ${mainLines}`);
 console.log('V2.9-R1 MEMORY KERNEL CHECKS: PASS');

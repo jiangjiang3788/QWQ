@@ -134,7 +134,32 @@ function formatPromptTimestamp(timestamp) {
 }
 
 function buildPromptMessageTimePrefix(timestamp) {
-    return `[消息时间：${formatPromptTimestamp(timestamp)}]\n`;
+    // 使用明确的内部元数据标签，避免与角色正常聊天格式混淆。
+    // 最终回复仍会经过 stripPromptMetadataEcho() 二次清理。
+    return `<message_meta sent_at="${formatPromptTimestamp(timestamp)}" />\n`;
+}
+
+function appendMessageMetadataProtocol(systemPrompt) {
+    const prompt = String(systemPrompt || '');
+    if (prompt.includes('<message_metadata_protocol>')) return prompt;
+    return `${prompt}\n\n<message_metadata_protocol>\n历史消息开头可能包含 <message_meta sent_at="..." />，它只是系统提供的消息发生时间。你可以据此理解时间顺序和间隔，但绝对禁止在回复中复制、改写、解释或输出 message_meta、消息时间标签及其时间值。只输出角色真正要发送的内容。\n</message_metadata_protocol>`;
+}
+
+function stripPromptMetadataEcho(text) {
+    return String(text || '')
+        .replace(/^[ \t]*<message_meta\b[^>]*\/?>(?:<\/message_meta>)?[ \t]*$/gmi, '')
+        .replace(/<message_meta\b[^>]*\/?>(?:<\/message_meta>)?/gi, '')
+        .replace(/^[ \t]*[\[【]消息时间[：:][^\]】\r\n]*[\]】][ \t]*$/gmi, '')
+        .replace(/[\[【]消息时间[：:][^\]】\r\n]*[\]】]/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function extractPromptTagContent(systemPrompt, tagName) {
+    const safeTag = String(tagName || '').replace(/[^a-z0-9_-]/gi, '');
+    if (!safeTag) return '';
+    const match = String(systemPrompt || '').match(new RegExp(`<${safeTag}>([\\s\\S]*?)<\\/${safeTag}>`, 'i'));
+    return match ? String(match[1] || '').trim() : '';
 }
 
 function buildPrivateChatPromptSources(character, systemPrompt) {
@@ -154,6 +179,23 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         traceMode: 'source_verified',
         sourceId: character.id
     });
+
+    const liveArchiveMemory = extractPromptTagContent(systemPrompt, 'memory_live_context');
+    if (liveArchiveMemory) {
+        const hasActualArchiveData = !/^当前没有已记录的实时状态或活跃待办[。.]?$/.test(liveArchiveMemory.trim());
+        sources.push({
+            type: 'character_memory',
+            title: hasActualArchiveData ? '角色档案记忆（实时状态与待办）' : '角色档案记忆',
+            content: liveArchiveMemory,
+            sent: true,
+            count: hasActualArchiveData ? undefined : 0,
+            reason: hasActualArchiveData
+                ? '从最终 system prompt 的 memory_live_context 中提取，已实际发送'
+                : '本次已发送档案记忆区块，但当前没有可用的实时状态或活跃待办',
+            traceMode: 'request_exact',
+            sourceId: character.id
+        });
+    }
 
     const userProfileParts = [];
     if (character.myName) userProfileParts.push(`用户称呼：${character.myName}`);
@@ -415,6 +457,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     let operationRecord = null;
     let operationFinished = false;
     let historyCountBefore = 0;
+    let historyIdsBefore = new Set();
     if (isGenerating && !isBackground) return;
 
     // 拉黑检查：被拉黑的角色不回复（角色拉黑用户后的「让TA说说」不在此列）
@@ -474,6 +517,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     if (!chat) return;
 
     historyCountBefore = Array.isArray(chat.history) ? chat.history.length : 0;
+    historyIdsBefore = new Set((Array.isArray(chat.history) ? chat.history : []).map(item => item?.id).filter(Boolean));
     if (window.OVOOperationRuntime) {
         const operationType = isSummary ? 'chat.summary' : (isBackground ? 'chat.background' : 'chat.reply');
         const displayName = chat.remarkName || chat.realName || chat.name || (chatType === 'group' ? '群聊' : '角色');
@@ -649,6 +693,9 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 systemPrompt = "Group chat system prompt not available.";
             }
         }
+
+        // 消息时间属于内部上下文元数据，不允许模型把它作为可见聊天内容返回。
+        systemPrompt = appendMessageMetadataProtocol(systemPrompt);
 
         // 检查是否开启了后台自动识图
         if (db.imageRecognitionEnabled) {
@@ -1166,10 +1213,30 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         }
 
         if (operationRecord) {
-            const addedMessages = Math.max(0, (Array.isArray(chat.history) ? chat.history.length : 0) - historyCountBefore);
+            const historyNow = Array.isArray(chat.history) ? chat.history : [];
+            const createdMessages = historyNow.filter(item => item?.id && !historyIdsBefore.has(item.id));
+            const addedMessages = createdMessages.length || Math.max(0, historyNow.length - historyCountBefore);
+            const messageMutations = createdMessages.slice(0, 40).map(message => {
+                const roleLabel = message.isThinking ? '隐藏思考记录' : message.isNodeSummaryMsg ? '节点摘要' : (message.role === 'user' ? '用户消息' : message.role === 'system' ? '系统消息' : '角色消息');
+                const text = String(message.content || (Array.isArray(message.parts) ? message.parts.map(part => part?.text || '').join('') : '') || '').trim();
+                return {
+                    action: 'create',
+                    entityType: 'chat_message',
+                    entityId: message.id,
+                    title: roleLabel,
+                    summary: text ? (text.length > 120 ? `${text.slice(0, 120)}…` : text) : '已新增一条消息记录',
+                    after: text,
+                    meta: { role: message.role || '', timestamp: message.timestamp || null, hidden: !!(message.isThinking || message.isContextDisabled || message.hiddenFromDisplay), chatId, chatType }
+                };
+            });
+            if (createdMessages.length > 40) messageMutations.push({
+                action: 'create', entityType: 'chat_message', count: createdMessages.length - 40,
+                title: '其他新增消息', summary: `另有 ${createdMessages.length - 40} 条消息未逐条展开`, meta: { chatId, chatType }
+            });
+            window.OVOOperationRuntime.recordMutations?.(operationRecord.id, messageMutations);
             window.OVOOperationRuntime.complete(operationRecord.id, {
                 summary: isSummary ? '对话总结已完成' : `回复已完成，新增 ${addedMessages} 条记录`,
-                result: { chatId, chatType, addedMessages, model, provider }
+                result: { chatId, chatType, addedMessages, messageIds: createdMessages.map(item => item.id).slice(0, 80), model, provider }
             });
             operationFinished = true;
         }
@@ -1450,6 +1517,8 @@ function executePhoneControlCommands(text, controllingChar) {
 
 async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null) {
     const rawResponse = fullResponse;
+    // 双保险：即使模型复述了内部时间元数据，也不能把它解析成独立聊天气泡。
+    fullResponse = stripPromptMetadataEcho(fullResponse);
     if (fullResponse && targetChatType === 'private' && window.MemoryTableSidecar) {
         const runtime = window.OVOOperationRuntime;
         const sidecarOperation = runtime?.startChild?.(parentOperationId, 'memory.sidecar', {
@@ -1471,10 +1540,20 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             const report = window.MemoryTableSidecar.ensureState(chat)?.lastApplyReport || {};
             const changedCount = Array.isArray(report.changed) ? report.changed.length : 0;
             const rejectedCount = Array.isArray(report.rejected) ? report.rejected.length : 0;
-            if (sidecarOperation) runtime.complete(sidecarOperation.id, {
-                summary: changedCount ? `已应用 ${changedCount} 项档案更新` : (rejectedCount ? `没有应用更新，拒绝 ${rejectedCount} 项` : '没有可应用的档案变化'),
-                result: { changedCount, rejectedCount, roundId: memoryRoundToken?.id || null }
-            });
+            if (sidecarOperation) {
+                runtime.recordMutations?.(sidecarOperation.id, (Array.isArray(report.changed) ? report.changed : []).map(change => ({
+                    action: /^新增/.test(String(change)) ? 'create' : 'update',
+                    entityType: 'character_memory',
+                    entityId: targetChatId,
+                    title: '角色档案记忆',
+                    summary: String(change),
+                    meta: { characterId: targetChatId, roundId: memoryRoundToken?.id || null }
+                })));
+                runtime.complete(sidecarOperation.id, {
+                    summary: changedCount ? `已应用 ${changedCount} 项档案更新` : (rejectedCount ? `没有应用更新，拒绝 ${rejectedCount} 项` : '没有可应用的档案变化'),
+                    result: { changedCount, rejectedCount, changed: (report.changed || []).slice(0, 100), rejected: (report.rejected || []).slice(0, 100), roundId: memoryRoundToken?.id || null }
+                });
+            }
         } else if (sidecarOperation) {
             runtime.skip(sidecarOperation.id, '模型回复中没有携带档案更新指令', { result: { changedCount: 0 } });
         }
@@ -2063,6 +2142,15 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         await saveCurrentChat();
         renderChatList();
 
+        // 增量 DOM 追加在特殊消息、界面切换或异步分支中可能漏渲染。
+        // 保存后对当前打开的同一聊天做一次完整对账，保证数据库与界面立即一致。
+        const isTargetChatOpen = targetChatId === currentChatId && targetChatType === currentChatType
+            && document.getElementById('chat-room-screen')?.classList.contains('active');
+        if (isTargetChatOpen && typeof renderMessages === 'function') {
+            currentPage = 1;
+            renderMessages(false, true);
+        }
+
         if (targetChatType === 'private' && (chat.source === 'forum' || chat.source === 'peek') && chat.supplementPersonaAiEnabled) {
             setTimeout(function() {
                 if (typeof forumSupplementPersonaFromChat === 'function') forumSupplementPersonaFromChat(targetChatId, chat);
@@ -2477,7 +2565,8 @@ function generatePrivateSystemPrompt(character, opts) {
     // 处理用户自定义的底层系统提示词模板
     if (useCustomPrompt && template) {
         
-        // 构建共同回忆字符串
+        // 构建共同回忆字符串。即使用户自定义模板遗漏占位符，也会在末尾安全补入。
+        const hadMemoryPlaceholder = /\{\{共同回忆\}\}/.test(template);
         let commonMemories = '';
         if (character.memoryMode === 'table' && typeof getMemoryTableContextBlock === 'function') {
             commonMemories = getMemoryTableContextBlock(character) || '';
@@ -2558,6 +2647,14 @@ function generatePrivateSystemPrompt(character, opts) {
         template = template.replace(/\{\{在线逻辑规则\}\}/g, onlineLogicRules || '');
         template = template.replace(/\{\{输出格式\}\}/g, outputFormats || '');
         template = template.replace(/\{\{天气信息\}\}/g, opts.weatherText || '');
+
+        // 自定义 Prompt 常会被用户删改；遗漏 {{共同回忆}} 时不能静默丢失档案/结构化记忆。
+        if (commonMemories && !hadMemoryPlaceholder) {
+            const probe = commonMemories.slice(0, Math.min(120, commonMemories.length));
+            if (!probe || !template.includes(probe)) {
+                template += `\n\n<memoir>\n${commonMemories}\n</memoir>`;
+            }
+        }
 
         if (opts.weatherText && !template.includes('<environment>')) {
              template += opts.weatherText;

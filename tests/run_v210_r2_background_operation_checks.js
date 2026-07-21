@@ -23,7 +23,7 @@ const context = vm.createContext({ window: windowMock, sessionStorage: windowMoc
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
 assert(runtime, 'operation runtime missing');
-assert.strictEqual(runtime.VERSION, '2.10-R2');
+assert(/^2\.10-R(?:[23](?:\.1)?)$/.test(runtime.VERSION));
 
 const parent = runtime.start('chat.reply', { title: '生成阿墨的回复' });
 runtime.complete(parent.id, { summary: '回复已完成' });
@@ -59,5 +59,5 @@ assert(theater.includes('本次未命中'));
 assert(theater.includes('operationId: operation?.id'));
 assert(dock.includes('后台工作'));
 assert(dock.includes('renderChildOperationList'));
-assert(dock.includes('V2.10-R2'));
+assert(dock.includes('V2.10-R2') || dock.includes('V2.10-R3'));
 console.log('V2.10-R2 BACKGROUND OPERATION CHECKS: PASS');

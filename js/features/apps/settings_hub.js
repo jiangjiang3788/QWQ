@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '2.10-R2';
+    const VERSION = '2.10-R3';
 
     function escapeHtml(value) {
         return String(value == null ? '' : value)

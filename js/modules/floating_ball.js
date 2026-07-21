@@ -1,4 +1,4 @@
-// QuickDock · V2.10-R2.1 紧急修复：完整反馈、扁平详情、消息时间与单次请求说明。
+// QuickDock · V2.10-R3.1 快速修复：时间元数据、即时渲染与档案记忆上下文。
 (() => {
     'use strict';
 
@@ -394,6 +394,73 @@
             </details>` : ''}`;
     }
 
+    function mutationActionMeta(action) {
+        const map = {
+            create: { label: '新增', icon: '+', className: 'create' },
+            update: { label: '更新', icon: '↻', className: 'update' },
+            accept: { label: '接受并写入', icon: '✓', className: 'update' },
+            delete: { label: '删除', icon: '−', className: 'delete' },
+            pending: { label: '等待确认', icon: '…', className: 'pending' },
+            other: { label: '变化', icon: '•', className: 'other' }
+        };
+        return map[action] || map.other;
+    }
+
+    function mutationEntityMeta(type) {
+        const map = {
+            chat_message: { label: '聊天消息', icon: '💬' },
+            character_memory: { label: '角色档案记忆', icon: '🧩' },
+            structured_memory: { label: '结构化记忆', icon: '🗂️' },
+            memory_review: { label: '待审核草案', icon: '📝' },
+            journal: { label: '日记记忆', icon: '📔' },
+            vector_memory: { label: '向量记忆', icon: '🧠' },
+            theater: { label: '小剧场', icon: '🎭' }
+        };
+        return map[type] || { label: '其他数据', icon: '📎' };
+    }
+
+    function collectOperationMutations(operation) {
+        const runtime = getOperationRuntime();
+        const records = [operation, ...(runtime?.getChildren?.(operation?.id, { recursive: true }) || [])];
+        return records.flatMap(record => (Array.isArray(record?.mutations) ? record.mutations : []).map(mutation => ({ mutation, operation: record })))
+            .sort((a, b) => new Date(b.mutation.at || b.operation.updatedAt || 0).getTime() - new Date(a.mutation.at || a.operation.updatedAt || 0).getTime());
+    }
+
+    function mutationSummaryText(summary) {
+        if (!summary?.total) return '';
+        const parts = [];
+        if (summary.created) parts.push(`新增 ${summary.created}`);
+        if (summary.updated) parts.push(`更新 ${summary.updated}`);
+        if (summary.deleted) parts.push(`删除 ${summary.deleted}`);
+        if (summary.pending) parts.push(`待确认 ${summary.pending}`);
+        if (summary.other) parts.push(`其他 ${summary.other}`);
+        return `数据变化 ${summary.total} 项${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
+    }
+
+    function renderOperationMutations(operation) {
+        const entries = collectOperationMutations(operation);
+        if (!entries.length) return '<p class="quick-dock-operation-muted">本次操作没有记录到持久化数据变化。只读检查和未达到条件的后台任务不会产生变化。</p>';
+        return `<div class="quick-dock-mutation-list">${entries.slice(0, 100).map(({ mutation, operation: owner }) => {
+            const action = mutationActionMeta(mutation.action);
+            const entity = mutationEntityMeta(mutation.entityType);
+            const hasDiff = mutation.before || mutation.after || (Array.isArray(mutation.fields) && mutation.fields.length);
+            return `<article class="quick-dock-mutation-item" data-mutation-action="${escapeHtml(action.className)}">
+                <div class="quick-dock-mutation-head">
+                    <span class="quick-dock-mutation-icon">${escapeHtml(entity.icon)}</span>
+                    <span><b>${escapeHtml(mutation.title || entity.label)}</b><small>${escapeHtml(entity.label)} · ${escapeHtml(owner.title || '当前操作')}</small></span>
+                    <em>${escapeHtml(action.label)}${Number(mutation.count) > 1 ? ` × ${escapeHtml(mutation.count)}` : ''}</em>
+                </div>
+                ${mutation.summary ? `<p>${escapeHtml(mutation.summary)}</p>` : ''}
+                <div class="quick-dock-mutation-meta"><span>${escapeHtml(formatOperationTime(mutation.at))}</span>${mutation.entityId ? `<span>ID：${escapeHtml(mutation.entityId)}</span>` : ''}</div>
+                ${hasDiff ? `<details class="quick-dock-mutation-diff"><summary>查看写入内容${mutation.before && mutation.after ? '与前后变化' : ''}</summary>
+                    ${mutation.before ? `<div><b>修改前</b><pre>${escapeHtml(mutation.before)}</pre></div>` : ''}
+                    ${mutation.after ? `<div><b>${mutation.before ? '修改后' : '写入内容'}</b><pre>${escapeHtml(mutation.after)}</pre></div>` : ''}
+                    ${Array.isArray(mutation.fields) && mutation.fields.length ? `<p>涉及字段：${escapeHtml(mutation.fields.join('、'))}</p>` : ''}
+                </details>` : ''}
+            </article>`;
+        }).join('')}${entries.length > 100 ? `<p class="quick-dock-truncation-note">本次变化超过 100 条，界面只展示最近 100 条；操作摘要仍保留总数。</p>` : ''}</div>`;
+    }
+
     function renderOperationCard(operation, options = {}) {
         if (!operation) return '<div class="quick-dock-operation-empty">还没有操作记录。发送消息、生成小剧场或更新结构化档案后，这里会显示完整进度。</div>';
         const meta = operationStatusMeta(operation.status);
@@ -411,6 +478,7 @@
                     </div>
                     <p class="quick-dock-operation-stage">${escapeHtml(operation.status === 'running' || operation.status === 'queued' ? operation.stage : operationResultText(operation))}</p>
                     ${backgroundSummaryText(operation) ? `<p class="quick-dock-operation-background">${escapeHtml(backgroundSummaryText(operation))}</p>` : ''}
+                    ${mutationSummaryText(operation.mutationSummary) ? `<p class="quick-dock-operation-mutations">${escapeHtml(mutationSummaryText(operation.mutationSummary))}</p>` : ''}
                     ${options.compact ? '' : `<div class="quick-dock-operation-meta"><span>${escapeHtml(requestLine)}</span><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>`}
                 </button>
                 ${(operation.status === 'running' || operation.status === 'queued') && !options.compact ? `<button type="button" class="quick-dock-operation-cancel" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消</button>` : ''}
@@ -465,7 +533,7 @@
         const currentApi = getCurrentApi();
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>AI 操作中心</strong><span>V2.10-R2.1 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
+                <div><strong>AI 操作中心</strong><span>V2.10-R3.1 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
                 <button type="button" class="quick-dock-icon-btn" data-qd-action="close" aria-label="关闭">×</button>
             </header>
             <section class="quick-dock-operation-current">
@@ -482,7 +550,7 @@
                 <button type="button" data-qd-action="open-tools"><b>API 与 Git</b><small>模型切换和数据同步</small></button>
                 <button type="button" data-qd-action="open-proment"><b>Proment</b><small>Prompt 与记忆状态</small></button>
                 <button type="button" data-qd-action="open-console"><b>开发日志</b><small>错误排查和复制</small></button>
-                ${current ? `<button type="button" data-qd-action="open-operation" data-operation-id="${escapeHtml(current.id)}"><b>操作详情</b><small>阶段、请求与结果</small></button>` : '<button type="button" disabled><b>操作详情</b><small>暂无可查看记录</small></button>'}
+                ${current ? `<button type="button" data-qd-action="open-operation" data-operation-id="${escapeHtml(current.id)}"><b>操作详情</b><small>阶段、数据变化与请求</small></button>` : '<button type="button" disabled><b>操作详情</b><small>暂无可查看记录</small></button>'}
             </div>
             <p class="quick-dock-status">主操作完成后仍会持续汇总自动日记、结构化记忆、向量记忆和角色小剧场等后台工作。</p>`;
     }
@@ -552,6 +620,10 @@
                 <h4>后台工作 <small>${escapeHtml(operation?.background?.total || 0)} 项</small></h4>
                 ${renderChildOperationList(operation)}
             </section>
+            <section class="quick-dock-detail-section quick-dock-mutation-section">
+                <h4>数据变化 <small>${escapeHtml(operation?.mutationSummary?.total || 0)} 项${operation?.mutationSummary?.descendant ? ` · 含后台 ${escapeHtml(operation.mutationSummary.descendant)} 项` : ''}</small></h4>
+                ${renderOperationMutations(operation)}
+            </section>
             <section class="quick-dock-detail-section quick-dock-request-section">
                 <h4>模型请求（实际网络调用） <small>${requests.length} 次</small></h4>
                 ${requests.length ? requests.map((request, index) => `
@@ -580,7 +652,7 @@
             : (char?.memoryMode === 'vector' ? '向量记忆' : '回忆日记');
         panelEl.innerHTML = `
             <header class="quick-dock-panel-header">
-                <div><strong>Proment 状态</strong><span>R2.1 · 与操作来源和后台回执互通</span></div>
+                <div><strong>Proment 状态</strong><span>R3 · 与操作来源、后台回执和数据变化互通</span></div>
                 <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
             </header>
             <div class="quick-dock-section quick-dock-proment-status">

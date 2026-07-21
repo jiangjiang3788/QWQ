@@ -1193,6 +1193,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         if (!options.suppressSuccessToast) {
             showToast(silent ? `日记总结已生成 (第${start}-${end}条)` : '新日记已生成！');
         }
+        return newJournal;
 
     } catch (error) {
         // 移除生成卡片
@@ -1949,6 +1950,7 @@ async function checkAndTriggerAutoJournal(chat, options = {}) {
         scope: { chatId: chat?.id || null },
         stage: '检查自动总结开关与消息间隔'
     }) : null;
+    const journalIdsBefore = new Set((Array.isArray(chat?.memoryJournals) ? chat.memoryJournals : []).map(item => item?.id).filter(Boolean));
 
     if (!chat) {
         if (operation) runtime.skip(operation.id, '没有可检查的聊天对象');
@@ -1973,9 +1975,19 @@ async function checkAndTriggerAutoJournal(chat, options = {}) {
 
     if (operation) {
         if (result.status === 'success') {
+            const createdJournals = (Array.isArray(chat.memoryJournals) ? chat.memoryJournals : []).filter(item => item?.id && !journalIdsBefore.has(item.id));
+            runtime.recordMutations?.(operation.id, createdJournals.map(journal => ({
+                action: 'create',
+                entityType: 'journal',
+                entityId: journal.id,
+                title: journal.title || '新日记',
+                summary: journal.range ? `总结消息 ${journal.range.start}-${journal.range.end}` : '已生成一篇日记',
+                after: journal.content || '',
+                meta: { chatId: chat.id, range: journal.range || null, createdAt: journal.createdAt || null }
+            })));
             runtime.complete(operation.id, {
                 summary: result.generatedCount > 0 ? `已生成 ${result.generatedCount} 篇自动日记` : '自动日记检查完成',
-                result: { ...result, unsummarizedCount: info.unsummarizedCount, interval: info.interval }
+                result: { ...result, journalIds: createdJournals.map(item => item.id), unsummarizedCount: info.unsummarizedCount, interval: info.interval }
             });
         } else if (result.status === 'failed') {
             runtime.fail(operation.id, result.error || new Error('自动日记生成失败'), {

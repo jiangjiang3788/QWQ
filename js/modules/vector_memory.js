@@ -688,6 +688,7 @@
             scope: { characterId: chat?.id || null },
             stage: '检查向量记忆开关与消息间隔'
         }) : null;
+        const vectorIdsBefore = new Set((Array.isArray(chat?.vectorMemory?.entries) ? chat.vectorMemory.entries : []).map(item => item?.id).filter(Boolean));
 
         if (!chat || !db.characters || !db.characters.some(item => item.id === chat.id)) {
             if (operation) runtime.skip(operation.id, '当前不是可写入向量记忆的角色聊天');
@@ -722,10 +723,22 @@
             runtime?.stage?.(operation?.id, '生成向量记忆摘要', { detail: `消息 ${nextRange.start}-${nextRange.end}` });
             const generatedCount = await runVectorAutoSummary(chat, { silent: true, operationId: operation?.id || null });
             const result = { status: 'success', generatedCount, range: { start: nextRange.start, end: nextRange.end } };
-            if (operation) runtime.complete(operation.id, {
-                summary: generatedCount ? `已新增 ${generatedCount} 条向量记忆` : '向量记忆检查完成',
-                result
-            });
+            if (operation) {
+                const createdEntries = (Array.isArray(chat.vectorMemory?.entries) ? chat.vectorMemory.entries : []).filter(item => item?.id && !vectorIdsBefore.has(item.id));
+                runtime.recordMutations?.(operation.id, createdEntries.map(entry => ({
+                    action: 'create',
+                    entityType: 'vector_memory',
+                    entityId: entry.id,
+                    title: entry.title || '新向量记忆',
+                    summary: entry.range ? `总结消息 ${entry.range.start}-${entry.range.end}` : (entry.source || '新增向量记忆'),
+                    after: entry.text || '',
+                    meta: { characterId: chat.id, range: entry.range || null, tags: entry.tags || [], source: entry.source || '' }
+                })));
+                runtime.complete(operation.id, {
+                    summary: generatedCount ? `已新增 ${generatedCount} 条向量记忆` : '向量记忆检查完成',
+                    result: { ...result, entryIds: createdEntries.map(item => item.id) }
+                });
+            }
             return result;
         } catch (error) {
             console.error('[VectorMemory] auto summary failed:', error);

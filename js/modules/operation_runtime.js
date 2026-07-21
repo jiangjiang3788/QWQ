@@ -1,4 +1,4 @@
-// OVO Operation Runtime - V2.10-R2.1 hotfix
+// OVO Operation Runtime - V2.10-R3.1 quick hotfix
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
@@ -7,6 +7,8 @@
     const HISTORY_LIMIT = 100;
     const DETAIL_LIMIT = 8;
     const BODY_PREVIEW_LIMIT = 120000;
+    const MUTATION_LIMIT = 80;
+    const MUTATION_TEXT_LIMIT = 4000;
     const registry = new Map();
     const records = new Map();
     let orderedIds = [];
@@ -19,6 +21,7 @@
         { type: 'theater.character', title: '角色创作小剧场', category: '小剧场', icon: '🎭' },
         { type: 'memory.sidecar', title: '应用回复内档案更新', category: '记忆', icon: '🧩' },
         { type: 'memory.table.update', title: '更新结构化档案', category: '记忆', icon: '🗂️' },
+        { type: 'memory.review.apply', title: '保存结构化档案审核结果', category: '记忆', icon: '✅' },
         { type: 'memory.table.auto', title: '检查结构化档案更新', category: '后台工作', icon: '🗂️' },
         { type: 'journal.auto', title: '检查自动日记总结', category: '后台工作', icon: '📔' },
         { type: 'memory.vector.auto', title: '检查向量记忆总结', category: '后台工作', icon: '🧠' },
@@ -50,6 +53,34 @@
         return String(value);
     }
 
+    function mutationText(value) {
+        if (value == null) return '';
+        let text = typeof value === 'string' ? value : (() => { try { return JSON.stringify(safeClone(value), null, 2); } catch (_) { return String(value); } })();
+        return text.length > MUTATION_TEXT_LIMIT ? `${text.slice(0, MUTATION_TEXT_LIMIT)}
+…（变化内容超过 4000 字符，已截断）` : text;
+    }
+
+    function emptyMutationSummary() {
+        return { total: 0, direct: 0, descendant: 0, created: 0, updated: 0, deleted: 0, pending: 0, other: 0, byEntity: {} };
+    }
+
+    function summarizeMutationList(items) {
+        const summary = emptyMutationSummary();
+        (Array.isArray(items) ? items : []).forEach(item => {
+            summary.total += Math.max(1, Number(item.count) || 1);
+            const action = String(item.action || '').toLowerCase();
+            if (action === 'create') summary.created += Math.max(1, Number(item.count) || 1);
+            else if (action === 'update' || action === 'accept') summary.updated += Math.max(1, Number(item.count) || 1);
+            else if (action === 'delete') summary.deleted += Math.max(1, Number(item.count) || 1);
+            else if (action === 'pending') summary.pending += Math.max(1, Number(item.count) || 1);
+            else summary.other += Math.max(1, Number(item.count) || 1);
+            const entityType = String(item.entityType || 'other');
+            summary.byEntity[entityType] = (summary.byEntity[entityType] || 0) + Math.max(1, Number(item.count) || 1);
+        });
+        summary.direct = summary.total;
+        return summary;
+    }
+
     function createBodyPreview(body) {
         try {
             const safe = safeClone(body);
@@ -76,6 +107,9 @@
         try {
             const list = orderedIds.slice(0, HISTORY_LIMIT).map((id, index) => {
                 const item = safeClone(records.get(id));
+                if (index >= DETAIL_LIMIT && Array.isArray(item?.mutations)) {
+                    item.mutations = item.mutations.map(mutation => ({ ...mutation, before: '', after: '', fields: [], meta: {} }));
+                }
                 if (index >= DETAIL_LIMIT && Array.isArray(item?.requests)) {
                     item.requests = item.requests.map(request => ({
                         ...request,
@@ -110,6 +144,8 @@
                     item.completedAt = item.completedAt || new Date().toISOString();
                 }
                 if (!Array.isArray(item.childIds)) item.childIds = [];
+                if (!Array.isArray(item.mutations)) item.mutations = [];
+                item.mutationSummary = item.mutationSummary || summarizeMutationList(item.mutations);
                 records.set(item.id, item);
                 orderedIds.push(item.id);
             });
@@ -160,7 +196,32 @@
         const parent = getMutable(parentId);
         if (!parent) return null;
         parent.background = buildBackgroundSummary(parentId);
+        const ownSummary = summarizeMutationList(parent.mutations || []);
+        const descendantSummary = emptyMutationSummary();
+        childRecords(parentId).forEach(child => {
+            const childSummary = child.mutationSummary || summarizeMutationList(child.mutations || []);
+            descendantSummary.total += Number(childSummary.total) || 0;
+            descendantSummary.created += Number(childSummary.created) || 0;
+            descendantSummary.updated += Number(childSummary.updated) || 0;
+            descendantSummary.deleted += Number(childSummary.deleted) || 0;
+            descendantSummary.pending += Number(childSummary.pending) || 0;
+            descendantSummary.other += Number(childSummary.other) || 0;
+            Object.entries(childSummary.byEntity || {}).forEach(([key, value]) => { descendantSummary.byEntity[key] = (descendantSummary.byEntity[key] || 0) + (Number(value) || 0); });
+        });
+        parent.mutationSummary = {
+            total: ownSummary.total + descendantSummary.total,
+            direct: ownSummary.total,
+            descendant: descendantSummary.total,
+            created: ownSummary.created + descendantSummary.created,
+            updated: ownSummary.updated + descendantSummary.updated,
+            deleted: ownSummary.deleted + descendantSummary.deleted,
+            pending: ownSummary.pending + descendantSummary.pending,
+            other: ownSummary.other + descendantSummary.other,
+            byEntity: { ...ownSummary.byEntity }
+        };
+        Object.entries(descendantSummary.byEntity).forEach(([key, value]) => { parent.mutationSummary.byEntity[key] = (parent.mutationSummary.byEntity[key] || 0) + value; });
         parent.updatedAt = new Date().toISOString();
+        if (parent.parentId) recalculateParent(parent.parentId, false);
         if (shouldPersist) persist();
         emit(parent, 'children-update');
         return parent.background;
@@ -196,6 +257,8 @@
             scope: safeClone(options.scope || {}),
             summary: options.summary || '',
             result: safeClone(options.result || null),
+            mutations: [],
+            mutationSummary: emptyMutationSummary(),
             steps: [{ id: makeId('step'), title: options.stage || '开始操作', status: initialStatus, at: now }],
             requests: [],
             error: null,
@@ -310,6 +373,46 @@
         persist();
         emit(record, 'request-update');
         return safeClone(request);
+    }
+
+    function recordMutation(id, mutation = {}) {
+        const record = getMutable(id);
+        if (!record) return null;
+        if (!Array.isArray(record.mutations)) record.mutations = [];
+        const entry = {
+            id: mutation.id || makeId('mut'),
+            action: ['create', 'update', 'delete', 'accept', 'pending'].includes(String(mutation.action || '').toLowerCase()) ? String(mutation.action).toLowerCase() : 'other',
+            entityType: mutation.entityType || 'other',
+            entityId: mutation.entityId || '',
+            title: mutation.title || '数据变化',
+            summary: mutation.summary || '',
+            status: mutation.status || 'committed',
+            count: Math.max(1, Number(mutation.count) || 1),
+            source: mutation.source || record.source || '',
+            before: mutationText(mutation.before),
+            after: mutationText(mutation.after),
+            fields: safeClone(mutation.fields || []),
+            meta: safeClone(mutation.meta || {}),
+            at: mutation.at || new Date().toISOString()
+        };
+        record.mutations.unshift(entry);
+        if (record.mutations.length > MUTATION_LIMIT) record.mutations = record.mutations.slice(0, MUTATION_LIMIT);
+        record.mutationSummary = summarizeMutationList(record.mutations);
+        record.updatedAt = new Date().toISOString();
+        if (Array.isArray(record.childIds) && record.childIds.length) recalculateParent(record.id, false);
+        else if (record.parentId) recalculateParent(record.parentId, false);
+        persist();
+        emit(record, 'mutation');
+        return safeClone(entry);
+    }
+
+    function recordMutations(id, mutations = []) {
+        const output = [];
+        (Array.isArray(mutations) ? mutations : []).slice(0, MUTATION_LIMIT).forEach(item => {
+            const saved = recordMutation(id, item);
+            if (saved) output.push(saved);
+        });
+        return output;
     }
 
     function finishSteps(record, finalStatus) {
@@ -485,8 +588,8 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.10-R2',
-        start, startChild, run, runChild, update, stage, attachRequest, updateRequest,
+        VERSION: '2.10-R3.1',
+        start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
         complete, skip, fail, cancel, get, getChildren, list, getActive, getCurrent,
         resolveOperationId, recalculateParent, clear, subscribe
     };

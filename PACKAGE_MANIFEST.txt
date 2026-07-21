@@ -1,4 +1,3 @@
-PACKAGE_MANIFEST.txt
 NETLIFY_DEPLOY.txt
 VERSION.txt
 _headers
@@ -55,12 +54,16 @@ docs/QWQ_V2.10-R0_自动检查结果.txt
 docs/QWQ_V2.10-R1_自动检查结果.txt
 docs/QWQ_V2.10-R2.1_自动检查结果.txt
 docs/QWQ_V2.10-R2_自动检查结果.txt
+docs/QWQ_V2.10-R3.1_自动检查结果.txt
+docs/QWQ_V2.10-R3_自动检查结果.txt
 docs/REFACTOR_BASELINE.md
 docs/SETTINGS_ARCHITECTURE.md
 docs/章鱼机_V2.10-R0_AI操作中心MVP实施说明.md
 docs/章鱼机_V2.10-R1_AI操作来源视图实施说明.md
 docs/章鱼机_V2.10-R2.1_紧急修复说明.md
 docs/章鱼机_V2.10-R2_后台操作回执实施说明.md
+docs/章鱼机_V2.10-R3.1_快速修复说明.md
+docs/章鱼机_V2.10-R3_数据变化回执实施说明.md
 index.html
 js/app_registry.js
 js/chat.js
@@ -158,6 +161,8 @@ tests/run_v210_r0_operation_center_checks.js
 tests/run_v210_r1_prompt_source_checks.js
 tests/run_v210_r21_hotfix_checks.js
 tests/run_v210_r2_background_operation_checks.js
+tests/run_v210_r31_quick_hotfix_checks.js
+tests/run_v210_r3_mutation_receipt_checks.js
 tests/run_v21_review_checks.js
 tests/run_v22_retrieval_checks.js
 tests/run_v23_sidecar_checks.js

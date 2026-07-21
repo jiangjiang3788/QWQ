@@ -2318,6 +2318,7 @@ ${historyText}`;
             scope: { characterId: chat?.id || null },
             stage: '检查结构化档案开关与表格游标'
         }) : null;
+        const reviewBatchIdsBefore = new Set((MemoryReview && chat ? MemoryReview.getPendingBatches(chat) : []).map(item => item?.id).filter(Boolean));
 
         if (!chat || !chat.memoryTables) {
             if (operation) runtime.skip(operation.id, '当前角色没有结构化档案配置');
@@ -2346,11 +2347,15 @@ ${historyText}`;
         if (operation) {
             if (result.status === 'success') {
                 const waitingReview = (result.results || []).filter(item => item?.task?.status === 'waiting_review').length;
+                const changedFields = (result.results || []).flatMap(item => item?.result?.changedFields || item?.task?.result?.changedFields || []);
+                recordMemoryChangedFields(operation.id, changedFields, { characterId: chat.id });
+                const newReviewBatches = (MemoryReview ? MemoryReview.getPendingBatches(chat) : []).filter(item => item?.id && !reviewBatchIdsBefore.has(item.id));
+                newReviewBatches.forEach(batch => recordPendingReviewBatch(operation.id, batch, chat.id));
                 runtime.complete(operation.id, {
                     summary: result.updatedCount > 0
                         ? `已处理 ${result.updatedCount} 个档案任务${waitingReview ? `，${waitingReview} 个等待审核` : ''}`
                         : '结构化档案检查完成',
-                    result: { ...result, dueCount }
+                    result: { ...result, dueCount, changedFieldCount: changedFields.length, reviewBatchIds: newReviewBatches.map(item => item.id) }
                 });
             } else if (result.status === 'failed') {
                 runtime.fail(operation.id, result.error || new Error('结构化档案自动更新失败'), { result });
@@ -2735,6 +2740,42 @@ ${tableContext}`;
             changedFields.push({ templateId: template.id, tableId: table.id, fieldId: field.id, label: `${table.name} / ${field.key}`, oldValue, newValue: nextValue });
         });
         return changedFields;
+    }
+
+    function recordMemoryChangedFields(operationId, changedFields, options = {}) {
+        const runtime = window.OVOOperationRuntime;
+        if (!runtime?.recordMutations || !operationId) return [];
+        return runtime.recordMutations(operationId, (Array.isArray(changedFields) ? changedFields : []).slice(0, 80).map(change => {
+            const oldText = change?.oldValue == null ? '' : String(change.oldValue);
+            const newText = change?.newValue == null ? '' : String(change.newValue);
+            const action = !oldText && newText ? 'create' : (oldText && !newText ? 'delete' : 'update');
+            return {
+                action,
+                entityType: 'structured_memory',
+                entityId: change?.rowId || `${change?.templateId || ''}:${change?.tableId || ''}:${change?.fieldId || ''}`,
+                title: change?.label || options.title || '结构化档案变化',
+                summary: action === 'create' ? '新增档案内容' : action === 'delete' ? '删除档案内容' : '更新档案内容',
+                before: change?.oldValue,
+                after: change?.newValue,
+                fields: change?.fieldId ? [change.fieldId] : [],
+                meta: { characterId: options.characterId || null, templateId: change?.templateId || null, tableId: change?.tableId || null, rowId: change?.rowId || null, fieldId: change?.fieldId || null, batchId: options.batchId || null }
+            };
+        }));
+    }
+
+    function recordPendingReviewBatch(operationId, batch, characterId) {
+        if (!window.OVOOperationRuntime?.recordMutation || !operationId || !batch) return null;
+        const proposalCount = Array.isArray(batch.proposals) ? batch.proposals.length : 0;
+        return window.OVOOperationRuntime.recordMutation(operationId, {
+            action: 'pending',
+            entityType: 'memory_review',
+            entityId: batch.id,
+            title: `${batch.tableName || '结构化档案'}待审核草案`,
+            summary: `${proposalCount} 项建议等待用户确认`,
+            status: 'pending',
+            count: Math.max(1, proposalCount),
+            meta: { characterId, templateId: batch.templateId || null, tableId: batch.tableId || null, range: batch.range || null, proposalCount }
+        });
     }
 
     async function finalizeMemoryReviewBatch(chat, batchId, options = {}) {
@@ -3663,8 +3704,16 @@ ${tableContext}`;
                     showToast('请先绑定并选择一张表格');
                     return;
                 }
-                const updateAction = () => updateSelectedMemoryTable(chat, active.template.id, active.table.id);
-                await (window.OVOOperationRuntime?.run ? window.OVOOperationRuntime.run('memory.table.update', { title: `更新${chat.remarkName || chat.realName || chat.name || '角色'}的结构化档案`, source: 'memory-table-manual', scope: { characterId: chat.id, templateId: active.template.id, tableId: active.table.id, tableName: active.table.name || '' }, stage: '读取聊天范围与档案规则', successSummary: '结构化档案更新流程已完成' }, updateAction) : updateAction());
+                const updateAction = async operation => {
+                    const reviewBatchIdsBefore = new Set((MemoryReview ? MemoryReview.getPendingBatches(chat) : []).map(item => item?.id).filter(Boolean));
+                    const result = await updateSelectedMemoryTable(chat, active.template.id, active.table.id);
+                    if (operation?.id) {
+                        recordMemoryChangedFields(operation.id, result?.changedFields || [], { characterId: chat.id });
+                        (MemoryReview ? MemoryReview.getPendingBatches(chat) : []).filter(item => item?.id && !reviewBatchIdsBefore.has(item.id)).forEach(batch => recordPendingReviewBatch(operation.id, batch, chat.id));
+                    }
+                    return result;
+                };
+                await (window.OVOOperationRuntime?.run ? window.OVOOperationRuntime.run('memory.table.update', { title: `更新${chat.remarkName || chat.realName || chat.name || '角色'}的结构化档案`, source: 'memory-table-manual', scope: { characterId: chat.id, templateId: active.template.id, tableId: active.table.id, tableName: active.table.name || '' }, stage: '读取聊天范围与档案规则', getSummary: result => result?.changedFields?.length ? `结构化档案已更新 ${result.changedFields.length} 项` : (result?.status === 'waiting_review' ? '已生成结构化档案审核草案' : '结构化档案更新流程已完成') }, updateAction) : updateAction());
             });
         }
         const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
@@ -4093,9 +4142,24 @@ ${tableContext}`;
                     if (!acceptedCount) return void showToast('还没有选中要接受的项目');
                     actionEl.disabled = true;
                     actionEl.textContent = '正在保存…';
+                    const runtime = window.OVOOperationRuntime;
+                    const reviewOperation = runtime?.start?.('memory.review.apply', {
+                        title: `保存${batch?.tableName || '结构化档案'}审核结果`,
+                        source: 'memory-review-apply',
+                        scope: { characterId: chat.id, batchId: actionEl.dataset.batchId, templateId: batch?.templateId || null, tableId: batch?.tableId || null },
+                        stage: '写入已接受的档案建议'
+                    }) || null;
                     try {
-                        await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId);
+                        const applyResult = await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId);
+                        if (reviewOperation) {
+                            recordMemoryChangedFields(reviewOperation.id, applyResult.changedFields || [], { characterId: chat.id, batchId: actionEl.dataset.batchId });
+                            runtime.complete(reviewOperation.id, {
+                                summary: `已保存 ${applyResult.changedFields?.length || 0} 项结构化档案变化`,
+                                result: { batchId: actionEl.dataset.batchId, changedFieldCount: applyResult.changedFields?.length || 0 }
+                            });
+                        }
                     } catch (error) {
+                        if (reviewOperation) runtime.fail(reviewOperation.id, error, { summary: '结构化档案审核结果保存失败' });
                         console.error('[MemoryReview] apply failed:', error);
                         showToast(error.message || '审核结果保存失败');
                         actionEl.disabled = false;

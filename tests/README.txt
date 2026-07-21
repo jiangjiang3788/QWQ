@@ -64,3 +64,11 @@ V2.10-R2 后台操作回执：
 
 V2.10-R2.1 紧急修复：
 - run_v210_r21_hotfix_checks.js：反馈展示、扁平操作详情、消息时间、结构化记忆审核交互与单次聊天请求检查。
+
+V2.10-R3 数据变化回执：
+  node tests/run_v210_r3_mutation_receipt_checks.js
+验证轻量 Mutation Receipt、父子操作变化汇总、聊天消息/角色档案/结构化记忆/日记/向量记忆/小剧场写入接入，以及悬浮球扁平变化视图。
+
+V2.10-R3.1 快速修复：
+- node tests/run_v210_r31_quick_hotfix_checks.js
+- 检查时间元数据防回显、聊天即时渲染对账、自定义 Prompt 记忆兜底注入及档案记忆来源展示。
