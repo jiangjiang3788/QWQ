@@ -1,10 +1,10 @@
-// OVO Prompt Trace - V2.10-R1
+// OVO Prompt Trace - V2.10-R2.1 hotfix
 // 把模型最终请求整理成用户可理解的来源视图；只做只读追踪，不参与 Prompt 决策。
 (function (global) {
     'use strict';
 
-    const CONTENT_LIMIT = 12000;
-    const ITEM_LIMIT = 36;
+    const CONTENT_LIMIT = 60000;
+    const ITEM_LIMIT = 80;
     const TYPE_META = Object.freeze({
         system_rules: { title: '系统规则', icon: '⚙️', order: 10 },
         character_profile: { title: '角色档案', icon: '🎭', order: 20 },
@@ -184,11 +184,12 @@
         if (systemTexts.length) {
             sources.push({
                 type: 'system_rules',
-                title: systemTexts.length > 1 ? '完整系统消息' : '完整系统提示词',
+                title: systemTexts.length > 1 ? '最终系统消息（核对视图）' : '最终系统提示词（核对视图）',
                 content: systemTexts.join('\n\n---\n\n'),
                 count: systemTexts.length,
-                reason: '从最终模型请求中读取，包含实际发送的系统规则',
-                traceMode: 'request_exact'
+                reason: '这是同一次网络请求中已经合并后的系统内容，仅用于核对，不代表再次发送',
+                traceMode: 'request_exact',
+                metadata: { verificationView: true }
             });
         }
 
@@ -268,17 +269,19 @@
     }
 
     function summarize(sections) {
+        const countableSections = sections.filter(section => !section?.metadata?.verificationView);
         const byType = {};
-        sections.forEach(section => {
+        countableSections.forEach(section => {
             if (!byType[section.type]) byType[section.type] = { type: section.type, title: (TYPE_META[section.type] || TYPE_META.other).title, count: 0, chars: 0, sections: 0 };
             byType[section.type].count += Number(section.count) || 0;
             byType[section.type].chars += Number(section.chars) || 0;
             byType[section.type].sections += 1;
         });
         return {
-            sectionCount: sections.length,
-            sentSectionCount: sections.filter(section => section.sent !== false).length,
-            sourceChars: sections.reduce((sum, section) => sum + (Number(section.chars) || 0), 0),
+            sectionCount: countableSections.length,
+            verificationSectionCount: sections.length - countableSections.length,
+            sentSectionCount: countableSections.filter(section => section.sent !== false).length,
+            sourceChars: countableSections.reduce((sum, section) => sum + (Number(section.chars) || 0), 0),
             byType: Object.values(byType).sort((a, b) => ((TYPE_META[a.type] || TYPE_META.other).order - (TYPE_META[b.type] || TYPE_META.other).order))
         };
     }

@@ -1,4 +1,4 @@
-// OVO AI Request Runtime - V2.10-R1 transport bridge
+// OVO AI Request Runtime - V2.10-R2 operation bridge
 // 统一 AI 请求传输、并发/取消/超时控制与只读诊断；不修改 Prompt、响应解析或 API 页面。
 (function () {
     'use strict';

@@ -1939,14 +1939,62 @@ async function summarizeUntilLatest(chat, options = {}) {
  * 在 AI 回复完成后调用：若开启自动总结且达到间隔，则按消息 ID 游标补齐下一个完整区间。
  * @param {Object} chat - 当前聊天对象（character 或 group）
  */
-async function checkAndTriggerAutoJournal(chat) {
-    if (!chat || !chat.autoJournalEnabled) return;
+async function checkAndTriggerAutoJournal(chat, options = {}) {
+    const runtime = window.OVOOperationRuntime;
+    const shouldTrack = !!(runtime && (options.parentOperationId || options.trackOperation));
+    const displayName = chat ? (chat.remarkName || chat.realName || chat.name || '当前聊天') : '当前聊天';
+    const operation = shouldTrack ? runtime.startChild(options.parentOperationId || null, 'journal.auto', {
+        title: `检查${displayName}的自动日记`,
+        source: 'journal-auto-after-reply',
+        scope: { chatId: chat?.id || null },
+        stage: '检查自动总结开关与消息间隔'
+    }) : null;
+
+    if (!chat) {
+        if (operation) runtime.skip(operation.id, '没有可检查的聊天对象');
+        return { status: 'noop', generatedCount: 0 };
+    }
+    if (!chat.autoJournalEnabled) {
+        if (operation) runtime.skip(operation.id, '自动日记未开启', { result: { enabled: false } });
+        return { status: 'disabled', generatedCount: 0 };
+    }
 
     ensureAutoJournalState(chat);
+    const info = getAutoJournalCursorInfo(chat);
+    runtime?.stage?.(operation?.id, '检查可总结范围', {
+        detail: `新增 ${info.unsummarizedCount} 条 · 每 ${info.interval} 条生成一次`
+    });
 
-    await processAutoJournal(chat, {
+    const result = await processAutoJournal(chat, {
         force: false,
         processAllAvailable: true,
         showNoPendingToast: true
     });
+
+    if (operation) {
+        if (result.status === 'success') {
+            runtime.complete(operation.id, {
+                summary: result.generatedCount > 0 ? `已生成 ${result.generatedCount} 篇自动日记` : '自动日记检查完成',
+                result: { ...result, unsummarizedCount: info.unsummarizedCount, interval: info.interval }
+            });
+        } else if (result.status === 'failed') {
+            runtime.fail(operation.id, result.error || new Error('自动日记生成失败'), {
+                summary: '自动日记生成失败',
+                result
+            });
+        } else if (result.status === 'queued' || result.status === 'running') {
+            runtime.complete(operation.id, {
+                summary: result.status === 'queued' ? '自动日记已延后，等待当前生成结束' : '自动日记任务已在执行',
+                result
+            });
+        } else {
+            const reason = result.status === 'disabled'
+                ? '自动日记未开启'
+                : `尚未达到 ${info.interval} 条消息的总结间隔`;
+            runtime.skip(operation.id, reason, {
+                result: { ...result, unsummarizedCount: info.unsummarizedCount, interval: info.interval }
+            });
+        }
+    }
+    return result;
 }

@@ -119,7 +119,7 @@
         const completed = {
             ...batch,
             rawContent: undefined,
-            historyPreview: batch.historyPreview ? String(batch.historyPreview).slice(0, 1800) : '',
+            historyPreview: batch.historyPreview ? String(batch.historyPreview).slice(0, 12000) : '',
             ...clone(result || {}),
             status: result?.status || 'completed',
             completedAt: Date.now()
@@ -187,7 +187,7 @@
                     </div>
                     <div class="memory-review-badges">
                         <span class="memory-review-risk">${proposal.risk === 'high' ? '高风险' : proposal.risk === 'medium' ? '需留意' : '低风险'}</span>
-                        <span class="memory-review-decision">${blocked ? '已阻止' : accepted ? '接受' : rejected ? '拒绝' : '待决定'}</span>
+                        <span class="memory-review-decision">${blocked ? '已阻止' : accepted ? '已选接受' : rejected ? '已选拒绝' : '待决定'}</span>
                     </div>
                 </div>
                 ${proposal.error ? `<div class="memory-review-error">${escapeHtml(proposal.error)}</div>` : ''}
@@ -200,9 +200,9 @@
                 ${proposal.duplicateSuggestion ? `<div class="memory-review-duplicate"><b>发现相似旧记录（相似度 ${Number(proposal.duplicateSuggestion.score || 0).toFixed(2)}）</b><div>${escapeHtml(proposal.duplicateSuggestion.summary || '')}</div><button type="button" class="btn btn-small ${proposal.mergeTargetRowId ? 'btn-primary' : 'btn-secondary'}" data-action="review-toggle-merge" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}" data-row-id="${escapeHtml(proposal.duplicateSuggestion.rowId || '')}">${proposal.mergeTargetRowId ? '已选择合并，点此改回新增' : '改为合并到该旧记录'}</button></div>` : ''}
                 ${blocked ? '' : `
                     <div class="memory-review-proposal-actions">
-                        <button type="button" class="btn btn-small ${accepted ? 'btn-primary' : 'btn-secondary'}" data-action="review-accept" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">接受</button>
-                        <button type="button" class="btn btn-small ${rejected ? 'btn-danger' : 'btn-secondary'}" data-action="review-reject" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">拒绝</button>
-                        <button type="button" class="btn btn-small btn-neutral" data-action="review-reset" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">待定</button>
+                        <button type="button" class="btn btn-small ${accepted ? 'btn-primary' : 'btn-secondary'}" data-action="review-accept" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">${accepted ? '已选中接受' : '选中接受'}</button>
+                        <button type="button" class="btn btn-small ${rejected ? 'btn-danger' : 'btn-secondary'}" data-action="review-reject" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">${rejected ? '已选中拒绝' : '选中拒绝'}</button>
+                        <button type="button" class="btn btn-small btn-neutral" data-action="review-reset" data-batch-id="${escapeHtml(batchId)}" data-proposal-id="${escapeHtml(proposal.id)}">恢复待定</button>
                     </div>`}
             </article>`;
     }
@@ -226,7 +226,7 @@
                 </div>
                 <div class="memory-review-proposals">${(batch.proposals || []).map(item => renderProposal(item, batch.id)).join('')}</div>
                 <div class="memory-review-final-actions">
-                    <button type="button" class="btn btn-primary" data-action="review-apply-batch" data-batch-id="${escapeHtml(batch.id)}">应用接受项并完成审核</button>
+                    <button type="button" class="btn btn-primary" data-action="review-apply-batch" data-batch-id="${escapeHtml(batch.id)}" ${counts.accepted ? '' : 'disabled'}>保存已接受项（${counts.accepted}）</button>
                     <button type="button" class="btn btn-secondary" data-action="review-reject-batch" data-batch-id="${escapeHtml(batch.id)}">整批拒绝并推进游标</button>
                     <button type="button" class="btn btn-neutral" data-action="review-cancel-batch" data-batch-id="${escapeHtml(batch.id)}">取消草案，不推进游标</button>
                 </div>

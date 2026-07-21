@@ -1,7 +1,6 @@
 // --- 结构化记忆 / 表格记忆 (js/modules/memory_table.js) ---
 (function () {
     'use strict';
-
     const Kernel = window.OvoMemoryKernel || null;
     const Core = Kernel?.core;
     if (!Core) throw new Error('记忆内核未加载');
@@ -37,7 +36,6 @@
     const getMemoryApiConfig = MemoryApi.getConfig;
     const requestMemoryContent = MemoryApi.requestContent;
     const requestSummaryContent = MemoryApi.requestSummary;
-
     const uiState = {
         hydratedChatId: null,
         workspace: 'memory',
@@ -53,7 +51,6 @@
         activeTableId: null,
         rangePreview: null
     };
-
     function ensureMemoryTableState(chat, options = {}) {
         ensureMemoryTableStateBase(chat);
         if (!chat) return null;
@@ -86,7 +83,6 @@
         });
         return normalized;
     }
-
     function selectMemoryWorkspace(workspace, view) {
         // 先解析/水合当前角色，再提交目标工作区。反过来会被旧运行态覆盖。
         const chat = getCurrentMemoryTableChat();
@@ -99,7 +95,6 @@
         const keyword = uiState.search.trim().toLowerCase();
         const templates = getBoundTemplates(chat);
         const items = [];
-
         templates.forEach(template => {
             ensureTemplateDataForChat(chat, template);
             template.tables.forEach(table => {
@@ -126,7 +121,6 @@
                 });
             });
         });
-
         if (uiState.sort === 'name') {
             items.sort((a, b) => a.field.key.localeCompare(b.field.key, 'zh-CN'));
         } else if (uiState.sort === 'changed') {
@@ -134,31 +128,25 @@
         } else if (uiState.sort === 'locked') {
             items.sort((a, b) => Number(b.locked) - Number(a.locked) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
         }
-
         return items;
     }
-
     function findBestMemoryTableCursorFallback(chat) {
         const history = Array.isArray(chat && chat.history) ? chat.history : [];
         if (!history.length || !chat || !chat.memoryTables || !chat.memoryTables.lastUpdateMsgTimestamp) {
             return null;
         }
-
         for (let index = history.length - 1; index >= 0; index--) {
             const message = history[index];
             if ((message.timestamp || 0) <= chat.memoryTables.lastUpdateMsgTimestamp) {
                 return message;
             }
         }
-
         return null;
     }
-
     function ensureMemoryTableAutoUpdateState(chat) {
         ensureMemoryTableState(chat);
         const history = Array.isArray(chat.history) ? chat.history : [];
         const memoryTables = chat.memoryTables;
-
         if (memoryTables.lastUpdateMsgId) {
             const exists = history.some(message => message.id === memoryTables.lastUpdateMsgId);
             if (!exists) {
@@ -168,7 +156,6 @@
             }
         }
     }
-
     function getMemoryTableAutoUpdateCursorInfo(chat) {
         ensureMemoryTableAutoUpdateState(chat);
         const history = Array.isArray(chat && chat.history) ? chat.history : [];
@@ -179,7 +166,6 @@
         const nextStartIndex = cursorIndex + 1;
         const unsyncedCount = Math.max(0, history.length - nextStartIndex);
         const completedBatchCount = Math.floor(unsyncedCount / interval);
-
         return {
             history,
             interval,
@@ -189,7 +175,6 @@
             completedBatchCount
         };
     }
-
     function getNextMemoryTableAutoUpdateRange(chat) {
         const info = getMemoryTableAutoUpdateCursorInfo(chat);
         if (info.completedBatchCount <= 0) return null;
@@ -199,26 +184,22 @@
             info
         };
     }
-
     function setMemoryTableAutoUpdateCursorByMessage(chat, message) {
         ensureMemoryTableAutoUpdateState(chat);
         chat.memoryTables.lastUpdateMsgId = message ? message.id : null;
         chat.memoryTables.lastUpdateMsgTimestamp = message ? (message.timestamp || null) : null;
         chat.memoryTables.autoUpdateState = 'idle';
     }
-
     function setMemoryTableAutoUpdateCursorByEndIndex(chat, endIndex) {
         const history = Array.isArray(chat && chat.history) ? chat.history : [];
         const message = history[endIndex - 1] || null;
         setMemoryTableAutoUpdateCursorByMessage(chat, message);
     }
-
     function resetMemoryTableAutoUpdateCursorToLatest(chat) {
         const history = Array.isArray(chat && chat.history) ? chat.history : [];
         setMemoryTableAutoUpdateCursorByMessage(chat, history.length ? history[history.length - 1] : null);
         chat.memoryTables.autoUpdatePending = false;
     }
-
     function getBoundTableDescriptors(chat) {
         const result = [];
         getBoundTemplates(chat).forEach(template => {
@@ -226,7 +207,6 @@
         });
         return result;
     }
-
     function refreshMemoryTableAutoUpdateControls(chat, hasTemplates = true) {
         const toggle = document.getElementById('memory-table-auto-update-toggle');
         const intervalInput = document.getElementById('memory-table-auto-update-interval');
@@ -252,9 +232,7 @@
         const cursorLatestBtn = document.getElementById('memory-table-cursor-latest-btn');
         const cursorStartBtn = document.getElementById('memory-table-cursor-start-btn');
         const scheduleList = document.getElementById('memory-table-auto-schedule-list');
-
         if (!toggle || !intervalInput || !latestBtn || !retryBtn || !statusEl) return;
-
         const allControls = [toggle, intervalInput, roundInput, triggerSelect, maxSourceInput, reviewModeSelect, retrievalModeSelect, semanticWeightInput, tagWeightInput, embeddingCandidateInput, sceneRoutingToggle, sideEffectGuardToggle, previewRangeBtn, latestBtn, retryBtn, cursorSelect, cursorInput, saveCursorBtn, updateSelectedBtn, cursorLatestBtn, cursorStartBtn].filter(Boolean);
         if (!chat) {
             toggle.checked = false;
@@ -265,7 +243,6 @@
             if (scheduleList) scheduleList.innerHTML = '<div class="memory-auto-schedule-empty">暂无可配置表格</div>';
             return;
         }
-
         ensureMemoryTableAutoUpdateState(chat);
         const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
         const descriptors = getBoundTableDescriptors(chat);
@@ -278,7 +255,6 @@
             messageInterval: chat.memoryTables.autoUpdateInterval || 100,
             maxSourceMessages: MEMORY_TABLE_MAX_CONTEXT_MESSAGES
         };
-
         toggle.checked = !!chat.memoryTables.autoUpdateEnabled && engine.enabled !== false;
         toggle.disabled = !hasTemplates;
         intervalInput.value = String(engine.messageInterval || chat.memoryTables.autoUpdateInterval || 140);
@@ -323,13 +299,11 @@
             sideEffectGuardToggle.checked = engine.sideEffectGuardEnabled !== false;
             sideEffectGuardToggle.disabled = !hasTemplates || isRunning;
         }
-
         const schedule = MemorySchedule.build(chat, descriptors, engine, { isRunning });
         const { dueCount, eligibleCount } = schedule;
         const totalUnsyncedMessages = schedule.maxUnsyncedMessages;
         const totalUnsyncedRounds = schedule.maxUnsyncedRounds;
         if (scheduleList) scheduleList.innerHTML = schedule.html;
-
         if (cursorSelect) {
             const previous = cursorSelect.value || uiState.activeTableId || runtime?.activeTableId || '';
             cursorSelect.innerHTML = descriptors.map(({ template, table }) => `<option value="${escapeAttribute(`${template.id}::${table.id}`)}">${escapeHtml(template.name)} / ${escapeHtml(table.name)}</option>`).join('') || '<option value="">暂无表格</option>';
@@ -344,7 +318,6 @@
                 cursorInput.value = String(Math.max(0, info.cursorIndex + 1));
             }
         }
-
         latestBtn.disabled = !hasTemplates || isRunning || dueCount <= 0;
         retryBtn.disabled = !hasTemplates || isRunning || (!hasFailed && dueCount <= 0);
         if (updateSelectedBtn) updateSelectedBtn.disabled = !hasTemplates || isRunning || descriptors.length === 0;
@@ -365,7 +338,6 @@
             ? `自动更新：${toggle.checked ? '已开启' : '已关闭'} · 自动表 ${eligibleCount} 张 · 到期 ${dueCount} 张 · 队列 ${queuedTaskCount} 项 · 待审核 ${pendingReviewCount} 批 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息${toggle.checked && eligibleCount === 0 ? ' · 请把至少一张表设为“跟随全局”或“按表设置”' : ''}`
             : '先绑定模板后才能使用更新调度';
     }
-
     async function applyMemoryTableAutoUpdateToggle(chat, enabled) {
         if (!chat) return { status: 'noop' };
         ensureMemoryTableAutoUpdateState(chat);
@@ -385,11 +357,9 @@
         refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
         return checkAndTriggerAutoTableUpdate(chat, { showNoPendingToast: true });
     }
-
     function renderMemoryTableScreen() {
         const screen = document.getElementById('memory-table-screen');
         if (!screen) return;
-
         const chat = getCurrentMemoryTableChat();
         const content = document.getElementById('memory-table-content');
         const summary = document.getElementById('memory-table-chat-summary');
@@ -406,9 +376,7 @@
         const statusDetail = document.getElementById('memory-workbench-status-detail');
         const taskSummary = document.getElementById('memory-workbench-task-summary');
         const inboxBadge = document.getElementById('memory-workbench-inbox-count');
-
         if (!content || !summary || !modePill || !empty) return;
-
         if (!chat) {
             summary.textContent = '请选择一个角色查看记忆。';
             modePill.textContent = '未选择角色';
@@ -423,7 +391,6 @@
             refreshMemoryTableAutoUpdateControls(null, false);
             return;
         }
-
         ensureMemoryTableState(chat);
         if (MemoryQuality && MemoryTasks) MemoryQuality.enqueuePendingAutoRun(chat);
         if (MemoryTasks) {
@@ -487,7 +454,6 @@
         if (fromJournalBtn) fromJournalBtn.disabled = (chat.memoryJournals || []).filter(item => item.isFavorited).length === 0 || boundTemplates.length === 0;
         if (toJournalBtn) toJournalBtn.disabled = !getMemoryContextBlock(chat, { force: true });
         refreshMemoryTableAutoUpdateControls(chat, boundTemplates.length > 0);
-
         const reviewCount = MemoryReview ? MemoryReview.getPendingCount(chat) : 0;
         const sidecarCount = (chat.memoryTables?.sidecar?.candidates || []).filter(item => item.status === 'pending').length;
         const sidecarCountEl = document.getElementById('memory-sidecar-tab-count');
@@ -515,7 +481,6 @@
         document.querySelectorAll('.memory-table-tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === uiState.tab);
         });
-
         const renderTechnicalView = view => {
             if (view === 'templates') {
                 empty.style.display = db.memoryTableTemplates.length === 0 ? 'block' : 'none';
@@ -536,7 +501,6 @@
             }
             return renderTableView(chat);
         };
-
         empty.style.display = 'none';
         if (uiState.workspace === 'inbox' && uiState.tab === 'inbox_home') {
             content.innerHTML = MemoryWorkspace.renderInboxHome(chat, boundTemplates);
@@ -560,12 +524,10 @@
         }
         try { window.dispatchEvent(new CustomEvent('memory-table-screen-opened')); } catch (_) {}
     }
-
     function renderTemplateLibrary(chat) {
         ensureMemoryTemplateStore();
         const templates = db.memoryTableTemplates;
         if (templates.length === 0) return '';
-
         return templates.map(template => {
             const bound = chat.memoryTables.boundTemplateIds.includes(template.id);
             const tableCount = Array.isArray(template.tables) ? template.tables.length : 0;
@@ -594,7 +556,6 @@
             `;
         }).join('');
     }
-
     function openTemplateDesigner(template) {
         const modal = document.getElementById('memory-template-designer-modal');
         if (!modal) return;
@@ -610,20 +571,17 @@
         renderTemplateDesigner();
         modal.classList.add('visible');
     }
-
     function closeTemplateDesigner() {
         const modal = document.getElementById('memory-template-designer-modal');
         if (modal) modal.classList.remove('visible');
         uiState.templateDraft = null;
         uiState.designerDrag = null;
     }
-
     function renderTemplateDesigner() {
         const draft = uiState.templateDraft;
         const container = document.getElementById('memory-template-designer-body');
         const titleEl = document.getElementById('memory-template-designer-title');
         if (!draft || !container || !titleEl) return;
-
         titleEl.textContent = uiState.editingTemplateId ? '编辑模板' : '新建模板';
         container.innerHTML = `
             <div class="form-group">
@@ -641,7 +599,6 @@
             ${(draft.tables || []).map((table, tableIndex) => renderDesignerTableCard(table, tableIndex)).join('')}
         `;
     }
-
     function renderDesignerTableCard(table, tableIndex) {
         const groups = getFieldGroups(table.columns || []);
         const policy = MemoryPolicy
@@ -763,7 +720,6 @@
             </div>
         `;
     }
-
     function renderDesignerFieldCard(field, tableIndex, fieldIndex) {
         const isCollapsed = !!uiState.designerCollapsedFieldIds[field.id];
         const summaryTags = [
@@ -853,7 +809,6 @@
             </div>
         `;
     }
-
     function renderHistoryView(chat) {
         const history = chat.memoryTables.history || [];
         if (history.length === 0) return '';
@@ -878,13 +833,11 @@
             `;
         }).join('');
     }
-
     function matchesMemorySearch(parts) {
         const keyword = uiState.search.trim().toLowerCase();
         if (!keyword) return true;
         return parts.join(' ').toLowerCase().includes(keyword);
     }
-
     function getDisplayFieldItems(chat, template, table) {
         const items = (table.columns || []).map(field => {
             const value = getFieldValue(chat, template.id, table.id, field);
@@ -904,7 +857,6 @@
             item.field.key,
             getFieldDisplayValue(item.field, item.value)
         ]));
-
         if (uiState.sort === 'name') {
             items.sort((a, b) => a.field.key.localeCompare(b.field.key, 'zh-CN'));
         } else if (uiState.sort === 'changed') {
@@ -912,10 +864,8 @@
         } else if (uiState.sort === 'locked') {
             items.sort((a, b) => Number(b.locked) - Number(a.locked) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
         }
-
         return items;
     }
-
     function renderKeyValueFieldCard(item) {
         const color = evaluateConditionalColor(item.field, item.value);
         return `
@@ -948,7 +898,6 @@
             </div>
         `;
     }
-
     function renderRowsTableCard(chat, template, table) {
         const rows = getRows(chat, template.id, table);
         const visibleRows = rows.filter(row => matchesMemorySearch([
@@ -960,7 +909,6 @@
         if (uiState.search.trim() && visibleRows.length === 0) {
             return '';
         }
-
         return `
             <div style="background:#fff; border-radius:18px; padding:14px; margin-bottom:16px; box-shadow:0 6px 20px rgba(0,0,0,0.04); border:1px solid #f1f1f1;">
                 <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px;">
@@ -1008,7 +956,6 @@
             </div>
         `;
     }
-
     function getActiveTableDescriptor(chat) {
         const descriptors = [];
         getBoundTemplates(chat).forEach(template => {
@@ -1023,12 +970,10 @@
         if (runtime) runtime.activeTableId = active.table.id;
         return { descriptors, active };
     }
-
     function getVisibleColumnsForMode(table) {
         const jsonMode = uiState.viewMode === 'json' && (!MemoryPolicy || MemoryPolicy.isDesktopJsonAvailable());
         return (table.columns || []).filter(field => jsonMode || field.important !== false);
     }
-
     function renderV2PolicySummary(table) {
         const policy = getTableRuntimePolicy(table);
         const update = policy.updatePolicy;
@@ -1046,7 +991,6 @@
             </div>
         `;
     }
-
     function renderV2KeyValueSheet(chat, template, table) {
         const columns = getVisibleColumnsForMode(table).filter(field => matchesMemorySearch([
             template.name,
@@ -1075,7 +1019,6 @@
         }).join('');
         return `<table class="memory-v2-kv"><tbody>${rowsHtml || '<tr><td class="memory-v2-empty">当前模式下没有匹配字段。</td></tr>'}</tbody></table>`;
     }
-
     function renderV2RowsSheet(chat, template, table) {
         const columns = getVisibleColumnsForMode(table);
         const isReviewTable = getTableRuntimePolicy(table).memoryLayer === 'review';
@@ -1137,13 +1080,11 @@
             </div>
         `;
     }
-
     function renderV2RawJson(chat, template, table) {
         const tableData = deepClone(chat.memoryTables.data?.[template.id]?.[table.id] || {});
         const payload = { schema: table, data: tableData, lockedFields: chat.memoryTables.lockedFields?.[template.id]?.[table.id] || [] };
         return `<pre class="memory-v2-json-raw memory-v2-json-only">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
     }
-
     function renderTableView(chat) {
         const { descriptors, active } = getActiveTableDescriptor(chat);
         if (!active) return '';
@@ -1191,7 +1132,6 @@
             </div>
         `;
     }
-
     function renderFieldEditor(templateId, tableId, field, value, locked, rowId = '') {
         const disabled = locked ? 'disabled' : '';
         const rowAttr = rowId ? `data-row-id="${rowId}"` : '';
@@ -1224,8 +1164,6 @@
                 return `<input ${baseAttrs} type="text" value="${escapeAttribute(String(value || ''))}" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
         }
     }
-
-
     function renderFieldChartContainer(templateId, tableId, field) {
         const type = normalizeFieldType(field.type);
         if (!['number', 'progress'].includes(type)) return '';
@@ -1236,7 +1174,6 @@
             </div>
         `;
     }
-
     function getFieldHistorySeries(chat, templateId, tableId, fieldId, currentValue) {
         const entries = [...(chat.memoryTables.history || [])].reverse();
         const result = [];
@@ -1251,7 +1188,6 @@
         }
         return result.slice(-12);
     }
-
     function drawAllCharts(chat) {
         const canvases = document.querySelectorAll('#memory-table-screen .memory-field-chart');
         canvases.forEach(canvas => {
@@ -1267,36 +1203,30 @@
             drawSparkline(canvas, series, field);
         });
     }
-
     function drawSparkline(canvas, series, field) {
         const ctx = canvas.getContext('2d');
         const width = canvas.clientWidth || 300;
         const height = canvas.height || 54;
         canvas.width = width;
         ctx.clearRect(0, 0, width, height);
-
         ctx.strokeStyle = '#e6e9f2';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, height - 10);
         ctx.lineTo(width, height - 10);
         ctx.stroke();
-
         if (!Array.isArray(series) || series.length < 2) {
             ctx.fillStyle = '#aaa';
             ctx.font = '12px sans-serif';
             ctx.fillText('暂无足够历史数据', 10, 28);
             return;
         }
-
         const min = typeof field.min === 'number' ? field.min : Math.min(...series);
         const max = typeof field.max === 'number' ? field.max : Math.max(...series);
         const range = Math.max(1, max - min);
-
         ctx.strokeStyle = '#5b8cff';
         ctx.lineWidth = 2;
         ctx.beginPath();
-
         series.forEach((value, index) => {
             const x = (width - 12) * (index / Math.max(1, series.length - 1)) + 6;
             const y = height - 10 - ((value - min) / range) * (height - 24);
@@ -1304,7 +1234,6 @@
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
-
         const lastValue = series[series.length - 1];
         const lastX = width - 6;
         const lastY = height - 10 - ((lastValue - min) / range) * (height - 24);
@@ -1313,7 +1242,6 @@
         ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
         ctx.fill();
     }
-
     function formatDateTime(timestamp) {
         const date = new Date(timestamp);
         const y = date.getFullYear();
@@ -1323,14 +1251,12 @@
         const mm = String(date.getMinutes()).padStart(2, '0');
         return `${y}-${m}-${d} ${hh}:${mm}`;
     }
-
     function getShortValue(value) {
         if (Array.isArray(value)) return value.join(', ');
         if (typeof value === 'object' && value !== null) return JSON.stringify(value);
         const text = String(value ?? '');
         return text.length > 24 ? `${text.slice(0, 24)}...` : text;
     }
-
     function getFieldGroups(fields) {
         const groups = [];
         const order = new Map();
@@ -1348,7 +1274,6 @@
         });
         return groups;
     }
-
     function getTableRuntimePolicy(table) {
         return MemoryPolicy
             ? MemoryPolicy.normalizeTablePolicy(table)
@@ -1358,7 +1283,6 @@
                 injectionPolicy: table.injectionPolicy || { mode: 'always', budget: 1200 }
             };
     }
-
     function getRowTimestamp(table, row) {
         if (row?.meta?.lastMentionedAt || row?.meta?.updatedAt || row?.meta?.createdAt) {
             return Number(row.meta.lastMentionedAt || row.meta.updatedAt || row.meta.createdAt) || 0;
@@ -1372,7 +1296,6 @@
         });
         return best;
     }
-
     function getRowStatusText(table, row) {
         return (table.columns || [])
             .filter(field => /状态|进度|结果/.test(field.key || ''))
@@ -1380,7 +1303,6 @@
             .filter(Boolean)
             .join(' ');
     }
-
     function rowToRetrievalItem(table, row, rowIndex) {
         const searchText = getRowSearchText(table, row);
         if (MemoryEffects) MemoryEffects.ensureRowMeta(row, table, searchText);
@@ -1405,7 +1327,6 @@
             expiredByMeta
         };
     }
-
     function isKeyValueTableActive(chat, template, table, policy) {
         if (!policy.maxAgeDays) return true;
         let newest = 0;
@@ -1423,7 +1344,6 @@
         if (!newest) return true;
         return (Date.now() - newest) <= policy.maxAgeDays * 86400000;
     }
-
     function selectRowsForInjection(chat, template, table, queryText, forceFull) {
         const rows = getRows(chat, template.id, table);
         if (forceFull) return rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
@@ -1881,10 +1801,16 @@
         }).join('\n\n');
     }
 
+    function formatMemoryPromptTimestamp(timestamp) {
+        const date = new Date(Number(timestamp));
+        if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0 || Number.isNaN(date.getTime())) return '时间未记录';
+        const pad2 = number => String(number).padStart(2, '0'), offset = -date.getTimezoneOffset(), abs = Math.abs(offset);
+        return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} UTC${offset >= 0 ? '+' : '-'}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+    }
     function buildHistoryTextForPrompt(chat, history) {
         return history.map(item => {
-            const name = item.role === 'user' ? (chat.myName || '用户') : (chat.realName || '角色');
-            return `${name}: ${getHistoryMessageContent(item)}`;
+            const name = item.role === 'user' ? (chat.myName || '用户') : (item.role === 'system' ? '系统' : (chat.realName || '角色'));
+            return `[${formatMemoryPromptTimestamp(item.timestamp)}] ${name}: ${getHistoryMessageContent(item)}`;
         }).join('\n');
     }
 
@@ -1972,7 +1898,7 @@ ${historyText}`;
                 const policy = getTableRuntimePolicy(table);
                 return policy.updatePolicy.useSummaryApi !== false;
             }));
-            const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update');
+            const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update', { operationId: options.operationId || null });
             const apiRoute = MemoryApi.getLastRoute() || { requestedMode: preferSummaryApi ? 'summary' : 'main', actualMode: preferSummaryApi ? 'summary' : 'main', fallback: false };
             const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
             const requireReview = !!options.forceReview || (!!MemoryReview && MemoryReview.shouldRequireReview(runtime?.engineSettings || {}, {
@@ -1988,8 +1914,8 @@ ${historyText}`;
                     start: options.start || 1,
                     end: options.end || (Array.isArray(chat.history) ? chat.history.length : 0),
                     sourceMessageCount: history.length,
-                    historyPreview: historyText.length > 5000 ? `${historyText.slice(0, 5000)}
-…（范围预览已截断）` : historyText,
+                    historyPreview: historyText.length > 30000 ? `${historyText.slice(0, 30000)}
+…（范围预览超过 3 万字符，已截断）` : historyText,
                     apiMode: apiRoute.actualMode || (preferSummaryApi ? 'summary' : 'main'),
                     requestedApiMode: apiRoute.requestedMode || (preferSummaryApi ? 'summary' : 'main'),
                     apiFallback: !!apiRoute.fallback,
@@ -2075,7 +2001,8 @@ ${historyText}`;
                 propagateError: true,
                 relevantRowsOnly: true,
                 maxCandidateRows: 12,
-                forceReview: !!options.forceReview
+                forceReview: !!options.forceReview,
+                operationId: options.operationId || null
             });
             if (result.status !== 'pending_review') {
                 MemoryPolicy.markTableProcessed(chat, template.id, table.id, range.end, 'success');
@@ -2124,7 +2051,8 @@ ${historyText}`;
             estimatedInputChars: estimateMemoryTaskInputChars(chat, template, table, range),
             fingerprint,
             title: `${table.name} · ${apiMode === 'summary' ? '总结整理' : '增量更新'}`,
-            priority: options.priority || (options.isAutoUpdate ? 45 : 85)
+            priority: options.priority || (options.isAutoUpdate ? 45 : 85),
+            operationId: options.operationId || null
         }, { force: !!options.force });
         return { ...result, range };
     }
@@ -2172,7 +2100,7 @@ ${historyText}`;
             const results = [];
             for (const descriptor of due.slice(0, options.processAllAvailable ? due.length : 2)) {
                 results.push(await updateSingleTableFromPolicy(chat, descriptor.template, descriptor.table, {
-                    source: options.source || 'auto_v2_legacy', isAutoUpdate: true
+                    source: options.source || 'auto_v2_legacy', isAutoUpdate: true, operationId: options.operationId || null
                 }));
             }
             return { status: 'success', updatedCount: results.length, results };
@@ -2188,7 +2116,8 @@ ${historyText}`;
             const queued = enqueueMemoryTableUpdateTask(chat, descriptor.template, descriptor.table, {
                 source: options.source || 'auto_round_v2_6',
                 isAutoUpdate: true,
-                priority: 45
+                priority: 45,
+                operationId: options.operationId || null
             });
             if (!queued) return;
             if (queued.deduped) deduped += 1;
@@ -2380,18 +2309,58 @@ ${historyText}`;
 
 
     async function checkAndTriggerAutoTableUpdate(chat, options = {}) {
-        if (!chat || !chat.memoryTables || !chat.memoryTables.autoUpdateEnabled) return { status: 'disabled' };
+        const runtime = window.OVOOperationRuntime;
+        const shouldTrack = !!(runtime && (options.parentOperationId || options.trackOperation));
+        const displayName = chat ? (chat.remarkName || chat.realName || chat.name || '当前角色') : '当前角色';
+        const operation = shouldTrack ? runtime.startChild(options.parentOperationId || null, 'memory.table.auto', {
+            title: `检查${displayName}的结构化档案`,
+            source: 'memory-table-auto-after-reply',
+            scope: { characterId: chat?.id || null },
+            stage: '检查结构化档案开关与表格游标'
+        }) : null;
+
+        if (!chat || !chat.memoryTables) {
+            if (operation) runtime.skip(operation.id, '当前角色没有结构化档案配置');
+            return { status: 'disabled', updatedCount: 0 };
+        }
+        if (!chat.memoryTables.autoUpdateEnabled) {
+            if (operation) runtime.skip(operation.id, '结构化档案自动更新未开启', { result: { enabled: false } });
+            return { status: 'disabled', updatedCount: 0 };
+        }
         ensureMemoryTableAutoUpdateState(chat);
         if (chat.memoryTables.autoUpdateState === 'failed') {
             refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
-            return { status: 'failed' };
+            const error = new Error('结构化档案上次自动更新失败，等待重试');
+            if (operation) runtime.fail(operation.id, error);
+            return { status: 'failed', updatedCount: 0, error };
         }
-        return processMemoryTableAutoUpdate(chat, {
+        const dueCount = getDueMemoryTables(chat, {}).length;
+        runtime?.stage?.(operation?.id, '检查到期档案表', { detail: `${dueCount} 张表需要检查` });
+        const result = await processMemoryTableAutoUpdate(chat, {
             force: false,
             processAllAvailable: false,
             showNoPendingToast: !!options.showNoPendingToast,
-            source: 'auto_round_v2'
+            source: 'auto_round_v2',
+            operationId: operation?.id || null
         });
+        if (operation) {
+            if (result.status === 'success') {
+                const waitingReview = (result.results || []).filter(item => item?.task?.status === 'waiting_review').length;
+                runtime.complete(operation.id, {
+                    summary: result.updatedCount > 0
+                        ? `已处理 ${result.updatedCount} 个档案任务${waitingReview ? `，${waitingReview} 个等待审核` : ''}`
+                        : '结构化档案检查完成',
+                    result: { ...result, dueCount }
+                });
+            } else if (result.status === 'failed') {
+                runtime.fail(operation.id, result.error || new Error('结构化档案自动更新失败'), { result });
+            } else {
+                runtime.skip(operation.id, dueCount ? '档案任务暂未执行' : '当前没有到期或待处理的档案表', {
+                    result: { ...result, dueCount }
+                });
+            }
+        }
+        return result;
     }
 
     async function convertJournalsToTables() {
@@ -3657,6 +3626,8 @@ ${tableContext}`;
         ensureMemoryTemplateStore();
         const screen = document.getElementById('memory-table-screen');
         bindMemoryWorkspaceNavigation(screen);
+        if (screen?.dataset.memoryTableScreenBound === '1') return void renderMemoryTableScreen();
+        if (screen) screen.dataset.memoryTableScreenBound = '1';
 
         const searchInput = document.getElementById('memory-table-search-input');
         if (searchInput) {
@@ -4094,26 +4065,54 @@ ${tableContext}`;
                     await saveCharacter(chat.id);
                     renderMemoryTableScreen();
                 } else if (action === 'review-accept' || action === 'review-reject' || action === 'review-reset') {
+                    event.preventDefault();
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryReview) return;
                     const decision = action === 'review-accept' ? 'accepted' : (action === 'review-reject' ? 'rejected' : 'pending');
-                    MemoryReview.setProposalDecision(chat, actionEl.dataset.batchId, actionEl.dataset.proposalId, decision);
+                    const changed = MemoryReview.setProposalDecision(chat, actionEl.dataset.batchId, actionEl.dataset.proposalId, decision);
+                    if (!changed) return void showToast('该项当前不能修改');
                     await saveCharacter(chat.id);
                     renderMemoryTableScreen();
+                    showToast(decision === 'accepted' ? '已选中接受；请点击“保存已接受项”完成写入' : (decision === 'rejected' ? '已选中拒绝' : '已恢复为待定'));
                 } else if (action === 'review-accept-all' || action === 'review-reject-all') {
+                    event.preventDefault();
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryReview) return;
-                    MemoryReview.setAllDecisions(chat, actionEl.dataset.batchId, action === 'review-accept-all' ? 'accepted' : 'rejected');
+                    const decision = action === 'review-accept-all' ? 'accepted' : 'rejected';
+                    const changed = MemoryReview.setAllDecisions(chat, actionEl.dataset.batchId, decision);
+                    if (!changed) return void showToast('找不到该审核批次');
                     await saveCharacter(chat.id);
                     renderMemoryTableScreen();
+                    showToast(decision === 'accepted' ? '已选中全部可接受项；请点击“保存已接受项”' : '已选中全部拒绝');
                 } else if (action === 'review-apply-batch') {
+                    event.preventDefault();
                     const chat = getCurrentMemoryTableChat();
-                    if (!chat) return;
-                    await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId);
+                    if (!chat || !MemoryReview) return;
+                    const batch = MemoryReview.getPendingBatches(chat).find(item => item.id === actionEl.dataset.batchId);
+                    const acceptedCount = (batch?.proposals || []).filter(item => item.decision === 'accepted' && item.valid !== false).length;
+                    if (!acceptedCount) return void showToast('还没有选中要接受的项目');
+                    actionEl.disabled = true;
+                    actionEl.textContent = '正在保存…';
+                    try {
+                        await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId);
+                    } catch (error) {
+                        console.error('[MemoryReview] apply failed:', error);
+                        showToast(error.message || '审核结果保存失败');
+                        actionEl.disabled = false;
+                        actionEl.textContent = `保存已接受项（${acceptedCount}）`;
+                    }
                 } else if (action === 'review-reject-batch') {
+                    event.preventDefault();
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
-                    await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId, { rejectAll: true });
+                    actionEl.disabled = true;
+                    try {
+                        await finalizeMemoryReviewBatch(chat, actionEl.dataset.batchId, { rejectAll: true });
+                    } catch (error) {
+                        console.error('[MemoryReview] reject batch failed:', error);
+                        showToast(error.message || '整批拒绝失败');
+                        actionEl.disabled = false;
+                    }
                 } else if (action === 'review-cancel-batch') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
@@ -4607,7 +4606,8 @@ ${text}`;
                 end: payload.range?.end,
                 source: payload.source || 'task_queue_v2_6',
                 isAutoUpdate: !!payload.isAutoUpdate,
-                forceReview: !!payload.forceReview
+                forceReview: !!payload.forceReview,
+                operationId: payload.operationId || null
             });
         });
         MemoryTasks.registerExecutor('retrieval_rebuild', async chat => {

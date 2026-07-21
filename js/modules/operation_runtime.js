@@ -1,12 +1,12 @@
-// OVO Operation Runtime - V2.10-R1
-// 用户可见的 AI 操作追踪层：统一记录操作、阶段、模型请求与结果摘要。
+// OVO Operation Runtime - V2.10-R2.1 hotfix
+// 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
 
     const STORAGE_KEY = 'ovo_operation_history_v1';
     const HISTORY_LIMIT = 100;
-    const DETAIL_LIMIT = 12;
-    const BODY_PREVIEW_LIMIT = 18000;
+    const DETAIL_LIMIT = 8;
+    const BODY_PREVIEW_LIMIT = 120000;
     const registry = new Map();
     const records = new Map();
     let orderedIds = [];
@@ -17,7 +17,11 @@
         { type: 'chat.summary', title: '生成对话总结', category: '总结', icon: '📝' },
         { type: 'theater.generate', title: '生成小剧场', category: '小剧场', icon: '🎭' },
         { type: 'theater.character', title: '角色创作小剧场', category: '小剧场', icon: '🎭' },
+        { type: 'memory.sidecar', title: '应用回复内档案更新', category: '记忆', icon: '🧩' },
         { type: 'memory.table.update', title: '更新结构化档案', category: '记忆', icon: '🗂️' },
+        { type: 'memory.table.auto', title: '检查结构化档案更新', category: '后台工作', icon: '🗂️' },
+        { type: 'journal.auto', title: '检查自动日记总结', category: '后台工作', icon: '📔' },
+        { type: 'memory.vector.auto', title: '检查向量记忆总结', category: '后台工作', icon: '🧠' },
         { type: 'ai.request', title: '执行 AI 功能', category: '其他', icon: '✨' }
     ];
 
@@ -32,7 +36,7 @@
     function safeClone(value, depth = 0) {
         if (depth > 10) return '[已省略：层级过深]';
         if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
-        if (typeof value === 'string') return value.length > 12000 ? `${value.slice(0, 12000)}\n…（已截断）` : value;
+        if (typeof value === 'string') return value.length > 80000 ? `${value.slice(0, 80000)}\n…（内容超过 8 万字符，已截断）` : value;
         if (typeof value === 'function') return '[函数]';
         if (value instanceof Error) return { name: value.name, message: value.message, stack: String(value.stack || '').slice(0, 3000) };
         if (Array.isArray(value)) return value.slice(0, 120).map(item => safeClone(item, depth + 1));
@@ -63,7 +67,7 @@
     function emit(record, reason) {
         try {
             global.dispatchEvent(new CustomEvent('ovo:operation-change', {
-                detail: { id: record?.id || '', reason: reason || 'update' }
+                detail: { id: record?.id || '', parentId: record?.parentId || '', reason: reason || 'update' }
             }));
         } catch (_) {}
     }
@@ -81,7 +85,7 @@
                             sections: (request.promptTrace.sections || []).map(section => ({
                                 ...section,
                                 content: '',
-                                items: (section.items || []).map(item => ({ ...item, content: '' }))
+                                items: (section.items || []).map(entry => ({ ...entry, content: '' }))
                             }))
                         } : null
                     }));
@@ -105,9 +109,11 @@
                     item.stage = '页面刷新前尚未完成';
                     item.completedAt = item.completedAt || new Date().toISOString();
                 }
+                if (!Array.isArray(item.childIds)) item.childIds = [];
                 records.set(item.id, item);
                 orderedIds.push(item.id);
             });
+            orderedIds.forEach(id => recalculateParent(id, false));
         } catch (_) {}
     }
 
@@ -119,51 +125,106 @@
         return { ...next };
     }
 
+    function getMutable(id) {
+        return id ? records.get(id) || null : null;
+    }
+
+    function childRecords(parentId) {
+        const parent = getMutable(parentId);
+        const ids = Array.isArray(parent?.childIds) ? parent.childIds : [];
+        return ids.map(id => getMutable(id)).filter(Boolean);
+    }
+
+    function buildBackgroundSummary(parentId) {
+        const children = childRecords(parentId);
+        const summary = {
+            total: children.length,
+            running: 0,
+            queued: 0,
+            success: 0,
+            skipped: 0,
+            failed: 0,
+            cancelled: 0,
+            interrupted: 0,
+            settled: 0
+        };
+        children.forEach(child => {
+            if (Object.prototype.hasOwnProperty.call(summary, child.status)) summary[child.status] += 1;
+            if (!['running', 'queued'].includes(child.status)) summary.settled += 1;
+        });
+        summary.pending = summary.running + summary.queued;
+        return summary;
+    }
+
+    function recalculateParent(parentId, shouldPersist = true) {
+        const parent = getMutable(parentId);
+        if (!parent) return null;
+        parent.background = buildBackgroundSummary(parentId);
+        parent.updatedAt = new Date().toISOString();
+        if (shouldPersist) persist();
+        emit(parent, 'children-update');
+        return parent.background;
+    }
+
+    function linkToParent(record) {
+        if (!record?.parentId) return;
+        const parent = getMutable(record.parentId);
+        if (!parent) return;
+        if (!Array.isArray(parent.childIds)) parent.childIds = [];
+        if (!parent.childIds.includes(record.id)) parent.childIds.push(record.id);
+        recalculateParent(parent.id, false);
+    }
+
     function start(type, options = {}) {
         const definition = registry.get(type) || registry.get('ai.request') || {};
         const now = new Date().toISOString();
+        const initialStatus = options.status || 'running';
         const record = {
             id: options.id || makeId('op'),
-            schemaVersion: 2,
+            schemaVersion: 3,
             type: type || 'ai.request',
             title: options.title || definition.title || '执行操作',
             category: options.category || definition.category || '其他',
             icon: options.icon || definition.icon || '✨',
-            status: options.status || 'running',
+            status: initialStatus,
             stage: options.stage || '正在准备',
             progress: Number.isFinite(options.progress) ? options.progress : null,
             source: options.source || '',
             parentId: options.parentId || null,
+            childIds: [],
+            background: { total: 0, running: 0, queued: 0, success: 0, skipped: 0, failed: 0, cancelled: 0, interrupted: 0, settled: 0, pending: 0 },
             scope: safeClone(options.scope || {}),
             summary: options.summary || '',
             result: safeClone(options.result || null),
-            steps: [{ id: makeId('step'), title: options.stage || '开始操作', status: 'running', at: now }],
+            steps: [{ id: makeId('step'), title: options.stage || '开始操作', status: initialStatus, at: now }],
             requests: [],
             error: null,
             createdAt: now,
             updatedAt: now,
-            completedAt: null,
+            completedAt: ['running', 'queued'].includes(initialStatus) ? null : now,
             implicit: !!options.implicit
         };
         records.set(record.id, record);
         orderedIds = [record.id, ...orderedIds.filter(id => id !== record.id)].slice(0, HISTORY_LIMIT);
+        linkToParent(record);
         persist();
         emit(record, 'start');
         return safeClone(record);
     }
 
-    function getMutable(id) {
-        return id ? records.get(id) || null : null;
+    function startChild(parentId, type, options = {}) {
+        return start(type, { ...options, parentId: parentId || options.parentId || null });
     }
 
     function update(id, patch = {}, reason = 'update') {
         const record = getMutable(id);
         if (!record) return null;
         Object.keys(patch).forEach(key => {
-            if (key === 'id' || key === 'createdAt') return;
+            if (key === 'id' || key === 'createdAt' || key === 'childIds' || key === 'background') return;
             record[key] = safeClone(patch[key]);
         });
         record.updatedAt = new Date().toISOString();
+        if (record.parentId) recalculateParent(record.parentId, false);
         persist();
         emit(record, reason);
         return safeClone(record);
@@ -188,6 +249,7 @@
             at: now
         });
         record.updatedAt = now;
+        if (record.parentId) recalculateParent(record.parentId, false);
         persist();
         emit(record, 'stage');
         return safeClone(record);
@@ -261,19 +323,34 @@
         record.updatedAt = now;
     }
 
+    function finalizeRecord(record, status, result = {}) {
+        record.status = status;
+        record.stage = result.stage || (status === 'success' ? '操作完成' : status === 'skipped' ? '本次未执行' : '操作结束');
+        record.summary = result.summary || record.summary || record.stage;
+        record.result = safeClone(result.result !== undefined ? result.result : result);
+        record.progress = ['success', 'skipped'].includes(status) ? 100 : record.progress;
+        if (status !== 'failed') record.error = null;
+        finishSteps(record, status);
+        if (record.parentId) recalculateParent(record.parentId, false);
+        persist();
+        emit(record, status);
+        return safeClone(record);
+    }
+
     function complete(id, result = {}) {
         const record = getMutable(id);
         if (!record) return null;
-        record.status = 'success';
-        record.stage = result.stage || '操作完成';
-        record.summary = result.summary || record.summary || '操作已完成';
-        record.result = safeClone(result.result !== undefined ? result.result : result);
-        record.error = null;
-        record.progress = 100;
-        finishSteps(record, 'success');
-        persist();
-        emit(record, 'complete');
-        return safeClone(record);
+        return finalizeRecord(record, 'success', result);
+    }
+
+    function skip(id, reason = '本次未达到执行条件', result = {}) {
+        const record = getMutable(id);
+        if (!record) return null;
+        return finalizeRecord(record, 'skipped', {
+            stage: result.stage || '本次未执行',
+            summary: reason,
+            result: result.result !== undefined ? result.result : result
+        });
     }
 
     function fail(id, error, result = {}) {
@@ -282,14 +359,12 @@
         const normalized = error instanceof Error
             ? { name: error.name, message: error.message, stack: String(error.stack || '').slice(0, 3000) }
             : { name: 'Error', message: String(error || '未知错误') };
-        record.status = result.status || 'failed';
-        record.stage = result.stage || '操作失败';
-        record.summary = result.summary || normalized.message || '操作失败';
         record.error = normalized;
-        finishSteps(record, record.status);
-        persist();
-        emit(record, 'fail');
-        return safeClone(record);
+        return finalizeRecord(record, result.status || 'failed', {
+            stage: result.stage || '操作失败',
+            summary: result.summary || normalized.message || '操作失败',
+            result: result.result !== undefined ? result.result : result
+        });
     }
 
     function cancel(id, reason = '用户取消') {
@@ -301,12 +376,7 @@
                 if (global.OVOAIRequestRuntime.cancelRequest?.(request.id)) cancelledRequests += 1;
             });
         }
-        record.status = 'cancelled';
-        record.stage = '操作已取消';
-        record.summary = reason;
-        finishSteps(record, 'cancelled');
-        persist();
-        emit(record, 'cancel');
+        finalizeRecord(record, 'cancelled', { stage: '操作已取消', summary: reason, result: { cancelledRequests } });
         return cancelledRequests > 0 || true;
     }
 
@@ -314,10 +384,26 @@
         return safeClone(records.get(id) || null);
     }
 
+    function getChildren(parentId, options = {}) {
+        const children = childRecords(parentId);
+        const recursive = !!options.recursive;
+        const output = [];
+        children.forEach(child => {
+            output.push(safeClone(child));
+            if (recursive) output.push(...getChildren(child.id, { recursive: true }));
+        });
+        return output;
+    }
+
     function list(options = {}) {
         const limit = Math.max(1, Math.min(Number(options.limit) || HISTORY_LIMIT, HISTORY_LIMIT));
         const status = options.status || '';
-        return orderedIds.map(id => records.get(id)).filter(item => item && (!status || item.status === status)).slice(0, limit).map(item => safeClone(item));
+        const rootsOnly = !!options.rootsOnly;
+        return orderedIds
+            .map(id => records.get(id))
+            .filter(item => item && (!status || item.status === status) && (!rootsOnly || !item.parentId))
+            .slice(0, limit)
+            .map(item => safeClone(item));
     }
 
     function getActive() {
@@ -325,16 +411,19 @@
     }
 
     function getCurrent() {
-        return getActive()[0] || list({ limit: 1 })[0] || null;
+        const activeRoots = getActive().filter(item => !item.parentId);
+        return activeRoots[0] || list({ limit: HISTORY_LIMIT, rootsOnly: true })[0] || getActive()[0] || list({ limit: 1 })[0] || null;
     }
 
     function resolveOperationId(meta = {}) {
+        if (meta.parentId && records.has(meta.parentId)) return meta.parentId;
         const active = getActive();
         if (!active.length) return null;
         const source = String(meta.source || '').toLowerCase();
         const task = String(meta.task || '').toLowerCase();
         const match = active.find(item => {
             if (source.includes('memory') || task.includes('memory')) return item.type.startsWith('memory.');
+            if (source.includes('journal') || task.includes('journal')) return item.type.startsWith('journal.');
             if (source.includes('theater') || task.includes('theater')) return item.type.startsWith('theater.');
             if (source.includes('chat') || task.includes('chat') || task.includes('summary')) return item.type.startsWith('chat.');
             return false;
@@ -358,11 +447,24 @@
         }
     }
 
+    async function runChild(parentId, type, options = {}, executor) {
+        return run(type, { ...options, parentId }, executor);
+    }
+
     function clear(options = {}) {
         const keepActive = options.keepActive !== false;
-        const activeIds = keepActive ? new Set(getActive().map(item => item.id)) : new Set();
-        orderedIds.forEach(id => { if (!activeIds.has(id)) records.delete(id); });
-        orderedIds = orderedIds.filter(id => activeIds.has(id));
+        const keepIds = keepActive ? new Set(getActive().map(item => item.id)) : new Set();
+        // 活跃后台任务仍需保留父操作，否则悬浮球会失去任务归属。
+        Array.from(keepIds).forEach(id => {
+            let current = getMutable(id);
+            while (current?.parentId && records.has(current.parentId)) {
+                keepIds.add(current.parentId);
+                current = getMutable(current.parentId);
+            }
+        });
+        orderedIds.forEach(id => { if (!keepIds.has(id)) records.delete(id); });
+        orderedIds = orderedIds.filter(id => keepIds.has(id));
+        keepIds.forEach(id => recalculateParent(id, false));
         persist();
         emit(null, 'clear');
     }
@@ -377,10 +479,15 @@
     DEFAULT_OPERATIONS.forEach(register);
     load();
 
-    global.OVOOperationRegistry = { register, get: type => safeClone(registry.get(type) || null), list: () => Array.from(registry.values()).map(item => safeClone(item)) };
+    global.OVOOperationRegistry = {
+        register,
+        get: type => safeClone(registry.get(type) || null),
+        list: () => Array.from(registry.values()).map(item => safeClone(item))
+    };
     global.OVOOperationRuntime = {
-        VERSION: '2.10-R1',
-        start, run, update, stage, attachRequest, updateRequest, complete, fail, cancel,
-        get, list, getActive, getCurrent, resolveOperationId, clear, subscribe
+        VERSION: '2.10-R2',
+        start, startChild, run, runChild, update, stage, attachRequest, updateRequest,
+        complete, skip, fail, cancel, get, getChildren, list, getActive, getCurrent,
+        resolveOperationId, recalculateParent, clear, subscribe
     };
 })(window);

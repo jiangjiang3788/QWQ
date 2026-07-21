@@ -1,4 +1,4 @@
-OVO V13.5 Netlify 直接部署版
+章鱼机 V2.10-R2.1 紧急修复 Netlify 直接部署版
 
 方法一：
 1. 登录 Netlify。

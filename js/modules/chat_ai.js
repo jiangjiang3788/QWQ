@@ -120,6 +120,23 @@ function extractPrivateOutputRules(systemPrompt) {
     return blocks.join('\n\n');
 }
 
+function formatPromptTimestamp(timestamp) {
+    const value = Number(timestamp);
+    if (!Number.isFinite(value) || value <= 0) return '时间未记录';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '时间未记录';
+    const pad2 = number => String(number).padStart(2, '0');
+    const offsetMinutes = -date.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const absOffset = Math.abs(offsetMinutes);
+    const offset = `UTC${sign}${pad2(Math.floor(absOffset / 60))}:${pad2(absOffset % 60)}`;
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} ${offset}`;
+}
+
+function buildPromptMessageTimePrefix(timestamp) {
+    return `[消息时间：${formatPromptTimestamp(timestamp)}]\n`;
+}
+
 function buildPrivateChatPromptSources(character, systemPrompt) {
     if (!character) return [];
     const sources = [];
@@ -674,24 +691,14 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             let lastMsgTimeForAI = 0;
             const contents = historySlice.map(msg => {
                 const role = (msg.role === 'assistant' || msg.role === 'char') ? 'model' : 'user';
-                let prefix = '';
-                const currentMsgTime = msg.timestamp;
-                const timeDiff = currentMsgTime - lastMsgTimeForAI;
-                const isSameDay = new Date(currentMsgTime).toDateString() === new Date(lastMsgTimeForAI).toDateString();
-               
-               if (lastMsgTimeForAI === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
-                   const dateObj = new Date(currentMsgTime);
-                   const timeStr = `${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
-                   
-                   prefix = `[system: ${timeStr}]`;
-                   
-                   if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000 && lastMsgTimeForAI !== 0) {
-                       prefix += `\n[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]`;
-                   }
-                   
-                   prefix += '\n';
-               }
-                lastMsgTimeForAI = currentMsgTime;
+                const currentMsgTime = Number(msg.timestamp) || 0;
+                const timeDiff = lastMsgTimeForAI > 0 && currentMsgTime > 0 ? currentMsgTime - lastMsgTimeForAI : 0;
+                let prefix = buildPromptMessageTimePrefix(currentMsgTime);
+                if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000) {
+                    prefix += `[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]
+`;
+                }
+                if (currentMsgTime > 0) lastMsgTimeForAI = currentMsgTime;
 
                 let parts;
                 if (msg.role === 'user' && msg.quote) {
@@ -825,18 +832,14 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             
             historySlice.forEach(msg => {
                let content;
-               let prefix = '';
-               
-               const currentMsgTime = msg.timestamp;
-               const timeDiff = currentMsgTime - lastMsgTimeForAI;
-               const isSameDay = new Date(currentMsgTime).toDateString() === new Date(lastMsgTimeForAI).toDateString();
-               
-               if (lastMsgTimeForAI === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
-                   const dateObj = new Date(currentMsgTime);
-                   const timeStr = `${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
-                   prefix = `[system: ${timeStr}]\n`;
+               const currentMsgTime = Number(msg.timestamp) || 0;
+               const timeDiff = lastMsgTimeForAI > 0 && currentMsgTime > 0 ? currentMsgTime - lastMsgTimeForAI : 0;
+               let prefix = buildPromptMessageTimePrefix(currentMsgTime);
+               if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000) {
+                   prefix += `[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]
+`;
                }
-               lastMsgTimeForAI = currentMsgTime;
+               if (currentMsgTime > 0) lastMsgTimeForAI = currentMsgTime;
 
                if (msg.role === 'user' && msg.quote) {
                    const replyTextMatch = msg.content.match(/\[.*?的消息：([\s\S]+?)\]/);
@@ -1106,7 +1109,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         }
         
         if (streamEnabled) {
-            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
+            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null);
         } else {
             let result;
             try {
@@ -1159,7 +1162,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             // ===================================
             
             
-            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
+            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null);
         }
 
         if (operationRecord) {
@@ -1197,7 +1200,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     }
 }
 
-async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null) {
+async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let fullResponse = "", accumulatedChunk = "";
     for (; ;) {
@@ -1264,7 +1267,7 @@ async function processStream(response, chat, apiType, targetChatId, targetChatTy
     }
 
     // ===================
-    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue, memoryRoundToken);
+    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue, memoryRoundToken, parentOperationId);
 }
 
 /** 返回该角色在手机掌控下可见的角色与群聊（未开启角色过滤则返回全部，开启则只返回指定的角色及所在群聊） */
@@ -1445,17 +1448,35 @@ function executePhoneControlCommands(text, controllingChar) {
     return { cleaned, executed };
 }
 
-async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null) {
+async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null) {
     const rawResponse = fullResponse;
     if (fullResponse && targetChatType === 'private' && window.MemoryTableSidecar) {
+        const runtime = window.OVOOperationRuntime;
+        const sidecarOperation = runtime?.startChild?.(parentOperationId, 'memory.sidecar', {
+            title: '检查回复内档案更新',
+            source: 'chat-reply-sidecar',
+            scope: { characterId: targetChatId },
+            stage: '解析回复中的档案更新指令'
+        }) || null;
         const sidecarResult = window.MemoryTableSidecar.extractSidecar(fullResponse);
         fullResponse = sidecarResult.cleaned;
         if (sidecarResult.error) {
             console.warn('[MemorySidecar] parse failed; visible chat preserved:', sidecarResult.error);
             const sidecarState = window.MemoryTableSidecar.ensureState(chat);
             sidecarState.lastApplyReport = { at: Date.now(), changed: [], rejected: [], error: sidecarResult.error.message || String(sidecarResult.error), roundId: memoryRoundToken?.id || null };
+            if (sidecarOperation) runtime.fail(sidecarOperation.id, sidecarResult.error, { summary: '档案更新指令解析失败，聊天正文已保留' });
         } else if (sidecarResult.payload) {
+            runtime?.stage?.(sidecarOperation?.id, '应用档案更新指令');
             await window.MemoryTableSidecar.applySidecar(chat, sidecarResult.payload, { roundId: memoryRoundToken?.id || null });
+            const report = window.MemoryTableSidecar.ensureState(chat)?.lastApplyReport || {};
+            const changedCount = Array.isArray(report.changed) ? report.changed.length : 0;
+            const rejectedCount = Array.isArray(report.rejected) ? report.rejected.length : 0;
+            if (sidecarOperation) runtime.complete(sidecarOperation.id, {
+                summary: changedCount ? `已应用 ${changedCount} 项档案更新` : (rejectedCount ? `没有应用更新，拒绝 ${rejectedCount} 项` : '没有可应用的档案变化'),
+                result: { changedCount, rejectedCount, roundId: memoryRoundToken?.id || null }
+            });
+        } else if (sidecarOperation) {
+            runtime.skip(sidecarOperation.id, '模型回复中没有携带档案更新指令', { result: { changedCount: 0 } });
         }
     }
     if (fullResponse) {
@@ -2053,21 +2074,21 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             window.BatteryInteraction.triggerIndependentCheck(chat);
         }
 
-        // 回复全部结束后检查是否达到自动总结间隔，若达到则静默总结到完整区间（如 1-100）
+        // 回复全部结束后检查后台工作。显式传递父操作 ID，避免依赖“当前活跃操作”猜测归属。
+        const backgroundOperationOptions = { parentOperationId, trigger: 'chat-reply' };
         if (typeof checkAndTriggerAutoJournal === 'function') {
-            setTimeout(() => checkAndTriggerAutoJournal(chat), 500);
+            setTimeout(() => Promise.resolve(checkAndTriggerAutoJournal(chat, backgroundOperationOptions)).catch(error => console.warn('[AutoJournal] background receipt failed:', error)), 500);
         }
         if (typeof checkAndTriggerAutoTableUpdate === 'function') {
-            setTimeout(() => checkAndTriggerAutoTableUpdate(chat), 650);
+            setTimeout(() => Promise.resolve(checkAndTriggerAutoTableUpdate(chat, backgroundOperationOptions)).catch(error => console.warn('[MemoryTable] background receipt failed:', error)), 650);
         }
         if (typeof checkAndTriggerVectorMemory === 'function') {
-            setTimeout(() => checkAndTriggerVectorMemory(chat), 800);
+            setTimeout(() => Promise.resolve(checkAndTriggerVectorMemory(chat, backgroundOperationOptions)).catch(error => console.warn('[VectorMemory] background receipt failed:', error)), 800);
         }
 
-        // 角色主动生成小剧场（仅私聊，按概率触发）
-        // 直接调用，无延迟——generateCharTheater 内部会立即推送通知气泡
+        // 角色主动生成小剧场（仅私聊，按概率触发）；未开启或未命中概率也会留下“已跳过”回执。
         if (targetChatType === 'private' && typeof maybeGenerateCharTheater === 'function') {
-            maybeGenerateCharTheater(targetChatId);
+            maybeGenerateCharTheater(targetChatId, backgroundOperationOptions);
         }
     }
 }

@@ -2492,13 +2492,15 @@ async function saveHtmlEditScenario() {
  * 由角色主动创作小剧场并存入小剧场App（以 charGenerated:true 和 ❤️ 标记）
  * @param {string} charId - 角色ID
  */
-async function generateCharTheater(charId) {
+async function generateCharTheater(charId, options = {}) {
     const char = db.characters.find(c => c.id === charId);
-    if (!char || !char.charTheaterEnabled) return;
+    if (!char) return { status: 'noop' };
 
+    const runtime = window.OVOOperationRuntime;
     const charNameForOperation = char.realName || char.remarkName || '角色';
-    const parentOperationId = window.OVOOperationRuntime?.resolveOperationId?.({ source: 'chat-ai-reply', task: 'private-chat' }) || null;
-    const operationRecord = window.OVOOperationRuntime?.start('theater.character', {
+    const parentOperationId = options.parentOperationId || runtime?.resolveOperationId?.({ source: 'chat-ai-reply', task: 'private-chat' }) || null;
+    const existingOperation = options.operationId ? runtime?.get?.(options.operationId) : null;
+    const operationRecord = existingOperation || runtime?.start('theater.character', {
         title: `${charNameForOperation}创作小剧场`,
         source: 'theater-character-auto',
         parentId: parentOperationId,
@@ -2506,6 +2508,11 @@ async function generateCharTheater(charId) {
         stage: '读取角色档案与最近聊天'
     }) || null;
     let operationFinished = false;
+    if (!char.charTheaterEnabled) {
+        if (operationRecord) runtime?.skip?.(operationRecord.id, '角色主动小剧场未开启', { result: { enabled: false } });
+        return { status: 'disabled' };
+    }
+    runtime?.stage?.(operationRecord?.id, '读取角色档案与最近聊天');
 
     const format = char.charTheaterFormat || 'text';
     const customPrompt = (char.charTheaterPrompt || '').trim();
@@ -2725,7 +2732,7 @@ async function generateCharTheater(charId) {
             if (operationRecord) window.OVOOperationRuntime?.fail(operationRecord.id, responseError);
             operationFinished = true;
             _hideTheaterTyping();
-            return;
+            return { status: 'failed', error: responseError };
         }
 
         let content = (response.choices[0].message.content || '').trim();
@@ -2743,7 +2750,9 @@ async function generateCharTheater(charId) {
 
         if (!content) {
             _hideTheaterTyping();
-            return;
+            if (operationRecord && !operationFinished) window.OVOOperationRuntime?.skip(operationRecord.id, '模型返回为空，没有创建小剧场');
+            operationFinished = true;
+            return { status: 'noop' };
         }
 
         // ── 10. 构建剧情对象并存储────────────────────────────────
@@ -2828,11 +2837,13 @@ async function generateCharTheater(charId) {
             operationFinished = true;
         }
         console.log(`[小剧场] ${charName} 主动创作了小剧场：${title}`);
+        return { status: 'success', scenarioId: scenario.id, mode, selfAware: isSelfAware };
     } catch (err) {
         if (operationRecord && !operationFinished) window.OVOOperationRuntime?.fail(operationRecord.id, err);
         operationFinished = true;
         _hideTheaterTyping();
         console.warn('[小剧场] 角色主动生成小剧场失败：', err);
+        return { status: 'failed', error: err };
     }
 }
 
@@ -2840,34 +2851,55 @@ async function generateCharTheater(charId) {
  * 在每次AI回复后，根据概率决定是否触发角色主动生成小剧场
  * @param {string} charId - 角色ID
  */
-function maybeGenerateCharTheater(charId) {
+function maybeGenerateCharTheater(charId, options = {}) {
     const char = db.characters.find(c => c.id === charId);
-    if (!char || !char.charTheaterEnabled) return;
+    if (!char) return { status: 'noop' };
+    const runtime = window.OVOOperationRuntime;
+    const charName = char.realName || char.remarkName || '角色';
+    const operation = runtime?.startChild?.(options.parentOperationId || null, 'theater.character', {
+        title: `检查${charName}是否创作小剧场`,
+        source: 'theater-character-auto-check',
+        scope: { characterId: charId, characterName: charName },
+        stage: '检查小剧场开关与触发概率'
+    }) || null;
 
-    const probability = (char.charTheaterProbability !== undefined ? char.charTheaterProbability : 20) / 100;
-    if (Math.random() < probability) {
-        // 立即显示"正在创作小剧场中"提示
-        const charName = char.realName || char.remarkName || '角色';
-        const isCurrentChat = () => (typeof currentChatId !== 'undefined' && currentChatId === charId
-            && typeof currentChatType !== 'undefined' && currentChatType === 'private');
-        const typingEl = document.getElementById('typing-indicator');
-        if (typingEl && isCurrentChat()) {
-            typingEl.textContent = `"${charName}"正在创作小剧场中...`;
-            typingEl.style.display = 'block';
-            typingEl.setAttribute('data-theater-generating', 'true');
-            const msgArea = document.getElementById('message-area');
-            if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
-        }
-        // 直接调用（async 不阻塞主线程），通知消息会在函数内立即推送
-        generateCharTheater(charId).catch(e => {
-            console.warn('[小剧场] 触发失败:', e);
-            // 失败时隐藏提示
-            if (typingEl && isCurrentChat()) {
-                typingEl.style.display = 'none';
-                typingEl.removeAttribute('data-theater-generating');
-            }
-        });
+    if (!char.charTheaterEnabled) {
+        if (operation) runtime.skip(operation.id, '角色主动小剧场未开启', { result: { enabled: false } });
+        return { status: 'disabled' };
     }
+
+    const probabilityPercent = Math.max(0, Math.min(100, Number(char.charTheaterProbability !== undefined ? char.charTheaterProbability : 20) || 0));
+    const roll = Math.random() * 100;
+    if (roll >= probabilityPercent) {
+        if (operation) runtime.skip(operation.id, `本次未命中 ${probabilityPercent}% 的创作概率`, {
+            result: { probabilityPercent, roll: Number(roll.toFixed(2)) }
+        });
+        return { status: 'skipped', probabilityPercent, roll };
+    }
+
+    runtime?.stage?.(operation?.id, '已命中概率，准备创作小剧场', { detail: `${probabilityPercent}% 概率` });
+    const isCurrentChat = () => (typeof currentChatId !== 'undefined' && currentChatId === charId
+        && typeof currentChatType !== 'undefined' && currentChatType === 'private');
+    const typingEl = document.getElementById('typing-indicator');
+    if (typingEl && isCurrentChat()) {
+        typingEl.textContent = `"${charName}"正在创作小剧场中...`;
+        typingEl.style.display = 'block';
+        typingEl.setAttribute('data-theater-generating', 'true');
+        const msgArea = document.getElementById('message-area');
+        if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
+    }
+    generateCharTheater(charId, {
+        parentOperationId: options.parentOperationId || null,
+        operationId: operation?.id || null
+    }).catch(e => {
+        console.warn('[小剧场] 触发失败:', e);
+        if (operation && !['failed', 'success', 'skipped'].includes(runtime?.get?.(operation.id)?.status)) runtime?.fail?.(operation.id, e);
+        if (typingEl && isCurrentChat()) {
+            typingEl.style.display = 'none';
+            typingEl.removeAttribute('data-theater-generating');
+        }
+    });
+    return { status: 'triggered', probabilityPercent, roll };
 }
 
 // ===================== 初始化 =====================

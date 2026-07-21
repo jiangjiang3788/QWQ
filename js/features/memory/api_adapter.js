@@ -29,7 +29,7 @@
         };
     }
 
-    async function requestContent(prompt, temperature = 0.2, preferSummaryApi = true, task = 'memory-table-summary') {
+    async function requestContent(prompt, temperature = 0.2, preferSummaryApi = true, task = 'memory-table-summary', options = {}) {
         const route = resolveConfig(preferSummaryApi);
         const apiConfig = route.apiConfig;
         lastRoute = { ...route, apiConfig: undefined, requestedAt: Date.now(), task };
@@ -47,7 +47,7 @@
             ? { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature } }
             : { model, temperature, messages: [{ role: 'user', content: prompt }] };
         if (typeof global.fetchAiResponse !== 'function') throw new Error('AI 请求适配器未加载');
-        return global.fetchAiResponse({ ...apiConfig, runtimeTask: task, runtimeSource: 'memory-table' }, requestBody, headers, endpoint);
+        return global.fetchAiResponse({ ...apiConfig, runtimeTask: task, runtimeSource: 'memory-table', runtimeOperationId: options.operationId || null, runtimePromptSources: options.promptSources || [] }, requestBody, headers, endpoint);
     }
 
     const api = {

@@ -18,7 +18,7 @@ const files = {
   chat: 'js/features/settings/character/chat_controller.js'
 };
 
-assert(/^(?:V2\.9-R(?:[5-9]|1[01])|V2\.10-R[01])$/.test(version), 'release version mismatch');
+assert(/^(?:V2\.9-R(?:[5-9]|1[01])|V2\.10-R(?:[01]|2(?:\.1)?))$/.test(version), 'release version mismatch');
 for (const rel of Object.values(files)) assert(fs.existsSync(path.join(root, rel)), `missing ${rel}`);
 const ordered = Object.values(files).map(rel => html.indexOf(rel)).concat(html.indexOf('js/settings.js'));
 assert(ordered.every(pos => pos >= 0), 'character controller script missing from index');

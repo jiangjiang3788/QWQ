@@ -56,3 +56,11 @@ V2.10-R0 AI 操作中心：
 V2.10-R1 Prompt 来源视图：
   node tests/run_v210_r1_prompt_source_checks.js
 验证最终请求拆分、显式来源合并、结构化档案 Prompt 解析、深层来源条目保留，以及私聊/小剧场/Proment 接入。
+
+V2.10-R2 后台操作回执：
+  node tests/run_v210_r2_background_operation_checks.js
+验证主操作与后台子操作关联、成功/跳过/失败聚合，以及自动日记、结构化档案、向量记忆、角色小剧场与悬浮球接入。
+
+
+V2.10-R2.1 紧急修复：
+- run_v210_r21_hotfix_checks.js：反馈展示、扁平操作详情、消息时间、结构化记忆审核交互与单次聊天请求检查。

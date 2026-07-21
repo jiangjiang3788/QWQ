@@ -145,7 +145,7 @@
         return apiConfig;
     }
 
-    async function requestVectorSummary(prompt, temperature) {
+    async function requestVectorSummary(prompt, temperature, options = {}) {
         const apiConfig = getSummaryApiConfig();
         let { url, key, model } = apiConfig;
         url = (url || '').replace(/\/$/, '');
@@ -169,7 +169,7 @@
                 temperature,
                 messages: [{ role: 'user', content: prompt }]
             };
-        return fetchAiResponse(apiConfig, requestBody, headers, endpoint);
+        return fetchAiResponse({ ...apiConfig, runtimeTask: 'vector-summary', runtimeSource: 'vector-memory-auto', runtimeOperationId: options.operationId || null }, requestBody, headers, endpoint);
     }
 
     async function fetchEmbeddingBatch(texts) {
@@ -586,7 +586,7 @@
             rangeLabel: `${start}-${end}`,
             history: historyText
         });
-        const rawContent = await requestVectorSummary(prompt, Number(template?.summaryTemperature) || 0.35);
+        const rawContent = await requestVectorSummary(prompt, Number(template?.summaryTemperature) || 0.35, { operationId: options.operationId || null });
         const parsed = parseVectorSummaryXml(rawContent);
         const summaryText = parsed && parsed.content
             ? trimText(parsed.content, Math.max(200, parseInt(template?.maxEntryLength, 10) || VECTOR_MEMORY_DEFAULT_MAX_ENTRY_LENGTH))
@@ -665,7 +665,7 @@
         chat.vectorMemory.autoSummaryState = 'running';
         chat.vectorMemory.autoSummaryPending = false;
         try {
-            await summarizeRangeToVectorEntry(chat, nextRange.start, nextRange.end, { source: 'auto_summary' });
+            await summarizeRangeToVectorEntry(chat, nextRange.start, nextRange.end, { source: 'auto_summary', operationId: options.operationId || null });
             setVectorCursorByEndIndex(chat, nextRange.end);
             chat.vectorMemory.autoSummaryState = 'idle';
             await saveCharacter(chat.id);
@@ -678,18 +678,59 @@
         }
     }
 
-    async function checkAndTriggerVectorMemory(chat) {
-        if (!chat) return;
-        if (!db.characters || !db.characters.some(item => item.id === chat.id)) return;
+    async function checkAndTriggerVectorMemory(chat, options = {}) {
+        const runtime = window.OVOOperationRuntime;
+        const shouldTrack = !!(runtime && (options.parentOperationId || options.trackOperation));
+        const displayName = chat ? (chat.remarkName || chat.realName || chat.name || '当前角色') : '当前角色';
+        const operation = shouldTrack ? runtime.startChild(options.parentOperationId || null, 'memory.vector.auto', {
+            title: `检查${displayName}的向量记忆`,
+            source: 'vector-memory-auto-after-reply',
+            scope: { characterId: chat?.id || null },
+            stage: '检查向量记忆开关与消息间隔'
+        }) : null;
+
+        if (!chat || !db.characters || !db.characters.some(item => item.id === chat.id)) {
+            if (operation) runtime.skip(operation.id, '当前不是可写入向量记忆的角色聊天');
+            return { status: 'noop', generatedCount: 0 };
+        }
         ensureVectorMemoryState(chat);
-        if (!chat.vectorMemory.autoSummaryEnabled) return;
-        if (chat.vectorMemory.autoSummaryState === 'running' || chat.vectorMemory.autoSummaryState === 'failed') return;
+        if (!chat.vectorMemory.autoSummaryEnabled) {
+            if (operation) runtime.skip(operation.id, '向量记忆自动总结未开启', { result: { enabled: false } });
+            return { status: 'disabled', generatedCount: 0 };
+        }
+        if (chat.vectorMemory.autoSummaryState === 'running') {
+            if (operation) runtime.skip(operation.id, '向量记忆任务已经在运行');
+            return { status: 'running', generatedCount: 0 };
+        }
+        if (chat.vectorMemory.autoSummaryState === 'failed') {
+            const error = new Error('向量记忆上次自动总结失败，等待手动重试');
+            if (operation) runtime.fail(operation.id, error);
+            return { status: 'failed', generatedCount: 0, error };
+        }
+        const info = getAutoVectorCursorInfo(chat);
         const nextRange = getNextAutoVectorRange(chat);
-        if (!nextRange) return;
+        runtime?.stage?.(operation?.id, '检查可总结范围', {
+            detail: `新增 ${info.unsummarizedCount} 条 · 每 ${info.interval} 条生成一次`
+        });
+        if (!nextRange) {
+            if (operation) runtime.skip(operation.id, `尚未达到 ${info.interval} 条消息的向量总结间隔`, {
+                result: { unsummarizedCount: info.unsummarizedCount, interval: info.interval }
+            });
+            return { status: 'noop', generatedCount: 0 };
+        }
         try {
-            await runVectorAutoSummary(chat, { silent: true });
+            runtime?.stage?.(operation?.id, '生成向量记忆摘要', { detail: `消息 ${nextRange.start}-${nextRange.end}` });
+            const generatedCount = await runVectorAutoSummary(chat, { silent: true, operationId: operation?.id || null });
+            const result = { status: 'success', generatedCount, range: { start: nextRange.start, end: nextRange.end } };
+            if (operation) runtime.complete(operation.id, {
+                summary: generatedCount ? `已新增 ${generatedCount} 条向量记忆` : '向量记忆检查完成',
+                result
+            });
+            return result;
         } catch (error) {
             console.error('[VectorMemory] auto summary failed:', error);
+            if (operation) runtime.fail(operation.id, error, { summary: '向量记忆自动总结失败' });
+            return { status: 'failed', generatedCount: 0, error };
         }
     }
 
