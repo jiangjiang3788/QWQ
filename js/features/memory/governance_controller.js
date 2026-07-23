@@ -95,8 +95,20 @@
         }
         if (action === 'approve-candidate') {
             if (!item) return true;
-            const result = CandidateService.approve(chat, item, item.row, { source: 'governance_queue_v2_11_r4' });
-            await persist(context, result.changed ? (result.duplicate ? '长期库已有相同记录，候选已标记为批准' : '候选已批准并晋升到长期记忆') : (result.reason || '候选未改变'));
+            try {
+                const result = await CandidateService.approveAtomic(chat, item, item.row, {
+                    source: 'governance_queue_v2_13_r5',
+                    persist: currentChat => context.save?.(currentChat.id)
+                });
+                context.render?.();
+                context.toast?.(result.changed
+                    ? (result.duplicate ? '长期库已有对应记录，候选已关联并批准' : '候选已批准并原子晋升到长期记忆')
+                    : (result.reason || '候选未改变'));
+            } catch (error) {
+                context.render?.();
+                context.showError?.(error);
+                if (!context.showError) context.toast?.(`候选批准失败，已回滚：${error.message || '未知错误'}`);
+            }
             return true;
         }
         if (action === 'reject-candidate') {
@@ -131,6 +143,6 @@
     }
 
     Kernel.register('governanceController', Object.freeze({
-        VERSION: '2.11-R4', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
+        VERSION: '2.13-R5', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
     }));
 })(window);

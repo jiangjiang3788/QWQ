@@ -1532,7 +1532,11 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "promotionPolicy": {
+            "enabled": true,
+            "targetTableId": "table_stable_longterm"
+          }
         },
         {
           "id": "table_stable_longterm",

@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const activitySource = read('js/features/memory/update_activity.js');
 const gridSource = read('js/features/memory/table_grid.js');
@@ -15,7 +15,7 @@ assert(html.indexOf('update_activity.js') < html.indexOf('table_grid.js'), 'upda
 assert(activitySource.includes('function latestCellPaths(chat)'));
 assert(activitySource.includes('function isCellUpdated'));
 assert(activitySource.includes('function cellAttributes'));
-assert(activitySource.includes('本次更新了这张表，已标出具体单元格'));
+assert(activitySource.includes('本次更新了 ${records} 条记忆，已标出具体单元格'));
 assert(gridSource.includes("updated ? 'memory-cell-updated' : ''"));
 assert(gridSource.includes("'__tags__'"));
 assert(gridSource.includes('UpdateActivity.cellAttributes'));

@@ -1,6 +1,43 @@
 // --- 核心聊天逻辑 (js/chat.js) ---
 // 此文件保留核心入口和胶水代码，具体功能已拆分至 js/modules/chat_*.js
 
+const THREE_ENTER_REPLY_WINDOW_MS = 3000;
+const THREE_ENTER_REPLY_COOLDOWN_MS = 30000;
+let threeEnterReplyTimestamps = [];
+let threeEnterReplyLastTriggeredAt = 0;
+
+function handleThreeEnterAiReply(event) {
+    if (event?.key !== 'Enter' || event.isComposing || event.keyCode === 229) return false;
+    if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (String(messageInput?.value || '').trim()) {
+        threeEnterReplyTimestamps = [];
+        return false;
+    }
+    event.preventDefault();
+    if (event.repeat) return true;
+    const now = Date.now();
+    threeEnterReplyTimestamps = threeEnterReplyTimestamps.filter(timestamp => now - timestamp <= THREE_ENTER_REPLY_WINDOW_MS);
+    threeEnterReplyTimestamps.push(now);
+    if (threeEnterReplyTimestamps.length < 3) return true;
+    threeEnterReplyTimestamps = [];
+    const remaining = THREE_ENTER_REPLY_COOLDOWN_MS - (now - threeEnterReplyLastTriggeredAt);
+    if (remaining > 0) {
+        if (typeof showToast === 'function') showToast(`连续回车触发冷却中，还需 ${Math.ceil(remaining / 1000)} 秒`);
+        return true;
+    }
+    if (isGenerating) {
+        if (typeof showToast === 'function') showToast('AI 正在回复，请稍后再试');
+        return true;
+    }
+    threeEnterReplyLastTriggeredAt = now;
+    if (typeof showToast === 'function') showToast('已通过连续 3 次回车触发 AI 回复');
+    Promise.resolve().then(() => getAiReply(currentChatId, currentChatType)).catch(error => {
+        console.error('[ThreeEnterReply] trigger failed:', error);
+        if (typeof showToast === 'function') showToast(`触发 AI 回复失败：${error?.message || '未知错误'}`);
+    });
+    return true;
+}
+
 async function saveCurrentChat() {
     if (currentChatType === 'group') {
         await saveGroup(currentChatId);
@@ -295,8 +332,14 @@ function setupChatRoom() {
             messageInput.focus();
         }, 50);
     });
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !isGenerating) sendMessage();
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        if (handleThreeEnterAiReply(e)) return;
+        e.preventDefault();
+        if (!isGenerating) sendMessage();
+    });
+    messageInput.addEventListener('input', () => {
+        if (String(messageInput.value || '').trim()) threeEnterReplyTimestamps = [];
     });
 
     // 监听输入框聚焦事件：自动收起底部面板，避免与键盘冲突

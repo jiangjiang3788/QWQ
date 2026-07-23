@@ -29,7 +29,7 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
 assert(runtime, 'operation runtime missing');
-assert(['2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(runtime.VERSION));
+assert(['2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(runtime.VERSION));
 
 const first = runtime.start('chat.reply', { title: '给小章鱼生成回复', category: '聊天', scope: { characterName: '小章鱼' } });
 runtime.attachRequest(first.id, {
@@ -73,16 +73,17 @@ assert(stats.compacted, 'large history should trigger automatic compaction');
 
 const dock = fs.readFileSync(path.join(root, 'js/modules/floating_ball.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css/modules/quick_dock.css'), 'utf8');
-assert(dock.includes('V2.10-R6') || dock.includes('V2.11-R0') || dock.includes('V2.11-R1') || dock.includes('V2.11-R2') || dock.includes('V2.11-R3.1') || dock.includes('V2.11-R4') || dock.includes('V2.11-R5') || dock.includes('V2.11-R6') || dock.includes('V2.11-R7') || dock.includes('V2.12-R0') || dock.includes('V2.12-R1') || dock.includes('V2.12-R2'));
+assert(dock.includes('V2.10-R6') || dock.includes('V2.11-R0') || dock.includes('V2.11-R1') || dock.includes('V2.11-R2') || dock.includes('V2.11-R3.1') || dock.includes('V2.11-R4') || dock.includes('V2.11-R5') || dock.includes('V2.11-R6') || dock.includes('V2.11-R7') || dock.includes('V2.12-R0') || dock.includes('V2.12-R1') || dock.includes('V2.12-R2') || dock.includes('V2.13-R1') || dock.includes('V2.13-R2') || dock.includes('V2.13-R3'));
 assert(dock.includes('quick-dock-history-query'));
 assert(dock.includes('quick-dock-history-type'));
 assert(dock.includes('quick-dock-history-from'));
 assert(dock.includes('quick-dock-history-to'));
-assert(dock.includes('set-view-mode'));
+assert(!dock.includes('set-view-mode'));
+assert(dock.includes("const REPORT_MODE = 'detailed'"));
 assert(dock.includes('export-history'));
 assert(dock.includes('download-operation-report'));
-assert(dock.includes("['simple', 'detailed', 'advanced']"));
+assert(!dock.includes('quick-dock-view-mode-bar'));
 assert(css.includes('quick-dock-history-filters'));
-assert(css.includes('quick-dock-view-switch'));
-assert(['2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()));
+assert(!css.includes('quick-dock-view-switch'));
+assert(['2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()));
 console.log('V2.10-R6 OPERATION CENTER PRODUCTIZATION CHECKS: PASS');

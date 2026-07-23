@@ -346,3 +346,46 @@ body.night-mode-active #memory-table-screen td.memory-cell-updated::after{
   #memory-table-screen .memory-v2-kv .memory-kv-label-col{width:var(--memory-kv-label-width-mobile,56px)}
   #memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th{width:var(--memory-kv-label-width-mobile,56px);min-width:var(--memory-kv-label-width-mobile,56px);max-width:var(--memory-kv-label-width-mobile,56px);padding-left:6px;padding-right:5px;font-size:11px;line-height:1.35}
 }
+
+/* V2.13-R0 · KV 字段名列统一按当前表最长字段名测量，不再按每行折行。 */
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th .memory-flat-field-label,
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th .memory-flat-field-label>span{
+  min-width:0;
+  max-width:100%;
+}
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th .memory-flat-field-label>span{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* V2.13-R5.1 · 全屏 KV 整行编辑 */
+.memory-row-edit-overlay{padding:0!important;align-items:stretch!important;justify-content:stretch!important;background:rgba(15,23,42,.42)!important}
+.memory-row-edit-window{width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;display:flex;flex-direction:column;overflow:hidden;padding:0;background:#fff}
+.memory-row-edit-head{flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px clamp(18px,3vw,44px);border-bottom:1px solid #dfe5ec;background:#fff;box-shadow:0 1px 0 rgba(16,24,40,.03)}
+.memory-row-edit-head h3{margin:0;color:#101828;font-size:20px}.memory-row-edit-head p{margin:5px 0 0;color:#667085;font-size:12px;line-height:1.5}
+.memory-row-edit-close{flex:0 0 40px;width:40px;height:40px;border:0;border-radius:50%;background:transparent;color:#667085;font-size:30px;line-height:1;cursor:pointer}.memory-row-edit-close:hover{background:#f2f4f7;color:#101828}
+.memory-row-edit-body{flex:1 1 auto;min-height:0;overflow:auto;padding:24px clamp(18px,3vw,44px) 36px;background:#f7f9fc;overscroll-behavior:contain}
+.memory-row-edit-form{width:100%;max-width:1800px;margin:0 auto;display:grid;gap:22px}
+.memory-row-edit-kv-table,.memory-row-edit-tags{overflow:hidden;border:1px solid #dbe2ea;border-radius:14px;background:#fff;box-shadow:0 8px 24px rgba(16,24,40,.05)}
+.memory-row-edit-kv-head{display:grid;grid-template-columns:minmax(220px,28%) minmax(0,1fr);border-bottom:1px solid #dbe2ea;background:#eef3f8}
+.memory-row-edit-kv-head strong{padding:11px 16px;color:#526174;font-size:11px;letter-spacing:.04em}.memory-row-edit-kv-head strong+strong{border-left:1px solid #dbe2ea}
+.memory-row-edit-fields,.memory-row-edit-tag-grid{display:block}
+.memory-row-edit-field{display:grid;grid-template-columns:minmax(220px,28%) minmax(0,1fr);align-items:stretch;border-bottom:1px solid #e5eaf0;background:#fff}.memory-row-edit-field:last-child{border-bottom:0}.memory-row-edit-field.is-secondary .memory-row-edit-key{background:#fbfcfd}
+.memory-row-edit-key{min-width:0;padding:16px;background:#f7f9fc;display:flex;flex-direction:column;align-items:flex-start;gap:6px;border-right:1px solid #e0e6ed}
+.memory-row-edit-key label{max-width:100%}.memory-row-edit-key strong{display:block;color:#243244;font-size:13px;line-height:1.55;overflow-wrap:anywhere}.memory-row-edit-key em,.memory-row-edit-key small{font-style:normal;font-size:10px;color:#8a93a1;line-height:1.4}.memory-row-edit-key small{padding:2px 6px;border-radius:5px;background:#fff1f1;color:#a33b3b}
+.memory-row-edit-value{min-width:0;padding:12px 16px;display:flex;flex-direction:column;justify-content:center;gap:7px;background:#fff}
+.memory-row-edit-value textarea,.memory-row-edit-value input,.memory-row-edit-value select{width:100%;box-sizing:border-box;border:1px solid #c9d2de;border-radius:9px;padding:11px 12px;background:#fff;color:#101828;font-size:13px;line-height:1.65;box-shadow:none}
+.memory-row-edit-value textarea{min-height:76px;resize:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.memory-row-edit-value input:focus,.memory-row-edit-value select:focus,.memory-row-edit-value textarea:focus{outline:none;border-color:#4c8d66;box-shadow:0 0 0 3px rgba(76,141,102,.12)}
+.memory-row-edit-value input:disabled,.memory-row-edit-value select:disabled,.memory-row-edit-value textarea:disabled{background:#f2f4f7;color:#667085;cursor:not-allowed}
+.memory-row-edit-value p{margin:0;color:#8a93a1;font-size:10px;line-height:1.5;white-space:pre-wrap}
+.memory-row-edit-switch{display:flex;align-items:center;gap:10px;min-height:42px}.memory-row-edit-switch input{width:auto}.memory-row-edit-switch span{font-size:12px;color:#475467}
+.memory-row-edit-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:13px 16px;border-bottom:1px solid #dbe2ea;background:#eef3f8}.memory-row-edit-section-head h4{margin:0;color:#344054;font-size:13px}.memory-row-edit-section-head p{margin:0;color:#7b8492;font-size:10px}
+.memory-row-edit-footer{flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;padding:14px clamp(18px,3vw,44px) calc(14px + env(safe-area-inset-bottom));border-top:1px solid #dfe5ec;background:#fff;box-shadow:0 -6px 20px rgba(16,24,40,.06)}
+body.night-mode-active .memory-row-edit-window,body.night-mode-active .memory-row-edit-head,body.night-mode-active .memory-row-edit-footer,body.night-mode-active .memory-row-edit-kv-table,body.night-mode-active .memory-row-edit-tags,body.night-mode-active .memory-row-edit-field,body.night-mode-active .memory-row-edit-value{background:#1c2027;border-color:rgba(255,255,255,.1)}
+body.night-mode-active .memory-row-edit-body{background:#14171c}body.night-mode-active .memory-row-edit-kv-head,body.night-mode-active .memory-row-edit-section-head,body.night-mode-active .memory-row-edit-key{background:#20252d;border-color:rgba(255,255,255,.1)}
+body.night-mode-active .memory-row-edit-head h3,body.night-mode-active .memory-row-edit-key strong,body.night-mode-active .memory-row-edit-section-head h4{color:#f2f4f7}
+body.night-mode-active .memory-row-edit-value textarea,body.night-mode-active .memory-row-edit-value input,body.night-mode-active .memory-row-edit-value select{background:#15181e;border-color:rgba(255,255,255,.16);color:#f2f4f7}
+@media(max-width:760px){.memory-row-edit-head{padding:13px 14px}.memory-row-edit-head h3{font-size:17px}.memory-row-edit-head p{font-size:10px}.memory-row-edit-body{padding:12px 10px 24px}.memory-row-edit-kv-head{display:none}.memory-row-edit-field{grid-template-columns:minmax(105px,34%) minmax(0,1fr)}.memory-row-edit-key{padding:12px 10px}.memory-row-edit-value{padding:10px}.memory-row-edit-key strong{font-size:11px}.memory-row-edit-footer{padding-left:12px;padding-right:12px}.memory-row-edit-footer .btn{flex:1}}

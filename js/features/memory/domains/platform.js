@@ -4,7 +4,7 @@
     if (!Kernel) throw new Error('记忆内核未加载');
 
     const api = Object.freeze({
-        VERSION: '2.12-R4',
+        VERSION: '2.13-R4',
         policy: Kernel.get('policy'),
         review: Kernel.get('review'),
         retrieval: Kernel.get('retrieval'),
@@ -14,6 +14,8 @@
         feedback: Kernel.get('feedback'),
         quality: Kernel.get('quality'),
         sidecar: Kernel.get('sidecar'),
+        sidecarCandidates: Kernel.require('sidecarCandidateService'),
+        sidecarCandidateController: Kernel.require('sidecarCandidateController'),
         schedule: Kernel.require('schedule')
     });
     Kernel.register('memoryPlatformDomain', api);

@@ -1,5 +1,5 @@
 {
-  "version": "2.12-R5.3",
+  "version": "2.13-R5.2",
   "controller": "js/modules/memory_table.js",
   "publicFacades": {
     "memoryPlatformDomain": {
@@ -14,6 +14,8 @@
         "feedback",
         "quality",
         "sidecar",
+        "sidecarCandidateService",
+        "sidecarCandidateController",
         "schedule"
       ]
     },
@@ -76,8 +78,10 @@
         "tablePresenter",
         "tableReconciler",
         "tableGrid",
+        "rowEditModal",
         "tableEditor",
         "tableEditController",
+        "rowEditController",
         "updateActivity",
         "tableWorkspace",
         "tableSort"

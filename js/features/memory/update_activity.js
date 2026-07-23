@@ -10,19 +10,47 @@
         return Array.isArray(chat?.memoryTables?.history) ? chat.memoryTables.history : [];
     }
 
+    function recordPath(change) {
+        const templateId = String(change?.templateId || '');
+        const tableId = String(change?.tableId || '');
+        if (!tableId) return '';
+        return `${templateId}::${tableId}::${String(change?.rowId || 'single')}`;
+    }
+
+    function recordCount(changes) {
+        const records = new Set();
+        (Array.isArray(changes) ? changes : []).forEach(change => {
+            const path = recordPath(change);
+            if (path) records.add(path);
+        });
+        return records.size;
+    }
+
     function tableCounts(entry) {
-        const counts = new Map();
+        const recordsByTable = new Map();
+        (entry?.changedFields || []).forEach(change => {
+            const tableId = String(change?.tableId || '');
+            const path = recordPath(change);
+            if (!tableId || !path) return;
+            if (!recordsByTable.has(tableId)) recordsByTable.set(tableId, new Set());
+            recordsByTable.get(tableId).add(path);
+        });
+        return new Map(Array.from(recordsByTable.entries()).map(([tableId, records]) => [tableId, records.size]));
+    }
+
+    function tableFieldCounts(entry) {
+        const fieldsByTable = new Map();
         (entry?.changedFields || []).forEach(change => {
             const tableId = String(change?.tableId || '');
             if (!tableId) return;
-            counts.set(tableId, (counts.get(tableId) || 0) + 1);
+            fieldsByTable.set(tableId, (fieldsByTable.get(tableId) || 0) + 1);
         });
-        return counts;
+        return fieldsByTable;
     }
 
     function latest(chat) {
         const entry = entries(chat)[0] || null;
-        return { entry, counts: tableCounts(entry) };
+        return { entry, counts: tableCounts(entry), fieldCounts: tableFieldCounts(entry) };
     }
 
     function cellPath(templateId, tableId, fieldId, rowId = '') {
@@ -65,6 +93,10 @@
         return paths.size;
     }
 
+    function tableRecordCount(chat, tableId) {
+        return latest(chat).counts.get(String(tableId || '')) || 0;
+    }
+
     function forTable(chat, tableId) {
         const id = String(tableId || '');
         return entries(chat).filter(entry => (entry.changedFields || []).some(change => String(change?.tableId || '') === id));
@@ -86,11 +118,14 @@
     function tableSummary(entry, templates) {
         const names = new Map();
         (templates || []).forEach(template => (template.tables || []).forEach(table => names.set(table.id, table.name)));
-        return Array.from(tableCounts(entry).entries()).map(([tableId, count]) => ({
+        const recordCounts = tableCounts(entry);
+        const fieldCounts = tableFieldCounts(entry);
+        return Array.from(recordCounts.entries()).map(([tableId, count]) => ({
             tableId,
             tableName: names.get(tableId) || '未知表格',
-            count
-        })).sort((a, b) => b.count - a.count || a.tableName.localeCompare(b.tableName, 'zh-CN'));
+            count,
+            fieldCount: fieldCounts.get(tableId) || 0
+        })).sort((a, b) => b.count - a.count || b.fieldCount - a.fieldCount || a.tableName.localeCompare(b.tableName, 'zh-CN'));
     }
 
     function formatTime(timestamp) {
@@ -99,29 +134,32 @@
     }
 
     function badge(chat, tableId) {
-        const current = latest(chat);
-        const count = current.counts.get(String(tableId || '')) || 0;
-        return count ? `<span class="memory-table-updated-badge">本次更新 ${count}</span>` : '';
+        const count = tableRecordCount(chat, tableId);
+        return count ? `<span class="memory-table-updated-badge">本次更新 ${count} 条</span>` : '';
     }
 
     function banner(chat, table, templates) {
         const current = latest(chat);
-        const count = current.counts.get(String(table?.id || '')) || 0;
-        if (!count || !current.entry) return '';
+        const records = current.counts.get(String(table?.id || '')) || 0;
+        if (!records || !current.entry) return '';
         const cells = tableCellCount(chat, table.id);
-        return `<div class="memory-table-update-banner"><div><strong>本次更新了这张表，已标出具体单元格</strong><span>${cells} 个单元格 · ${Core.escapeHtml(sourceLabel(current.entry.source))} · ${Core.escapeHtml(formatTime(current.entry.timestamp))} · 绿色描边为本次变化</span></div><button type="button" class="btn btn-small btn-secondary" data-action="open-memory-update-history" data-table-id="${Core.escapeAttribute(table.id)}">查看历史</button></div>`;
+        return `<div class="memory-table-update-banner"><div><strong>本次更新了 ${records} 条记忆，已标出具体单元格</strong><span>${cells} 个单元格 · ${Core.escapeHtml(sourceLabel(current.entry.source))} · ${Core.escapeHtml(formatTime(current.entry.timestamp))} · 绿色描边为本次变化</span></div><button type="button" class="btn btn-small btn-secondary" data-action="open-memory-update-history" data-table-id="${Core.escapeAttribute(table.id)}">查看历史</button></div>`;
     }
 
     Kernel.register('updateActivity', Object.freeze({
-        VERSION: '2.12-R5.3',
+        VERSION: '2.13-R5.1',
         entries,
+        recordPath,
+        recordCount,
         tableCounts,
+        tableFieldCounts,
         latest,
         cellPath,
         latestCellPaths,
         isCellUpdated,
         cellAttributes,
         tableCellCount,
+        tableRecordCount,
         forTable,
         latestForTable,
         tableSummary,

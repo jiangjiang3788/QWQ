@@ -120,7 +120,13 @@
 .memory-sidecar-badges span,.memory-sidecar-tags span{display:inline-flex;padding:3px 8px;border-radius:999px;background:#eef4ff;color:#335eea;font-size:11px;}
 .memory-sidecar-toolbar{display:flex;gap:8px;flex-wrap:wrap;}
 .memory-sidecar-candidate{padding:14px;border:1px solid #e8ecf3;border-radius:16px;background:#fff;}
-.memory-sidecar-candidate.processed{opacity:.66;}
+.memory-sidecar-candidate.promoted,.memory-sidecar-candidate.merged,.memory-sidecar-candidate.dismissed{opacity:.72;}
+.memory-sidecar-candidate.legacy_unverified{border-color:#fdb022;background:#fffcf5;}
+.memory-sidecar-warning{margin:8px 0;padding:9px 10px;border-radius:10px;background:#fff4e5;color:#9a3412;font-size:12px;line-height:1.5;}
+.memory-sidecar-target-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 10px;color:#667085;font-size:12px;flex-wrap:wrap;}
+.memory-sidecar-target-row select{min-width:220px;max-width:100%;padding:7px 9px;border:1px solid #d0d5dd;border-radius:9px;background:#fff;color:#344054;}
+.memory-sidecar-target-trace{margin:8px 0;padding:8px 10px;border-radius:10px;background:#ecfdf3;color:#067647;font-size:12px;}
+.memory-sidecar-no-target{color:#b54708;}
 .memory-sidecar-candidate-head,.memory-sidecar-candidate-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;}
 .memory-sidecar-candidate-head span,.memory-sidecar-candidate-actions span{font-size:11px;color:#98a2b3;}
 .memory-sidecar-candidate p{margin:9px 0;color:#344054;line-height:1.6;white-space:pre-wrap;}
@@ -133,6 +139,8 @@ body.night-mode-active .memory-sidecar-candidate{background:rgba(28,31,38,.88);b
 body.night-mode-active .memory-live-state-main span,
 body.night-mode-active .memory-sidecar-summary p,
 body.night-mode-active .memory-sidecar-candidate p{color:#b6bdc9;}
+body.night-mode-active .memory-sidecar-candidate.legacy_unverified{background:rgba(80,55,20,.42);border-color:rgba(253,176,34,.55);}
+body.night-mode-active .memory-sidecar-target-row select{background:#20242c;border-color:rgba(255,255,255,.14);color:#e4e7ec;}
 @media(max-width:640px){
   .memory-live-state-bar{margin:0 8px 5px;padding:7px 9px;}
   .memory-live-state-main span{display:none;}

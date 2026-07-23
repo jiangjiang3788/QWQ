@@ -381,131 +381,211 @@ function importApiPresets() {
     var subApiDisplayNames = { summary: '总结', background: '后台活动', vector: '向量记忆', supplementPersona: '补齐人设', imageRecognition: '自动识图', stickerRecognition: '表情包识图' };
 function setupSubApiSettings(prefix, dbKey, presetsKey) {
     const displayName = subApiDisplayNames[prefix] || prefix;
+    const roleMap = {
+        summary: 'summary',
+        background: 'background',
+        vector: 'vector',
+        supplementPersona: 'persona',
+        imageRecognition: 'vision',
+        stickerRecognition: 'stickerVision'
+    };
+    const role = roleMap[prefix] || prefix;
+    const registry = window.OVOApiServiceRegistry || null;
     const providerEl = document.getElementById(`${prefix}-api-provider`);
     const urlEl = document.getElementById(`${prefix}-api-url`);
     const keyEl = document.getElementById(`${prefix}-api-key`);
     const modelEl = document.getElementById(`${prefix}-api-model`);
     const fetchBtn = document.getElementById(`${prefix}-fetch-models-btn`);
     const saveBtn = document.getElementById(`${prefix}-api-save-btn`);
-    
+    const batchSizeEl = prefix === 'vector' ? document.getElementById('vector-api-batch-size') : null;
+    const dimensionsEl = prefix === 'vector' ? document.getElementById('vector-api-dimensions') : null;
+    const healthEl = prefix === 'vector' ? document.getElementById('vector-api-health') : null;
+
+    if (!providerEl || !urlEl || !keyEl || !modelEl || !fetchBtn || !saveBtn) return;
+
     const providerUrls = {
         newapi: '',
         deepseek: 'https://api.deepseek.com',
         claude: 'https://api.anthropic.com',
         gemini: 'https://generativelanguage.googleapis.com'
     };
-    
-    // 加载保存的设置
-    if (db[dbKey]) {
-        providerEl.value = db[dbKey].provider || 'newapi';
-        urlEl.value = db[dbKey].url || '';
-        keyEl.value = db[dbKey].key || '';
-        if (db[dbKey].model) {
-            modelEl.innerHTML = `<option value="${db[dbKey].model}">${db[dbKey].model}</option>`;
+
+    function draftConfig() {
+        const config = {
+            provider: providerEl.value || 'newapi',
+            protocol: providerEl.value === 'gemini' ? 'gemini' : 'openai-compatible',
+            url: urlEl.value.trim(),
+            key: keyEl.value.trim(),
+            model: modelEl.value
+        };
+        if (prefix === 'vector') {
+            config.batchSize = Math.max(1, Math.min(128, parseInt(batchSizeEl?.value, 10) || 8));
+            const dimensions = parseInt(dimensionsEl?.value, 10);
+            if (Number.isFinite(dimensions) && dimensions > 0) config.dimensions = dimensions;
+        }
+        return config;
+    }
+
+    function setVectorHealth(state, label, detail = '') {
+        if (!healthEl) return;
+        healthEl.dataset.state = state;
+        healthEl.textContent = label;
+        healthEl.title = detail;
+    }
+
+    function dispatchConfigSaved() {
+        const event = new CustomEvent('api-config-saved', { bubbles: true, detail: { prefix, role, dbKey } });
+        (providerEl.closest('.collapsible-section') || document.getElementById('api-settings-screen'))?.dispatchEvent(event);
+    }
+
+    const saved = db[dbKey] || {};
+    if (prefix === 'vector') {
+        providerEl.value = saved.provider === 'gemini' ? 'gemini' : 'newapi';
+    } else {
+        providerEl.value = saved.provider || 'newapi';
+    }
+    urlEl.value = saved.url || '';
+    keyEl.value = saved.key || '';
+    if (saved.model) modelEl.innerHTML = `<option value="${saved.model}">${saved.model}</option>`;
+    if (batchSizeEl) batchSizeEl.value = String(Math.max(1, Math.min(128, parseInt(saved.batchSize, 10) || 8)));
+    if (dimensionsEl) dimensionsEl.value = Number(saved.dimensions) > 0 ? String(saved.dimensions) : '';
+    if (prefix === 'vector') {
+        if (saved.health === 'ready' && Number(saved.verifiedDimension) > 0) {
+            setVectorHealth('ready', `已验证 · ${saved.verifiedDimension} 维`);
+        } else if (saved.health === 'error') {
+            setVectorHealth('error', '验证失败', saved.lastError || '');
+        } else if (saved.url || saved.key || saved.model) {
+            setVectorHealth('unverified', '待验证');
+        } else {
+            setVectorHealth('missing', '未配置');
         }
     }
-    
-    // 服务商切换时自动填充URL
+
     providerEl.addEventListener('change', () => {
         urlEl.value = providerUrls[providerEl.value] || '';
+        if (prefix === 'vector') setVectorHealth('unverified', '待验证');
     });
-    
-    // 拉取模型列表
+
     fetchBtn.addEventListener('click', async () => {
-        const provider = providerEl.value;
-        let apiUrl = urlEl.value.trim();
-        const apiKey = keyEl.value.trim();
-        
-        if (!apiUrl || !apiKey) {
-            showToast('请先填写API地址和密钥！');
-            return;
-        }
-        
-        if (BLOCKED_API_DOMAINS.some(domain => apiUrl.includes(domain))) {
-            showToast('该 API 站点已被屏蔽，无法使用！');
-            return;
-        }
-        
-        if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
-        
-        const endpoint = provider === 'gemini' 
-            ? `${apiUrl}/v1beta/models?key=${getRandomValue(apiKey)}` 
-            : `${apiUrl}/v1/models`;
-        
+        const config = draftConfig();
+        if (!config.url || !config.key) return showToast('请先填写 API 地址和密钥！');
+        if (BLOCKED_API_DOMAINS.some(domain => config.url.includes(domain))) return showToast('该 API 站点已被屏蔽，无法使用！');
         fetchBtn.classList.add('loading');
         fetchBtn.disabled = true;
-        
         try {
-            const headers = provider === 'gemini' ? {} : { Authorization: `Bearer ${apiKey}` };
-            const response = await fetch(endpoint, { method: 'GET', headers });
-            
-            if (!response.ok) {
-                throw new Error(`网络响应错误: ${response.status}`);
-            }
-            
-            const data = await response.json();
             let models = [];
-            
-            if (provider !== 'gemini' && data.data) {
-                models = data.data.map(e => e.id);
-            } else if (provider === 'gemini' && data.models) {
-                models = data.models.map(e => e.name.replace('models/', ''));
-            }
-            
-            modelEl.innerHTML = '';
-            if (models.length > 0) {
-                models.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    opt.textContent = m;
-                    modelEl.appendChild(opt);
-                });
-                showToast('模型列表拉取成功！');
+            let embeddingCandidates = [];
+            if (registry) {
+                const result = await registry.fetchModels(role, config);
+                models = result.models || [];
+                embeddingCandidates = result.embeddingCandidates || [];
             } else {
+                let apiUrl = config.url.replace(/\/$/, '');
+                const endpoint = config.provider === 'gemini'
+                    ? `${apiUrl}/v1beta/models?key=${getRandomValue(config.key)}`
+                    : `${apiUrl}${/\/v1$/i.test(apiUrl) ? '' : '/v1'}/models`;
+                const headers = config.provider === 'gemini' ? {} : { Authorization: `Bearer ${config.key}` };
+                const response = await fetch(endpoint, { method: 'GET', headers });
+                if (!response.ok) throw new Error(`网络响应错误: ${response.status}`);
+                const data = await response.json();
+                models = config.provider === 'gemini'
+                    ? (data.models || []).map(item => item.name.replace(/^models\//, ''))
+                    : (data.data || []).map(item => item.id);
+            }
+
+            const previous = modelEl.value || saved.model || '';
+            modelEl.innerHTML = '<option value="">— 请选择模型 —</option>';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = prefix === 'vector' && registry?.looksLikeEmbeddingModel(model) ? `${model} · 向量候选` : model;
+                modelEl.appendChild(option);
+            });
+            if (previous && models.includes(previous)) modelEl.value = previous;
+            if (!models.length) {
                 modelEl.innerHTML = '<option value="">未找到任何模型</option>';
                 showToast('未找到任何模型');
+            } else if (prefix === 'vector') {
+                setVectorHealth('unverified', '待验证');
+                showToast(embeddingCandidates.length
+                    ? `已拉取 ${models.length} 个模型，其中 ${embeddingCandidates.length} 个疑似向量模型；保存时会真实验证。`
+                    : `已拉取 ${models.length} 个模型。请选择 Embedding 模型，保存时会真实验证。`);
+            } else {
+                showToast(`模型列表拉取成功，共 ${models.length} 个！`);
             }
         } catch (err) {
             console.error(err);
-            showApiError(err);
+            if (typeof showApiError === 'function') showApiError(err);
+            else showToast(err.message || '模型列表拉取失败');
             modelEl.innerHTML = '<option value="">拉取失败</option>';
+            if (prefix === 'vector') setVectorHealth('error', '拉取失败', err.message || String(err));
         } finally {
             fetchBtn.classList.remove('loading');
             fetchBtn.disabled = false;
         }
     });
-    
-    // 保存设置
+
     saveBtn.addEventListener('click', async () => {
-        if (!modelEl.value && (urlEl.value.trim() || keyEl.value.trim())) {
-            showToast('请选择模型后保存！');
-            return;
-        }
-        
-        if (BLOCKED_API_DOMAINS.some(domain => urlEl.value.includes(domain))) {
-            showToast('该 API 站点已被屏蔽，无法保存！');
-            return;
-        }
-        
-        // 如果全部为空，则清空设置
-        if (!urlEl.value.trim() && !keyEl.value.trim() && !modelEl.value) {
+        const config = draftConfig();
+        if (!config.model && (config.url || config.key)) return showToast('请选择模型后保存！');
+        if (BLOCKED_API_DOMAINS.some(domain => config.url.includes(domain))) return showToast('该 API 站点已被屏蔽，无法保存！');
+
+        if (!config.url && !config.key && !config.model) {
             db[dbKey] = {};
             await saveData();
-            showToast(displayName + 'API设置已清空！');
+            if (prefix === 'vector') setVectorHealth('missing', '未配置');
+            dispatchConfigSaved();
+            showToast(displayName + ' API 设置已清空！');
             return;
         }
-        
-        db[dbKey] = {
-            provider: providerEl.value,
-            url: urlEl.value,
-            key: keyEl.value,
-            model: modelEl.value
-        };
+
+        if (prefix === 'vector') {
+            saveBtn.classList.add('loading');
+            saveBtn.disabled = true;
+            setVectorHealth('unverified', '验证中…');
+            try {
+                if (!registry) throw new Error('统一 API 服务未加载');
+                const result = await registry.testEmbedding(config);
+                db[dbKey] = {
+                    ...config,
+                    enabled: true,
+                    health: 'ready',
+                    verifiedAt: Date.now(),
+                    verifiedDimension: result.dimension,
+                    verifiedLatencyMs: result.latencyMs,
+                    lastError: ''
+                };
+                await saveData();
+                setVectorHealth('ready', `已验证 · ${result.dimension} 维`);
+                dispatchConfigSaved();
+                showToast(`向量 API 已验证并保存：${result.dimension} 维，${result.latencyMs} ms`);
+            } catch (err) {
+                const message = String(err?.message || err || '未知错误').slice(0, 600);
+                db[dbKey] = {
+                    ...config,
+                    enabled: false,
+                    health: 'error',
+                    verifiedAt: null,
+                    verifiedDimension: null,
+                    lastError: message
+                };
+                await saveData();
+                setVectorHealth('error', '验证失败', message);
+                dispatchConfigSaved();
+                showToast(`向量 API 验证失败：${message}`);
+            } finally {
+                saveBtn.classList.remove('loading');
+                saveBtn.disabled = false;
+            }
+            return;
+        }
+
+        db[dbKey] = config;
         await saveData();
-        showToast(displayName + 'API设置已保存！');
+        dispatchConfigSaved();
+        showToast(displayName + ' API 设置已保存！');
     });
-    
-    // 预设管理
+
     setupSubApiPresets(prefix, dbKey, presetsKey);
 }
 
@@ -549,15 +629,29 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
             const urlEl = document.getElementById(`${prefix}-api-url`);
             const keyEl = document.getElementById(`${prefix}-api-key`);
             const modelEl = document.getElementById(`${prefix}-api-model`);
-            
-            if (providerEl && preset.data.provider) providerEl.value = preset.data.provider;
-            if (urlEl && preset.data.apiUrl) urlEl.value = preset.data.apiUrl;
-            if (keyEl && preset.data.apiKey) keyEl.value = preset.data.apiKey;
-            if (modelEl && preset.data.model) {
-                modelEl.innerHTML = `<option value="${preset.data.model}">${preset.data.model}</option>`;
+            const batchSizeEl = prefix === 'vector' ? document.getElementById('vector-api-batch-size') : null;
+            const dimensionsEl = prefix === 'vector' ? document.getElementById('vector-api-dimensions') : null;
+            const healthEl = prefix === 'vector' ? document.getElementById('vector-api-health') : null;
+            const presetData = preset.data || {};
+            const normalizedProvider = prefix === 'vector'
+                ? (presetData.provider === 'gemini' || presetData.protocol === 'gemini' ? 'gemini' : 'newapi')
+                : presetData.provider;
+
+            if (providerEl && normalizedProvider) providerEl.value = normalizedProvider;
+            if (urlEl) urlEl.value = presetData.apiUrl || presetData.url || '';
+            if (keyEl) keyEl.value = presetData.apiKey || presetData.key || '';
+            if (modelEl && presetData.model) {
+                modelEl.innerHTML = `<option value="${presetData.model}">${presetData.model}</option>`;
             }
-            
-            showToast('预设已应用到表单！');
+            if (batchSizeEl) batchSizeEl.value = String(Math.max(1, Math.min(128, parseInt(presetData.batchSize, 10) || 8)));
+            if (dimensionsEl) dimensionsEl.value = Number(presetData.dimensions) > 0 ? String(presetData.dimensions) : '';
+            if (healthEl) {
+                healthEl.dataset.state = 'unverified';
+                healthEl.textContent = '待验证';
+                healthEl.title = '预设只填充表单；点击“测试并保存向量 API”后才会启用。';
+            }
+
+            showToast(prefix === 'vector' ? '预设已应用，请测试并保存后启用。' : '预设已应用到表单！');
         } catch (err) {
             console.error(err);
             showToast('应用预设失败');
@@ -570,13 +664,21 @@ function setupSubApiPresets(prefix, dbKey, presetsKey) {
         const urlEl = document.getElementById(`${prefix}-api-url`);
         const keyEl = document.getElementById(`${prefix}-api-key`);
         const modelEl = document.getElementById(`${prefix}-api-model`);
-        
+        const batchSizeEl = prefix === 'vector' ? document.getElementById('vector-api-batch-size') : null;
+        const dimensionsEl = prefix === 'vector' ? document.getElementById('vector-api-dimensions') : null;
+
         const data = {
             provider: providerEl ? providerEl.value : '',
-            apiUrl: urlEl ? urlEl.value : '',
-            apiKey: keyEl ? keyEl.value : '',
+            protocol: providerEl?.value === 'gemini' ? 'gemini' : 'openai-compatible',
+            apiUrl: urlEl ? urlEl.value.trim() : '',
+            apiKey: keyEl ? keyEl.value.trim() : '',
             model: modelEl ? modelEl.value : ''
         };
+        if (prefix === 'vector') {
+            data.batchSize = Math.max(1, Math.min(128, parseInt(batchSizeEl?.value, 10) || 8));
+            const dimensions = parseInt(dimensionsEl?.value, 10);
+            if (Number.isFinite(dimensions) && dimensions > 0) data.dimensions = dimensions;
+        }
         
         let name = prompt('为该预设填写名称（会覆盖同名预设）：');
         if (!name) return;

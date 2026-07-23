@@ -24,6 +24,8 @@
         feedback: MemoryFeedback,
         quality: MemoryQuality,
         sidecar: MemorySidecar,
+        sidecarCandidates: MemorySidecarCandidates,
+        sidecarCandidateController: MemorySidecarCandidateController,
         schedule: MemorySchedule
     } = MemoryPlatformDomain;
     const {
@@ -56,6 +58,7 @@
         session: MemoryTableSession,
         cache: MemoryTableCache,
         editController: MemoryTableEditController,
+        rowEditController: MemoryRowEditController,
         updateActivity: MemoryUpdateActivity,
         workspace: MemoryTableWorkspace
     } = MemoryTablesDomain;
@@ -527,7 +530,7 @@
             const body = renderTechnicalView(uiState.tab);
             content.innerHTML = `${MemoryWorkspace.renderDetailHeader(uiState.workspace, title)}${body}`;
         }
-        MemoryTableGrid.bind(content, { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen });
+        MemoryTableGrid.bind(content, { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen, openEditor: openMemoryRecordEditor });
         try { window.dispatchEvent(new CustomEvent('memory-table-screen-opened')); } catch (_) {}
     }
     function renderTemplateLibrary(chat) {
@@ -560,7 +563,7 @@
         const title = document.getElementById('memory-schema-editor-title');
         if (!draft || !body || !title) return;
         title.textContent = uiState.editingTemplateId ? '编辑表结构' : '新建表结构';
-        body.innerHTML = MemorySchemaEditor.render(draft, { tab: uiState.schemaEditorTab, activeTableIndex: uiState.schemaEditorTableIndex });
+        body.innerHTML = MemorySchemaEditor.render(draft, { activeTableIndex: uiState.schemaEditorTableIndex });
     }
     function openSchemaEditor(template) {
         const modal = document.getElementById('memory-schema-editor-modal');
@@ -614,13 +617,14 @@
             const sourceLabel = MemoryUpdateActivity.sourceLabel(entry.source);
             const changes = (entry.changedFields || []).filter(item => !filterTableId || item.tableId === filterTableId);
             const tableSummary = MemoryUpdateActivity.tableSummary(entry, templates);
+            const changedRecordCount = MemoryUpdateActivity.recordCount(changes);
             const rows = changes.map(item => {
                 const table = tables.get(item.tableId);
                 return `<tr><td>${escapeHtml(table?.name || '未知表格')}</td><td>${escapeHtml(item.label || item.fieldId || '字段')}</td><td>${escapeHtml(getShortValue(item.oldValue))}</td><td>${escapeHtml(getShortValue(item.newValue))}</td></tr>`;
             }).join('');
             return `<article class="memory-history-entry ${entryIndex === 0 ? 'latest' : ''}">
-                <header><div><strong>${formatDateTime(entry.timestamp)}</strong><span>${escapeHtml(sourceLabel)} · ${changes.length} 项变化</span></div><div class="memory-history-entry-actions">${entryIndex === 0 ? '<em>最近一次</em>' : ''}<button class="btn btn-small btn-primary" data-action="restore-history" data-history-id="${escapeAttribute(entry.id)}">恢复</button></div></header>
-                <div class="memory-history-table-chips">${tableSummary.map(item => `<button type="button" data-action="open-memory-update-history" data-table-id="${escapeAttribute(item.tableId)}">${escapeHtml(item.tableName)}<b>${item.count}</b></button>`).join('')}</div>
+                <header><div><strong>${formatDateTime(entry.timestamp)}</strong><span>${escapeHtml(sourceLabel)} · ${changedRecordCount} 条记忆 · ${changes.length} 个字段</span></div><div class="memory-history-entry-actions">${entryIndex === 0 ? '<em>最近一次</em>' : ''}<button class="btn btn-small btn-primary" data-action="restore-history" data-history-id="${escapeAttribute(entry.id)}">恢复</button></div></header>
+                <div class="memory-history-table-chips">${tableSummary.map(item => `<button type="button" data-action="open-memory-update-history" data-table-id="${escapeAttribute(item.tableId)}">${escapeHtml(item.tableName)}<b>${item.count} 条</b></button>`).join('')}</div>
                 <div class="memory-history-table-wrap"><table><thead><tr><th>表格</th><th>字段</th><th>修改前</th><th>修改后</th></tr></thead><tbody>${rows || '<tr><td colspan="4">没有可显示的字段变化</td></tr>'}</tbody></table></div>
             </article>`;
         }).join('');
@@ -639,6 +643,18 @@
         uiState.inspectorAnalysis = analysis;
         return MemoryRowInspector.render({ chat, target, analysis, review: uiState.inspectorReview, busy: uiState.inspectorBusy, tab: uiState.inspectorTab });
     }
+    function openMemoryRecordEditor(descriptor) {
+        return MemoryRowEditController?.open?.(descriptor, {
+            getChat: getCurrentMemoryTableChat,
+            getTemplates: currentChat => getBoundTemplates(currentChat),
+            save: saveCharacter,
+            refreshGrid: refreshActiveMemoryTable,
+            gridRoot: () => document.querySelector('[data-memory-table-grid]'),
+            toast: showToast,
+            showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '整行保存失败')
+        });
+    }
+
     function getMemoryTableWorkspaceConfig(chat) {
         return {
             chat,
@@ -646,7 +662,7 @@
             state: uiState,
             renderFieldEditor,
             renderInspector: renderRowInspector,
-            interactionContext: { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen }
+            interactionContext: { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen, openEditor: openMemoryRecordEditor }
         };
     }
     function renderTableView(chat) {
@@ -2804,6 +2820,7 @@ ${tableContext}`;
         bindMemoryWorkspaceNavigation(screen);
         if (screen?.dataset.memoryTableScreenBound === '1') return void renderMemoryTableScreen();
         if (screen) screen.dataset.memoryTableScreenBound = '1';
+        MemoryRowEditController?.bind?.();
 
         const searchInput = document.getElementById('memory-table-search-input');
         if (searchInput) {
@@ -3086,6 +3103,19 @@ ${tableContext}`;
                     showToast(result.message);
                     return;
                 }
+                const sidecarEl = event.target.closest('[data-sidecar-action]');
+                if (sidecarEl && MemorySidecarCandidateController) {
+                    const chat = getCurrentMemoryTableChat();
+                    await MemorySidecarCandidateController.handle(sidecarEl.dataset.sidecarAction || '', sidecarEl, {
+                        chat,
+                        save: saveCharacter,
+                        render: renderMemoryTableScreen,
+                        confirm: message => window.confirm(message),
+                        toast: showToast,
+                        showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '候选处理失败')
+                    });
+                    return;
+                }
                 const governanceEl = event.target.closest('[data-governance-action]');
                 if (governanceEl) {
                     const chat = getCurrentMemoryTableChat();
@@ -3097,6 +3127,7 @@ ${tableContext}`;
                         render: renderMemoryTableScreen,
                         confirm: message => window.confirm(message),
                         toast: showToast,
+                        showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '候选处理失败'),
                         navigate: view => selectMemoryWorkspace(MemoryWorkspace.getWorkspaceForView(view), view),
                         openRow: item => {
                             MemoryTableSession.selectTable(uiState, item.tableId);
@@ -3120,7 +3151,8 @@ ${tableContext}`;
                     state: uiState,
                     root: document.getElementById('memory-table-content') || document,
                     render: renderMemoryTableScreen,
-                    refreshGrid: refreshActiveMemoryTable
+                    refreshGrid: refreshActiveMemoryTable,
+                    openEditor: openMemoryRecordEditor
                 })) return;
                 if (await MemoryTableEditController.handleAction(action, actionEl, {
                     getChat: getCurrentMemoryTableChat,
@@ -3671,8 +3703,8 @@ ${tableContext}`;
                 }
                 if (action === 'select-fields') {
                     uiState.schemaEditorTableIndex = Math.max(0, tableIndex || 0);
-                    uiState.schemaEditorTab = 'fields';
                     renderSchemaEditor();
+                    requestAnimationFrame(() => schemaModal.querySelector('#memory-schema-fields-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
                     return;
                 }
                 if (action === 'refresh-raw-json') {

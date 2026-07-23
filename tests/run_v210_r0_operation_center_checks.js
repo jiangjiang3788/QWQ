@@ -73,7 +73,8 @@ assert(!finished.requests[0].bodyPreview.includes('secret'));
   assert(theater.includes("start('theater.character'"));
   assert(memory.includes("run('memory.table.update'"));
   assert(dock.includes('AI 操作中心'));
-  assert(dock.includes('查看最终原始请求'));
+  assert(!dock.includes('查看最终原始请求'));
+  assert(dock.includes("const REPORT_MODE = 'detailed'"));
   assert(dock.includes('取消本次操作'));
   console.log('V2.10-R0 OPERATION CENTER CHECKS: PASS');
 })().catch(error => {

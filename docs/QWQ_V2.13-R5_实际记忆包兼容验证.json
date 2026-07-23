@@ -1,0 +1,22 @@
+{
+  "version": "2.13-R5",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "sourceFileModified": false,
+  "templateId": "memory_tpl_1784414846228_08yhkm",
+  "candidateTableId": "memory_table_1784414846228_km3y66",
+  "longTableId": "memory_table_1784414846228_3wlskf",
+  "legacyTargetMigration": true,
+  "resolvedTargetTableId": "memory_table_1784414846228_3wlskf",
+  "longRowsBefore": 179,
+  "longRowsAfterFirstApproval": 180,
+  "longRowsAfterSecondApproval": 180,
+  "sourceStatus": "已批准",
+  "workflowTargetRowIdRecorded": true,
+  "persistenceCalls": 1,
+  "duplicateApprovalIdempotent": true,
+  "operationStatuses": [
+    "success",
+    "skipped"
+  ],
+  "result": "PASS"
+}

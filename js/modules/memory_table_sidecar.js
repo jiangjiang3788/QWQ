@@ -6,8 +6,9 @@
     const Core = Kernel?.core;
     if (!Core) throw new Error('记忆内核未加载');
     const escapeHtml = Core.escapeHtml;
+    const escapeAttribute = Core.escapeAttribute || Core.escapeHtml;
 
-    const VERSION = '2.5';
+    const VERSION = '2.13-R4';
     const MAX_CANDIDATES = 200;
     const MAX_HISTORY = 120;
     const LIVE_TABLE_IDS = new Set(['table_current_state', 'table_tasks']);
@@ -25,6 +26,17 @@
         return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     }
 
+    function normalizeCandidateStatus(candidate) {
+        if (!candidate || typeof candidate !== 'object') return null;
+        if (candidate.status === 'processed') {
+            candidate.status = candidate.targetRowId ? 'promoted' : 'legacy_unverified';
+            if (!candidate.targetRowId && !candidate.migrationNote) candidate.migrationNote = '旧版仅标记为已整理，未记录正式档案目标。';
+        }
+        const allowed = new Set(['pending', 'promoted', 'merged', 'dismissed', 'deleted', 'legacy_unverified']);
+        if (!allowed.has(candidate.status)) candidate.status = 'pending';
+        return candidate;
+    }
+
     function ensureMemoryTables(chat) {
         if (!chat) return null;
         chat.memoryTables ||= {};
@@ -36,10 +48,11 @@
         if (state.captureCandidates === undefined) state.captureCandidates = true;
         if (state.showStatusBar === undefined) state.showStatusBar = true;
         if (!Array.isArray(state.candidates)) state.candidates = [];
+        state.candidates = state.candidates.map(normalizeCandidateStatus).filter(Boolean);
         if (!Array.isArray(state.history)) state.history = [];
         if (!state.statusMeta || typeof state.statusMeta !== 'object') state.statusMeta = {};
         if (!state.lastApplyReport || typeof state.lastApplyReport !== 'object') state.lastApplyReport = null;
-        if (!state.schemaVersion) state.schemaVersion = VERSION;
+        state.schemaVersion = VERSION;
         return state;
     }
 
@@ -458,10 +471,14 @@
             const duplicate = state.candidates.find(existing => existing.status === 'pending' && existing.type === type && existing.summary === summary);
             if (duplicate) return;
             const tags = item.tags && typeof item.tags === 'object' ? item.tags : {};
+            const targetService = Kernel.get('sidecarCandidateService');
+            const target = targetService?.resolveTarget?.(chat, { type }) || null;
             state.candidates.push({
                 id: makeId('memory_candidate'),
                 type,
                 summary,
+                suggestedTargetTemplateId: target?.template?.id || null,
+                suggestedTargetTableId: target?.table?.id || null,
                 tags: {
                     topic: Array.isArray(tags.topic) ? tags.topic.map(String).slice(0, 10) : [],
                     scene: Array.isArray(tags.scene) ? tags.scene.map(String).slice(0, 10) : [],
@@ -562,51 +579,51 @@
 
     function renderCandidatesView(chat) {
         const state = ensureMemoryTables(chat);
-        const candidates = [...state.candidates].sort((a, b) => b.createdAt - a.createdAt);
-        const pending = candidates.filter(item => item.status === 'pending').length;
+        const service = Kernel.get('sidecarCandidateService');
+        service?.migrateLegacyCandidates?.(chat);
+        const candidates = [...state.candidates]
+            .filter(item => item.status !== 'deleted')
+            .sort((a, b) => b.createdAt - a.createdAt);
+        const pending = candidates.filter(item => item.status === 'pending' || item.status === 'legacy_unverified').length;
         const report = state.lastApplyReport;
         return `<div class="memory-sidecar-view">
             <div class="memory-sidecar-summary">
-                <div><strong>聊天同请求短期更新</strong><p>当前状态和待办由正常聊天响应中的隐藏 sidecar 更新，不产生额外短期提取请求。</p></div>
-                <div class="memory-sidecar-badges"><span>候选 ${pending}</span><span>协议 V${VERSION}</span></div>
+                <div><strong>聊天同请求短期更新</strong><p>当前状态和待办由正常聊天响应中的隐藏 sidecar 更新；近期经历与日常观察先进入候选，只有你保存或合并后才进入正式档案。</p></div>
+                <div class="memory-sidecar-badges"><span>待处理 ${pending}</span><span>协议 V${VERSION}</span></div>
             </div>
             ${report ? `<div class="memory-sidecar-last-report"><strong>最近一次解析</strong><div>写入 ${report.changed?.length || 0} 项，拒绝 ${report.rejected?.length || 0} 项${report.error ? `，错误：${escapeHtml(report.error)}` : ''}</div></div>` : ''}
             <div class="memory-sidecar-toolbar">
-                <button class="btn btn-small btn-secondary" data-sidecar-action="clear-processed">清理已处理候选</button>
+                <button class="btn btn-small btn-secondary" data-sidecar-action="clear-closed">清理已结束候选</button>
                 <button class="btn btn-small btn-danger" data-sidecar-action="clear-all">清空候选池</button>
             </div>
-            ${candidates.length ? candidates.map(item => `<div class="memory-sidecar-candidate ${item.status}">
-                <div class="memory-sidecar-candidate-head"><strong>${item.type === 'daily_observation' ? '日常观察' : '近期经历'}</strong><span>${new Date(item.createdAt).toLocaleString()}</span></div>
-                <p>${escapeHtml(item.summary)}</p>
-                <div class="memory-sidecar-tags">${[...(item.tags?.topic || []), ...(item.tags?.scene || []), ...(item.tags?.entity || [])].map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>
-                <div class="memory-sidecar-candidate-actions">
-                    <span>置信度 ${Number(item.confidence) || 0} · ${escapeHtml(item.source || '')} · ${escapeHtml(item.status)}</span>
-                    ${item.status === 'pending' ? `<button class="btn btn-small btn-primary" data-sidecar-action="mark-processed" data-candidate-id="${escapeHtml(item.id)}">标记已整理</button>` : ''}
-                    <button class="btn btn-small btn-danger" data-sidecar-action="delete" data-candidate-id="${escapeHtml(item.id)}">删除</button>
-                </div>
-            </div>`).join('') : '<div class="memory-review-empty"><p>还没有短期候选。</p><p>正常聊天中出现值得长期整理的新经历或生活观察时，会自动进入这里。</p></div>'}
+            ${candidates.length ? candidates.map(item => {
+                const status = item.status || 'pending';
+                const actionable = status === 'pending' || status === 'legacy_unverified';
+                const target = service?.resolveTarget?.(chat, item) || null;
+                const mergeTargets = actionable ? (service?.listMergeTargets?.(chat, item, 30) || []) : [];
+                const targetTrace = item.targetRowId
+                    ? `<div class="memory-sidecar-target-trace">${status === 'merged' ? '已合并到' : '已保存到'}：${escapeHtml(item.targetTableName || item.targetTableId || '正式档案')} / ${escapeHtml(item.targetRowId)}</div>`
+                    : '';
+                const legacyWarning = status === 'legacy_unverified'
+                    ? `<div class="memory-sidecar-warning">旧版曾标记为“已整理”，但没有目标表或目标行记录。请重新保存、合并、忽略或删除。</div>`
+                    : '';
+                const mergeSelect = mergeTargets.length
+                    ? `<select data-sidecar-merge-target data-candidate-id="${escapeAttribute(item.id)}"><option value="">选择已有记录…</option>${mergeTargets.map(row => `<option value="${escapeAttribute(row.rowId)}">${escapeHtml(row.label)}</option>`).join('')}</select>`
+                    : `<span class="memory-sidecar-no-target">${target ? '目标表暂无可合并记录' : '未找到对应正式档案表'}</span>`;
+                return `<div class="memory-sidecar-candidate ${escapeAttribute(status)}" data-candidate-card-id="${escapeAttribute(item.id)}">
+                    <div class="memory-sidecar-candidate-head"><strong>${item.type === 'daily_observation' ? '日常观察' : '近期经历'}</strong><span>${new Date(item.createdAt).toLocaleString()}</span></div>
+                    <p>${escapeHtml(item.summary)}</p>
+                    <div class="memory-sidecar-tags">${[...(item.tags?.topic || []), ...(item.tags?.scene || []), ...(item.tags?.entity || [])].map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>
+                    ${legacyWarning}${targetTrace}
+                    <div class="memory-sidecar-target-row"><span>正式目标：${escapeHtml(target?.table?.name || item.targetTableName || '未配置')}</span>${actionable ? mergeSelect : ''}</div>
+                    <div class="memory-sidecar-candidate-actions">
+                        <span>置信度 ${Number(item.confidence) || 0} · ${escapeHtml(item.source || '')} · ${escapeHtml(service?.statusLabel?.(status) || status)}</span>
+                        ${actionable ? `<button class="btn btn-small btn-primary" data-sidecar-action="save" data-candidate-id="${escapeAttribute(item.id)}">保存到档案</button><button class="btn btn-small btn-secondary" data-sidecar-action="merge" data-candidate-id="${escapeAttribute(item.id)}" ${mergeTargets.length ? '' : 'disabled'}>合并到已有记录</button><button class="btn btn-small btn-secondary" data-sidecar-action="dismiss" data-candidate-id="${escapeAttribute(item.id)}">暂时忽略</button>` : ''}
+                        <button class="btn btn-small btn-danger" data-sidecar-action="delete" data-candidate-id="${escapeAttribute(item.id)}">${actionable ? '删除' : '移除候选记录'}</button>
+                    </div>
+                </div>`;
+            }).join('') : '<div class="memory-review-empty"><p>还没有短期候选。</p><p>正常聊天中出现值得整理的新经历或生活观察时，会自动进入这里。</p></div>'}
         </div>`;
-    }
-
-    async function handleCandidateAction(target) {
-        const action = target?.dataset?.sidecarAction;
-        if (!action || typeof currentChatId === 'undefined' || typeof currentChatType === 'undefined' || currentChatType !== 'private') return;
-        const chat = db.characters.find(item => item.id === currentChatId);
-        if (!chat) return;
-        const state = ensureMemoryTables(chat);
-        const id = target.dataset.candidateId;
-        if (action === 'delete') state.candidates = state.candidates.filter(item => item.id !== id);
-        if (action === 'mark-processed') {
-            const candidate = state.candidates.find(item => item.id === id);
-            if (candidate) candidate.status = 'processed';
-        }
-        if (action === 'clear-processed') state.candidates = state.candidates.filter(item => item.status === 'pending');
-        if (action === 'clear-all') {
-            if (typeof confirm === 'function' && !confirm('确定清空全部短期候选吗？')) return;
-            state.candidates = [];
-        }
-        if (typeof saveCharacter === 'function') await saveCharacter(chat.id);
-        if (typeof renderMemoryTableScreen === 'function') renderMemoryTableScreen();
     }
 
     function bindUi() {
@@ -646,10 +663,6 @@
             refreshStateBar(chat);
         };
         [enabled, candidates, statusBar].filter(Boolean).forEach(input => input.addEventListener('change', saveControl));
-        document.addEventListener('click', event => {
-            const target = event.target.closest('[data-sidecar-action]');
-            if (target) handleCandidateAction(target);
-        });
         window.addEventListener('memory-table-screen-opened', syncControls);
         syncControls();
     }

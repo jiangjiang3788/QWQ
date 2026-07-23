@@ -19,7 +19,7 @@
         { type: 'memory.table.auto', title: '检查结构化档案更新', category: '后台工作', icon: '🗂️', tasks: [] },
         { type: 'memory.embedding', title: '生成结构化档案向量', category: '记忆', icon: '🔎', tasks: ['memory-table-embedding'] },
         { type: 'memory.vector.summary', title: '生成向量记忆摘要', category: '记忆', icon: '🧠', tasks: ['vector-summary'] },
-        { type: 'memory.vector.embedding', title: '生成向量记忆索引', category: '记忆', icon: '🧠', tasks: ['vector-embedding'] },
+        { type: 'memory.vector.embedding', title: '生成向量记忆索引', category: '记忆', icon: '🧠', tasks: ['vector-embedding', 'vector-embedding-test'] },
         { type: 'memory.vector.auto', title: '检查向量记忆总结', category: '后台工作', icon: '🧠', tasks: [] },
         { type: 'vision.image.describe', title: '识别聊天图片', category: '图片识别', icon: '🖼️', tasks: ['image-description'] },
         { type: 'vision.avatar.recognize', title: '识别头像内容', category: '图片识别', icon: '👤', tasks: ['avatar-recognition'] },

@@ -1,0 +1,13 @@
+{
+  "version": "2.13-R5.2",
+  "sourcePackage": "阿沉_memory_package_逻辑收敛修正版.json",
+  "tableCount": 8,
+  "fieldCount": 94,
+  "activeTable": "核心确认档案",
+  "activeTableFieldCount": 12,
+  "renderedMarkupCharacters": 129368,
+  "singleWorkspace": true,
+  "peerTabsRemoved": true,
+  "sourceTemplateMutated": false,
+  "result": "PASS"
+}

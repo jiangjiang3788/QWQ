@@ -28,6 +28,16 @@
             return true;
         }
         RowCommandMenu.close(context.root || document);
+        if (typeof context.openEditor === 'function' && (action === 'edit-row' || action === 'edit-field')) {
+            context.openEditor({
+                kind: action === 'edit-row' ? 'row' : 'field',
+                templateId: element.dataset.templateId || '',
+                tableId: element.dataset.tableId || '',
+                rowId: element.dataset.rowId || '',
+                fieldId: element.dataset.fieldId || ''
+            });
+            return true;
+        }
         if (action === 'edit-row') TableSession.setEditingRow(state, element.dataset.rowId || null);
         else if (action === 'finish-edit-row') TableSession.finishEditing(state);
         else if (action === 'edit-field') TableSession.setEditingField(state, `${element.dataset.templateId}::${element.dataset.tableId}::${element.dataset.fieldId}`);
@@ -71,7 +81,7 @@
     }
 
     Kernel.register('tableInteraction', Object.freeze({
-        VERSION: '2.12-R0',
+        VERSION: '2.13-R5',
         ACTIONS,
         handleAction,
         handleFilterClick,

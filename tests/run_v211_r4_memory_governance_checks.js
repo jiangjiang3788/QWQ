@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controllerText = read('js/modules/memory_table.js');
 const workspaceText = read('js/features/memory/workspace.js');
@@ -107,10 +107,10 @@ const candidates = Kernel.get('candidateService');
 const filters = Kernel.get('tableFilter');
 const queue = Kernel.get('governanceQueue');
 const governance = Kernel.get('governanceController');
-assert.strictEqual(candidates.VERSION, '2.11-R4');
+assert.strictEqual(candidates.VERSION, '2.13-R5');
 assert.strictEqual(filters.VERSION, '2.11-R4');
 assert.strictEqual(queue.VERSION, '2.11-R4');
-assert.strictEqual(governance.VERSION, '2.11-R4');
+assert.strictEqual(governance.VERSION, '2.13-R5');
 
 const items = queue.scan(chat, [template]);
 const counts = queue.countByCategory(items);

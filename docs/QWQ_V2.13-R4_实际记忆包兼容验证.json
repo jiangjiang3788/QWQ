@@ -1,0 +1,41 @@
+{
+  "before": {
+    "processed": 4
+  },
+  "migrated": 4,
+  "after": {
+    "legacy_unverified": 4
+  },
+  "unresolved": 4,
+  "targets": [
+    {
+      "id": "memory_candidate_1784794445334_m78lha4",
+      "type": "experience",
+      "target": "近期经历、想法与重要事件"
+    },
+    {
+      "id": "memory_candidate_1784795628535_a7u31p1",
+      "type": "experience",
+      "target": "近期经历、想法与重要事件"
+    },
+    {
+      "id": "memory_candidate_1784796698456_t14n577",
+      "type": "experience",
+      "target": "近期经历、想法与重要事件"
+    },
+    {
+      "id": "memory_candidate_1784797469755_h0xu5im",
+      "type": "experience",
+      "target": "近期经历、想法与重要事件"
+    }
+  ],
+  "promotion": {
+    "candidateId": "memory_candidate_1784794445334_m78lha4",
+    "target": "近期经历、想法与重要事件",
+    "countBefore": 7,
+    "countAfter": 8,
+    "status": "promoted",
+    "targetRowId": "memory_row_1784809111484_80pbpv",
+    "result": "已保存到 近期经历、想法与重要事件"
+  }
+}

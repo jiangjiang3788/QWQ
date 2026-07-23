@@ -74,6 +74,12 @@
     }
 
     function activate(record, target, descriptor) {
+        if (typeof record.context.openEditor === 'function') {
+            record.suppressClickUntil = Date.now() + 450;
+            record.context.openEditor(descriptor);
+            try { global.navigator?.vibrate?.(10); } catch (_) {}
+            return true;
+        }
         const state = TableSession.ensure(record.context.state);
         focusDescriptor(state, descriptor);
         beginOrFinishEdit(state, descriptor);
@@ -203,7 +209,7 @@
     }
 
     Kernel.register('tableGesture', Object.freeze({
-        VERSION: '2.12-R5.3',
+        VERSION: '2.13-R5',
         TARGET_SELECTOR,
         DOUBLE_TAP_MS,
         MOVE_TOLERANCE,

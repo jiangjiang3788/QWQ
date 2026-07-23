@@ -17,7 +17,7 @@ const windowMock = {
 const context = vm.createContext({ window: windowMock, sessionStorage: windowMock.sessionStorage, CustomEvent: CustomEventMock, console, Date, Math, JSON, Map, Set, Array, String, Number, Boolean, Error, Promise });
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
-assert(['2.10-R3', '2.10-R3.1', '2.10-R3.2', '2.10-R3.3', '2.10-R4', '2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(runtime.VERSION));
+assert(['2.10-R3', '2.10-R3.1', '2.10-R3.2', '2.10-R3.3', '2.10-R4', '2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(runtime.VERSION));
 assert.strictEqual(typeof runtime.recordMutation, 'function');
 assert.strictEqual(typeof runtime.recordMutations, 'function');
 const parent = runtime.start('chat.reply', { title: '生成角色回复' });

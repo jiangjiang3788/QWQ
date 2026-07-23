@@ -1239,7 +1239,7 @@
 <div class="collapsible-header" onclick="this.parentElement.classList.toggle('open')" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
 <div>
 <h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">向量记忆 API（可选）</h3>
-<p style="font-size: 12px; color: #999; margin: 5px 0 0;">用于向量化记忆和语义检索。留空则回退到总结 API 或主 API。</p>
+<p style="font-size: 12px; color: #999; margin: 5px 0 0;">用于向量化记忆和语义检索。必须使用支持 Embeddings 的模型，不再回退到聊天或总结模型。</p>
 </div>
 <span class="collapsible-arrow">▼</span>
 </div>
@@ -1248,10 +1248,8 @@
 <div class="kkt-item-label">服务商</div>
 <div class="kkt-item-control">
 <select id="vector-api-provider" style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
-<option value="newapi">NewAPI (自定义)</option>
-<option value="deepseek">DeepSeek</option>
-<option value="claude">Claude</option>
-<option value="gemini">Gemini</option>
+<option value="newapi">OpenAI 兼容 / NewAPI</option>
+<option value="gemini">Gemini Embedding</option>
 </select>
 <span class="kkt-arrow">›</span>
 </div>
@@ -1259,13 +1257,31 @@
 <div class="kkt-item">
 <div class="kkt-item-label">API 地址</div>
 <div class="kkt-item-control">
-<input autocomplete="off" id="vector-api-url" placeholder="https://..." style="text-align:right; border:none; background:transparent; width: 100%;" type="text"/>
+<input autocomplete="off" id="vector-api-url" placeholder="https://...（可填写到 /v1）" style="text-align:right; border:none; background:transparent; width: 100%;" type="text"/>
 </div>
 </div>
 <div class="kkt-item">
 <div class="kkt-item-label">密钥 (Key)</div>
 <div class="kkt-item-control">
 <input autocomplete="new-password" id="vector-api-key" placeholder="sk-..." style="text-align:right; border:none; background:transparent; width: 100%;" type="password"/>
+</div>
+</div>
+<div class="kkt-item">
+<div class="kkt-item-label">批量大小</div>
+<div class="kkt-item-control">
+<input id="vector-api-batch-size" min="1" max="128" step="1" value="8" style="text-align:right; border:none; background:transparent; width: 100%;" type="number"/>
+</div>
+</div>
+<div class="kkt-item">
+<div class="kkt-item-label">向量维度（可选）</div>
+<div class="kkt-item-control">
+<input id="vector-api-dimensions" min="1" step="1" placeholder="由模型默认" style="text-align:right; border:none; background:transparent; width: 100%;" type="number"/>
+</div>
+</div>
+<div class="kkt-item vector-api-health-row">
+<div class="kkt-item-label">连接状态</div>
+<div class="kkt-item-control">
+<span class="vector-api-health" id="vector-api-health" data-state="missing">未配置</span>
 </div>
 </div>
 <div class="kkt-item">
@@ -1287,7 +1303,7 @@
 </div>
 </div>
 <button class="btn btn-primary" id="vector-api-save-btn" style="margin-top: 15px; width: 100%;" type="button">
-<span class="btn-text">保存向量记忆API设置</span>
+<span class="btn-text">测试并保存向量 API</span>
 <div class="spinner"></div>
 </button>
 <div class="api-presets-embedded" style="margin-top:20px;">
@@ -6376,10 +6392,23 @@
 </form>
 </div>
 </div>
+<div class="modal-overlay memory-row-edit-overlay" id="memory-row-edit-modal" role="dialog" aria-modal="true" aria-labelledby="memory-row-edit-title">
+<div class="modal-window memory-row-edit-window">
+<div class="memory-row-edit-head">
+<div><h3 id="memory-row-edit-title">编辑记忆</h3><p>全屏 KV 编辑 · 左侧字段，右侧完整值 · Ctrl/⌘ + Enter 保存。</p></div>
+<button type="button" class="memory-row-edit-close" data-row-edit-action="close" aria-label="关闭">×</button>
+</div>
+<div class="memory-row-edit-body" id="memory-row-edit-body"></div>
+<div class="memory-row-edit-footer">
+<button class="btn btn-neutral" data-row-edit-action="close" type="button">取消</button>
+<button class="btn btn-primary" data-row-edit-action="save" type="button">保存整行</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="memory-schema-editor-modal">
 <div class="modal-window memory-schema-editor-window">
 <div class="memory-schema-editor-head">
-<div><h3 id="memory-schema-editor-title">表结构编辑器</h3><p>字段、表格设置与结构 JSON 共用同一份 schema；切换视图不会复制配置。</p></div>
+<div><h3 id="memory-schema-editor-title">表结构编辑器</h3><p>表格设置、字段设置和高级设置已收敛为同一个全屏工作台。</p></div>
 <button type="button" class="memory-schema-editor-close" data-schema-action="cancel" aria-label="关闭">×</button>
 </div>
 <div class="memory-schema-editor-body" id="memory-schema-editor-body"></div>
@@ -6660,6 +6689,7 @@
 <!-- [1. 基础层] -->
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
 <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+<script src="js/core/api_service_registry.js"></script> <!-- 统一 API 角色、端点与向量请求 -->
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
 <script src="js/core/ui_components.js"></script>
@@ -6718,6 +6748,8 @@
 <script src="js/modules/memory_table_quality.js"></script>
 <script src="js/features/memory/api_adapter.js"></script>
 <script src="js/features/memory/domain.js"></script>
+<script src="js/features/memory/sidecar_candidate_service.js"></script>
+<script src="js/features/memory/sidecar_candidate_controller.js"></script>
 <script src="js/features/memory/field_width.js"></script>
 <script src="js/features/memory/schema_model.js"></script>
 <script src="js/features/memory/schema_editor.js"></script>
@@ -6748,8 +6780,10 @@
 <script src="js/features/memory/table_reconciler.js"></script>
 <script src="js/features/memory/update_activity.js"></script>
 <script src="js/features/memory/table_grid.js"></script>
+<script src="js/features/memory/row_edit_modal.js"></script>
 <script src="js/features/memory/table_editor.js"></script>
 <script src="js/features/memory/table_edit_controller.js"></script>
+<script src="js/features/memory/row_edit_controller.js"></script>
 <script src="js/features/memory/table_workspace.js"></script>
 <!-- V2.12-R4: memory domain public facades and architecture contract -->
 <script src="js/features/memory/domains/platform.js"></script>

@@ -1,13 +1,14 @@
 (function () {
   'use strict';
 
+  const Registry = window.OVOApiServiceRegistry || null;
   const SECTION_CONFIG = [
-    { key: 'main', label: '主聊天', selector: '#api-form', provider: 'api-provider', url: 'api-url', keyId: 'api-key', model: 'api-model' },
-    { key: 'summary', label: '总结', prefix: 'summary', title: '总结专用 API' },
-    { key: 'vector', label: '向量', prefix: 'vector', title: '向量记忆 API' },
-    { key: 'background', label: '后台', prefix: 'background', title: '后台活动专用 API' },
-    { key: 'persona', label: '人设', prefix: 'supplementPersona', title: '补齐人设专用 API' },
-    { key: 'vision', label: '识图', prefix: 'imageRecognition', title: '自动识图专用 API' }
+    { key: 'main', role: 'chat', selector: '#api-form', provider: 'api-provider', url: 'api-url', keyId: 'api-key', model: 'api-model' },
+    { key: 'summary', role: 'summary', prefix: 'summary' },
+    { key: 'vector', role: 'vector', prefix: 'vector' },
+    { key: 'background', role: 'background', prefix: 'background' },
+    { key: 'persona', role: 'persona', prefix: 'supplementPersona' },
+    { key: 'vision', role: 'vision', prefix: 'imageRecognition' }
   ];
 
   function byId(id) { return document.getElementById(id); }
@@ -62,7 +63,7 @@
   function enhanceModelButtons(screen) {
     screen.querySelectorAll('button[id$="fetch-models-btn"]').forEach((button) => {
       const text = button.querySelector('.btn-text');
-      if (text) text.textContent = '测试并拉取';
+      if (text) text.textContent = button.id === 'vector-fetch-models-btn' ? '拉取向量模型' : '测试并拉取';
       const prefix = button.id.replace('-fetch-models-btn', '');
       const modelId = prefix === 'fetch-models-btn' ? 'api-model' : `${prefix}-api-model`;
       const model = byId(modelId) || (button.id === 'fetch-models-btn' ? byId('api-model') : null);
@@ -99,21 +100,35 @@
     });
   }
 
+  function sectionStatus(config) {
+    if (config.role === 'vector' && Registry) return Registry.health('vector');
+    const configured = isConfigured(config);
+    if (configured) return { state: 'ready', label: '已配置' };
+    if (config.role === 'chat') return { state: 'missing', label: '未配置' };
+    return { state: 'fallback', label: '跟随主 API' };
+  }
+
   function addSectionStatus(config) {
     const section = findSection(config);
     if (!section || config.key === 'main') return;
     section.id ||= `api-ui-section-${config.key}`;
     const title = section.querySelector('.collapsible-header h3');
-    if (!title || title.querySelector('.api-ui-section-tag')) return;
-    const tag = document.createElement('span');
-    tag.className = 'api-ui-section-tag';
-    title.appendChild(tag);
+    if (!title) return;
+    let tag = title.querySelector('.api-ui-section-tag');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'api-ui-section-tag';
+      title.appendChild(tag);
+    }
     const update = () => {
-      const ready = isConfigured(config);
-      tag.textContent = ready ? '已配置' : '跟随主 API';
-      tag.classList.toggle('configured', ready);
+      const status = sectionStatus(config);
+      tag.textContent = status.label;
+      tag.dataset.state = status.state;
+      tag.classList.toggle('configured', status.state === 'ready');
+      tag.classList.toggle('error', status.state === 'error');
     };
     section.querySelectorAll('input,select').forEach((el) => el.addEventListener('input', update));
+    section.addEventListener('api-config-saved', update);
     update();
   }
 
@@ -127,38 +142,35 @@
     hero.className = 'api-ui-hero';
     hero.innerHTML = `
       <h2 class="api-ui-hero-title">AI 服务管理</h2>
-      <p class="api-ui-hero-desc">主 API 负责聊天；专项 API 留空时自动跟随主 API。密钥只保存在当前应用数据中。</p>
+      <p class="api-ui-hero-desc">聊天类专项 API 可跟随主 API；向量 API 必须单独配置支持 Embeddings 的模型，并通过真实向量测试后保存。</p>
       <div class="api-ui-status-row">
         <span class="api-ui-chip" id="api-ui-main-status"><span class="api-ui-dot"></span><span>主 API</span><strong>未配置</strong></span>
-        <span class="api-ui-chip" id="api-ui-model-status"><span class="api-ui-dot"></span><span>模型</span><strong>未选择</strong></span>
-        <span class="api-ui-chip" id="api-ui-special-status"><span class="api-ui-dot"></span><span>专项 API</span><strong>0 个</strong></span>
+        <span class="api-ui-chip" id="api-ui-model-status"><span class="api-ui-dot"></span><span>聊天模型</span><strong>未选择</strong></span>
+        <span class="api-ui-chip" id="api-ui-vector-status"><span class="api-ui-dot"></span><span>向量 API</span><strong>未配置</strong></span>
       </div>`;
     container.insertBefore(hero, form);
 
-    const nav = document.createElement('nav');
-    nav.className = 'api-ui-nav';
-    SECTION_CONFIG.forEach((config, index) => {
-      const section = findSection(config);
-      if (!section) return;
-      if (config.key === 'main') section.id = 'api-ui-section-main';
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = config.label;
-      button.classList.toggle('active', index === 0);
-      button.addEventListener('click', () => {
-        document.querySelectorAll('.api-ui-nav button').forEach((item) => item.classList.remove('active'));
-        button.classList.add('active');
-        if (section.classList.contains('collapsible-section')) section.classList.add('open');
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-      nav.appendChild(button);
-    });
-    container.insertBefore(nav, form);
-
     const footnote = document.createElement('p');
     footnote.className = 'api-ui-footnote';
-    footnote.textContent = '“测试并拉取”用于验证地址与密钥并获取模型列表；保存后 QuickDock 会读取当前主 API 的模型。';
+    footnote.textContent = '模型列表只代表网关可见模型；向量配置会额外发送一次真实 Embedding 请求，避免把聊天模型误当成向量模型。';
     container.appendChild(footnote);
+  }
+
+  function updateVectorHealth() {
+    const health = Registry ? Registry.health('vector') : { state: 'missing', label: '未配置' };
+    const status = byId('vector-api-health');
+    if (status) {
+      status.dataset.state = health.state;
+      status.textContent = health.label;
+      status.title = health.error || '';
+    }
+    const chip = byId('api-ui-vector-status');
+    if (chip) {
+      chip.classList.toggle('ready', health.state === 'ready');
+      chip.classList.toggle('partial', health.state === 'unverified');
+      chip.classList.toggle('error', health.state === 'error');
+      setTextIfChanged(chip.querySelector('strong'), health.label);
+    }
   }
 
   function updateHero() {
@@ -167,7 +179,6 @@
     const ready = Boolean(values.url && values.key);
     const mainChip = byId('api-ui-main-status');
     const modelChip = byId('api-ui-model-status');
-    const specialChip = byId('api-ui-special-status');
     if (mainChip) {
       mainChip.classList.toggle('ready', ready);
       mainChip.classList.toggle('partial', !ready && Boolean(values.url || values.key));
@@ -177,11 +188,7 @@
       modelChip.classList.toggle('ready', Boolean(values.model));
       setTextIfChanged(modelChip.querySelector('strong'), values.model || '未选择');
     }
-    if (specialChip) {
-      const count = SECTION_CONFIG.slice(1).filter(isConfigured).length;
-      specialChip.classList.toggle('ready', count > 0);
-      setTextIfChanged(specialChip.querySelector('strong'), `${count} 个已配置`);
-    }
+    updateVectorHealth();
   }
 
   function init() {
@@ -197,6 +204,7 @@
     SECTION_CONFIG.forEach(addSectionStatus);
     screen.addEventListener('input', updateHero);
     screen.addEventListener('change', updateHero);
+    screen.addEventListener('api-config-saved', updateHero);
     let heroUpdateQueued = false;
     const scheduleHeroUpdate = () => {
       if (heroUpdateQueued) return;

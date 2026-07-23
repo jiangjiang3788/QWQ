@@ -92,3 +92,11 @@
 
 - `js/modules/memory_table.js`：拆分角色 UI 水合与工作区状态提交，统一全部工作区路由。
 - `tests/run_v29_r11_memory_workspace_state_checks.js`：执行真实控制器，覆盖待处理、管理、反馈和角色切换状态回归。
+
+## V2.13-R0 API 能力边界与字段布局
+
+- `js/core/api_service_registry.js` 成为聊天、总结、向量、后台、人设与识图 API 的统一角色注册、回退和端点规范化层。
+- 向量角色明确禁止回退到聊天/总结 API；只有真实 Embedding 测试成功并记录维度后，配置才进入可用状态。
+- `vector_memory.js` 与 `memory_table_retrieval.js` 共用注册表的向量传输，不再各自拼接 `/v1/embeddings`。
+- API 管理删除重复的“主聊天/总结/向量/后台/人设/识图”内层导航，只保留一套工作区导航。
+- KV 字段名列由共享 `fieldWidth` 服务按当前表最长字段名的实际文本宽度统一计算；超出安全上限时单行省略并保留完整 title。

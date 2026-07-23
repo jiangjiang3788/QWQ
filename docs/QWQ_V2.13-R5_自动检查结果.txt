@@ -1,0 +1,36 @@
+QWQ V2.13-R5 自动检查结果
+
+版本：2.13-R5
+范围：长期候选原子晋升、连续 5 次 Enter 请求回复、完整记忆编辑窗口、Netlify 配置清理
+
+专项测试：
+- run_v213_r5_atomic_promotion_and_interaction_checks.js：PASS
+- run_v213_r5_five_enter_reply_checks.js：PASS
+
+全量 JavaScript 专项回归：57 / 57 PASS
+静态检查：PASS
+全量 JavaScript 语法检查：PASS
+记忆领域架构门禁：PASS
+
+架构预算：
+- js/modules/memory_table.js：3960 / 4000
+- js/modules/floating_ball.js：967 / 1020
+- js/features/memory/schema_editor.js：244 / 900
+- js/features/memory/retrieval_audit.js：386 / 700
+- js/settings.js：394 / 500
+
+实际记忆包兼容验证：PASS
+- 原文件未修改
+- 旧模板唯一长期目标自动补齐：PASS
+- 首次批准只新增一行：PASS
+- 重复批准幂等：PASS
+- 候选状态更新：PASS
+- 目标表和目标行追踪：PASS
+- Operation Runtime 成功/跳过状态：PASS
+
+Netlify 清理：
+- netlify.toml：不存在
+- _headers：不存在
+- _redirects：不存在
+- NETLIFY_DEPLOY.txt：不存在
+- 发布脚本不再收集 Netlify 文件：PASS

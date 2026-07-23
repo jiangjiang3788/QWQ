@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
 const gridSource = read('js/features/memory/table_grid.js');
@@ -35,7 +35,7 @@ vm.createContext(context);
 vm.runInContext(read('js/features/memory/kernel.js'), context);
 vm.runInContext(read('js/features/memory/table_viewport.js'), context);
 const viewport = context.window.OvoMemoryKernel.get('tableViewport');
-assert(['2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(viewport.VERSION));
+assert(['2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(viewport.VERSION));
 assert.strictEqual(viewport.enabled({ rowCount: 79 }), false);
 assert.strictEqual(viewport.enabled({ rowCount: 80 }), true);
 const first = viewport.computeRange({ rowCount: 179, rowHeight: 88, viewportHeight: 528, scrollTop: 0, overscan: 5 });

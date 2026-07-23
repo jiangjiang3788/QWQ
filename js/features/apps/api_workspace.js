@@ -1,7 +1,8 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '2.9-R3';
+    const VERSION = '2.13-R0';
+    const Registry = global.OVOApiServiceRegistry || null;
     const groups = Object.freeze([
         { id: 'chat', label: '聊天', description: '主聊天连接与回复策略' },
         { id: 'memory', label: '记忆', description: '总结与向量检索' },
@@ -26,8 +27,16 @@
 
     function statusFor(group) {
         const data = global.db || {};
-        if (group === 'chat') return ready(data.apiSettings) ? '已配置' : '待配置';
-        if (group === 'memory') return ready(data.summaryApiSettings) || ready(data.vectorApiSettings) ? '已配置' : '使用主 API';
+        if (group === 'chat') return Registry ? (Registry.isReady('chat') ? '已配置' : '待配置') : (ready(data.apiSettings) ? '已配置' : '待配置');
+        if (group === 'memory') {
+            const summaryReady = Registry ? Registry.isReady('summary') : ready(data.summaryApiSettings);
+            const vectorHealth = Registry ? Registry.health('vector') : { state: ready(data.vectorApiSettings) ? 'unverified' : 'missing' };
+            if (vectorHealth.state === 'ready' && summaryReady) return '总结 + 向量';
+            if (vectorHealth.state === 'ready') return '向量已验证';
+            if (vectorHealth.state === 'error') return '向量异常';
+            if (vectorHealth.state === 'unverified') return '向量待验证';
+            return summaryReady ? '总结已配置' : '总结跟随主 API';
+        }
         if (group === 'automation') return ready(data.backgroundApiSettings) || ready(data.supplementPersonaApiSettings) ? '已配置' : '使用主 API';
         const weatherReady = !!(data.weatherApiSettings && data.weatherApiSettings.provider);
         const perceptionReady = ready(data.imageRecognitionApiSettings) || ready(data.stickerRecognitionApiSettings) || weatherReady;

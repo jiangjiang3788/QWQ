@@ -59,5 +59,5 @@ assert(theater.includes('本次未命中'));
 assert(theater.includes('operationId: operation?.id'));
 assert(dock.includes('后台工作'));
 assert(dock.includes('renderChildOperationList'));
-assert(dock.includes('V2.10-R2') || dock.includes('V2.10-R3') || dock.includes('V2.10-R4') || dock.includes('V2.10-R5') || dock.includes('V2.10-R6') || dock.includes('V2.11-R0') || dock.includes('V2.11-R1') || dock.includes('V2.11-R2') || dock.includes('V2.11-R3.1') || dock.includes('V2.11-R4') || dock.includes('V2.11-R5') || dock.includes('V2.11-R6') || dock.includes('V2.11-R7') || dock.includes('V2.12-R0') || dock.includes('V2.12-R1') || dock.includes('V2.12-R2'));
+assert(dock.includes('V2.10-R2') || dock.includes('V2.10-R3') || dock.includes('V2.10-R4') || dock.includes('V2.10-R5') || dock.includes('V2.10-R6') || dock.includes('V2.11-R0') || dock.includes('V2.11-R1') || dock.includes('V2.11-R2') || dock.includes('V2.11-R3.1') || dock.includes('V2.11-R4') || dock.includes('V2.11-R5') || dock.includes('V2.11-R6') || dock.includes('V2.11-R7') || dock.includes('V2.12-R0') || dock.includes('V2.12-R1') || dock.includes('V2.12-R2') || dock.includes('V2.13-R1') || dock.includes('V2.13-R2') || dock.includes('V2.13-R3'));
 console.log('V2.10-R2 BACKGROUND OPERATION CHECKS: PASS');

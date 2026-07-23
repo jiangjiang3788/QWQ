@@ -100,7 +100,7 @@
             return `<button type="button" class="memory-v2-table-item ${table.id === resolved.active.table.id ? 'active' : ''} ${changedCount ? 'recently-updated' : ''}" data-action="select-memory-table" data-table-id="${Core.escapeAttribute(table.id)}">
                 <span class="name">${Core.escapeHtml(table.name)}${changedCount ? `<em class="memory-table-update-dot" aria-label="本次更新"></em>` : ''}</span>
                 <span class="meta">${Core.escapeHtml(template.name)} · ${Core.escapeHtml(policy.memoryLayer)} · ${count}</span>
-                ${changedCount ? `<span class="memory-table-updated-badge">本次更新 ${changedCount}</span>` : ''}
+                ${changedCount ? `<span class="memory-table-updated-badge">本次更新 ${changedCount} 条</span>` : ''}
             </button>`;
         }).join('');
         const active = resolved.active;
@@ -115,7 +115,7 @@
                         <div>
                             <h2>${Core.escapeHtml(active.table.name)}</h2>
                             <div class="sub">${Core.escapeHtml(active.template.name)} · ${Domain.isRowsTable(active.table) ? '多行记录' : '键值档案'}${state.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'}</div>
-                            <div class="memory-table-interaction-hint" aria-label="表格编辑方式"><span>双击编辑</span><span>手机双点</span><span>Esc 退出</span></div>
+                            <div class="memory-table-interaction-hint" aria-label="表格编辑方式"><span>双击打开整行编辑</span><span>手机双点</span><span>完整文本可见</span></div>
                             ${policySummary(active.table)}
                             ${active.table.extractPrompt ? `<div class="memory-v2-json-meta memory-v2-json-only">extractPrompt: ${Core.escapeHtml(active.table.extractPrompt)}</div>` : ''}
                         </div>
@@ -140,7 +140,7 @@
     }
 
     Kernel.register('tableWorkspace', Object.freeze({
-        VERSION: '2.12-R3',
+        VERSION: '2.13-R5.1',
         descriptors,
         resolveActive,
         visibleColumns,

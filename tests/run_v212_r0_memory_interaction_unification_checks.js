@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const gridSource = read('js/features/memory/table_grid.js');
 const gestureSource = read('js/features/memory/table_gesture.js');
@@ -29,7 +29,9 @@ assert(gridSource.includes('TableReconciler.replace(root, render(config), bindVi
 assert(!gridSource.includes('target => bind(target, config.interactionContext)'));
 assert(!gridSource.includes('memory-flat-field-action memory-v2-normal-only'));
 assert(!menuSource.includes("['edit-row', '编辑此行']"));
-assert(workspaceSource.includes('双击编辑'));
+assert(workspaceSource.includes('双击打开整行编辑'));
+assert(html.includes('id="memory-row-edit-modal"'));
+assert(gestureSource.includes('record.context.openEditor')); 
 assert(workspaceSource.includes('手机双点'));
 assert(!workspaceSource.includes('单击选中'));
 assert(!workspaceSource.includes('Enter 编辑'));

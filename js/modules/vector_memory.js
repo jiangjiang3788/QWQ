@@ -124,6 +124,8 @@
     }
 
     function getSummaryApiConfig() {
+        const registry = window.OVOApiServiceRegistry;
+        if (registry) return registry.require('summary', { allowFallback: true }).config;
         const apiConfig = (db.summaryApiSettings && db.summaryApiSettings.url && db.summaryApiSettings.key && db.summaryApiSettings.model)
             ? db.summaryApiSettings
             : db.apiSettings;
@@ -134,15 +136,9 @@
     }
 
     function getVectorApiConfig() {
-        const apiConfig = (db.vectorApiSettings && db.vectorApiSettings.url && db.vectorApiSettings.key && db.vectorApiSettings.model)
-            ? db.vectorApiSettings
-            : ((db.summaryApiSettings && db.summaryApiSettings.url && db.summaryApiSettings.key && db.summaryApiSettings.model)
-                ? db.summaryApiSettings
-                : db.apiSettings);
-        if (!apiConfig || !apiConfig.url || !apiConfig.key || !apiConfig.model) {
-            throw new Error('请先配置向量 API');
-        }
-        return apiConfig;
+        const registry = window.OVOApiServiceRegistry;
+        if (!registry) throw new Error('统一 API 服务未加载');
+        return registry.require('vector', { allowFallback: false }).config;
     }
 
     async function requestVectorSummary(prompt, temperature, options = {}) {
@@ -150,9 +146,12 @@
         let { url, key, model } = apiConfig;
         url = (url || '').replace(/\/$/, '');
         const provider = apiConfig.provider || 'newapi';
-        const endpoint = provider === 'gemini'
-            ? `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`
-            : `${url}/v1/chat/completions`;
+        const registry = window.OVOApiServiceRegistry;
+        const endpoint = registry
+            ? registry.endpointFor(apiConfig, 'chat')
+            : (provider === 'gemini'
+                ? `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`
+                : `${url}${/\/v1$/i.test(url) ? '' : '/v1'}/chat/completions`);
         const headers = provider === 'gemini'
             ? { 'Content-Type': 'application/json' }
             : {
@@ -172,92 +171,15 @@
         return fetchAiResponse({ ...apiConfig, runtimeTask: 'vector-summary', runtimeSource: 'vector-memory-auto', runtimeOperationId: options.operationId || null }, requestBody, headers, endpoint);
     }
 
-    async function fetchEmbeddingBatch(texts) {
-        const apiConfig = getVectorApiConfig();
-        let { url, key, model } = apiConfig;
-        const provider = apiConfig.provider || 'newapi';
-        url = (url || '').replace(/\/$/, '');
-        if (provider === 'gemini') {
-            const outputs = [];
-            for (const text of texts) {
-                const endpoint = `${url}/v1beta/models/${model}:embedContent?key=${getRandomValue(key)}`;
-                const embeddingBody = {
-                    content: {
-                        parts: [{ text }]
-                    }
-                };
-                const response = window.OVOAIRequestRuntime
-                    ? await window.OVOAIRequestRuntime.request({
-                        task: 'vector-embedding', operationType: 'memory.vector.embedding', operationStage: '正在生成向量索引',
-                        source: 'vector-memory-gemini',
-                        provider,
-                        model,
-                        endpoint,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: embeddingBody
-                    })
-                    : await fetch(endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(embeddingBody)
-                    });
-                if (!window.OVOAIRequestRuntime && !response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Embedding API Error: ${response.status} ${errorText}`);
-                }
-                const data = await response.json();
-                outputs.push(data.embedding?.values || []);
-            }
-            return outputs;
-        }
-
-        const endpoint = `${url}/v1/embeddings`;
-        const headers = {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${key}`
-        };
-        const body = {
-            model,
-            input: texts.length === 1 ? texts[0] : texts
-        };
-        if (Number.isFinite(parseInt(apiConfig.dimensions, 10))) {
-            body.dimensions = parseInt(apiConfig.dimensions, 10);
-        }
-        const response = window.OVOAIRequestRuntime
-            ? await window.OVOAIRequestRuntime.request({
-                task: 'vector-embedding', operationType: 'memory.vector.embedding', operationStage: '正在生成向量索引',
-                source: 'vector-memory-openai-compatible',
-                provider,
-                model,
-                endpoint,
-                headers,
-                body
-            })
-            : await fetch(endpoint, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(body)
-            });
-        if (!window.OVOAIRequestRuntime && !response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Embedding API Error: ${response.status} ${errorText}`);
-        }
-        const data = await response.json();
-        const list = Array.isArray(data.data) ? data.data : [];
-        return list.map(item => item.embedding || []);
-    }
-
     async function fetchEmbeddings(texts) {
-        const list = (Array.isArray(texts) ? texts : [texts]).map(item => (item || '').trim()).filter(Boolean);
-        if (list.length === 0) return [];
-        const batchSize = Math.max(1, parseInt((db.vectorApiSettings && db.vectorApiSettings.batchSize) || 8, 10) || 8);
-        const outputs = [];
-        for (let index = 0; index < list.length; index += batchSize) {
-            const batch = list.slice(index, index + batchSize);
-            const vectors = await fetchEmbeddingBatch(batch);
-            outputs.push(...vectors);
-        }
-        return outputs;
+        getVectorApiConfig();
+        const registry = window.OVOApiServiceRegistry;
+        return registry.embed(texts, {
+            task: 'vector-embedding',
+            operationType: 'memory.vector.embedding',
+            operationStage: '正在生成向量索引',
+            source: 'vector-memory'
+        });
     }
 
     function cosineSimilarity(a, b) {

@@ -131,3 +131,29 @@ V2.12-R5.3
 - 检查 KV 字段名列按最长显示名称动态计算；桌面/手机使用紧凑上限。
 - 检查所有记忆表使用双击或手机双点进入编辑，不再以单击选中和 Enter 作为主交互。
 - 检查 Git 快速恢复使用 raw 下载、候选逐个校验，并跳过 404/旧格式/损坏备份。
+
+V2.13-R0 API 与向量架构：
+- node tests/run_v213_r0_api_vector_architecture_checks.js
+- node tests/run_v213_r0_vector_transport_runtime_checks.js
+- 检查 API 单一注册表、向量禁止错误回退、端点规范化、真实 Embedding 验证、统一批处理传输、重复 API 子导航退役和 KV 最长字段名统一列宽。
+
+V2.13-R4 Sidecar 候选闭环：
+- node tests/run_v213_r4_sidecar_candidate_closure_checks.js
+- 验证旧 processed 迁移、保存/合并/忽略/删除、目标追踪、幂等与持久化失败回滚。
+
+V2.13-R5 长期候选原子晋升与交互改进：
+- node tests/run_v213_r5_atomic_promotion_and_interaction_checks.js
+- 验证显式长期目标、批准原子回滚、重复批准幂等、整行弹窗编辑与撤销，以及 Netlify 文件清理。
+
+V2.13-R5.1 全屏 KV 编辑与更新记录计数：
+- node tests/run_v213_r51_fullscreen_kv_and_record_count_checks.js
+- 验证整行编辑覆盖整个屏幕、字段/值双列 KV 布局、长文本自动展开，以及同一行多个字段只计为一条更新记录。
+
+
+V2.13-R5.2 统一表结构工作台与中文作用：
+- node tests/run_v213_r52_three_enter_reply_checks.js
+- node tests/run_v213_r52_unified_schema_and_chinese_effect_checks.js
+- 验证连续 3 次独立 Enter 触发 AI 回复且保持 30 秒冷却。
+- 验证“作用”下拉项全部中文显示，内部英文键保持兼容。
+- 验证字段、表格和高级设置收敛为一个全屏工作台；原始 JSON 仅保留折叠出口。
+- 验证选项、最小值和最大值允许留空，表格和字段高级设置均作为表格列编辑。

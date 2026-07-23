@@ -7,8 +7,7 @@ import shutil
 from pathlib import Path
 
 ROOT_FILES = {
-    'index.html', 'manifest.json', 'sw.js', '_headers', '_redirects',
-    'netlify.toml', 'NETLIFY_DEPLOY.txt', 'VERSION.txt',
+    'index.html', 'manifest.json', 'sw.js', 'VERSION.txt',
     'contacts.css', 'more_menu.css',
     '章鱼机_V2.9-R11_更新说明与验收.md',
     '章鱼机_V2.9-R11_项目理解深度报告.md',

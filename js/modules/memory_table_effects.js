@@ -45,8 +45,19 @@
         ['日常聊天', /./]
     ];
 
-    function normalizeEffect(value, fallback) {
+    function effectLabel(value) {
         const key = String(value || '').trim();
+        return EFFECTS[key]?.label || key || EFFECTS.historical_context.label;
+    }
+
+    function effectOptions() {
+        return Object.entries(EFFECTS).map(([value, config]) => ({ value, label: config.label }));
+    }
+
+    function normalizeEffect(value, fallback) {
+        const raw = String(value || '').trim();
+        const byLabel = Object.entries(EFFECTS).find(([, config]) => config.label === raw)?.[0];
+        const key = EFFECTS[raw] ? raw : byLabel;
         return EFFECTS[key] ? key : (EFFECTS[fallback] ? fallback : 'historical_context');
     }
 
@@ -312,7 +323,7 @@
         if (scenes === null) return false;
         const entities = window.prompt('实体标签（人物/项目/地点，逗号分隔）', meta.tagBundle.entity.join(', '));
         if (entities === null) return false;
-        const effect = window.prompt('作用类型：fact / temporary_state / soft_preference / hard_boundary / reminder / historical_context / candidate', meta.tagBundle.effect);
+        const effect = window.prompt('作用类型：已确认事实 / 临时状态 / 柔性偏好 / 明确边界 / 提醒事项 / 历史背景 / 未审核候选', effectLabel(meta.tagBundle.effect));
         if (effect === null) return false;
         const blocked = window.prompt('禁止场景（逗号分隔；留空表示无）', meta.usePolicy.blockedScenes.join(', '));
         if (blocked === null) return false;
@@ -359,6 +370,8 @@
     const api = {
         VERSION,
         EFFECTS,
+        effectLabel,
+        effectOptions,
         normalizeTagBundle,
         normalizeUsePolicy,
         normalizeUsage,

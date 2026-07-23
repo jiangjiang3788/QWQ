@@ -94,8 +94,9 @@ const dock = fs.readFileSync(path.join(root, 'js/modules/floating_ball.js'), 'ut
 const chat = fs.readFileSync(path.join(root, 'js/modules/chat_ai.js'), 'utf8');
 const theater = fs.readFileSync(path.join(root, 'js/modules/theater.js'), 'utf8');
 const magicRoom = fs.readFileSync(path.join(root, 'js/features/settings/magic_room.js'), 'utf8');
-assert(dock.includes('发送内容来源'));
-assert(dock.includes('查看最终原始请求'));
+assert(dock.includes('quick-dock-source-list'));
+assert(!dock.includes('查看最终原始请求'));
+assert(dock.includes('open-source-management'));
 assert(chat.includes('buildPrivateChatPromptSources'));
 assert(chat.includes('promptSources,'));
 assert(theater.includes('theaterPromptSources'));

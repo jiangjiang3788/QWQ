@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
 const presenterSource = read('js/features/memory/table_presenter.js');
@@ -148,7 +148,7 @@ function createContext() {
   editorContext.row = { id: 'row-1', cells: { field: 'before' } };
   vm.runInContext(read('js/features/memory/table_editor.js'), editorContext);
   const editor = K.get('tableEditor');
-  assert.strictEqual(editor.VERSION, '2.11-R7');
+  assert.strictEqual(editor.VERSION, '2.13-R5');
   let editorWrites = 0;
   const editorWriter = async () => { editorWrites += 1; };
   const table = { id: 'table', name: '长期表', columns: [{ id: 'field', key: '内容' }] };

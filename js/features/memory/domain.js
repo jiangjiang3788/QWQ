@@ -210,6 +210,13 @@
                 memoryLayer: tablePolicy.memoryLayer,
                 updatePolicy: tablePolicy.updatePolicy,
                 injectionPolicy: tablePolicy.injectionPolicy,
+                promotionPolicy: table.promotionPolicy && typeof table.promotionPolicy === 'object'
+                    ? {
+                        enabled: table.promotionPolicy.enabled !== false,
+                        targetTableId: String(table.promotionPolicy.targetTableId || '').trim(),
+                        migratedFromLegacy: table.promotionPolicy.migratedFromLegacy === true
+                    }
+                    : undefined,
                 extractPrompt: typeof table.extractPrompt === 'string' ? table.extractPrompt : '',
                 columns: Array.isArray(table.columns) ? table.columns : []
             };
@@ -376,7 +383,11 @@
                 versionLog: Array.isArray(rawMeta.versionLog) ? rawMeta.versionLog.slice(-40) : [],
                 retrievalVector: Array.isArray(rawMeta.retrievalVector) ? rawMeta.retrievalVector.map(Number).filter(Number.isFinite) : [],
                 retrievalVectorFingerprint: typeof rawMeta.retrievalVectorFingerprint === 'string' ? rawMeta.retrievalVectorFingerprint : '',
-                retrievalIndexedAt: Number(rawMeta.retrievalIndexedAt) || 0
+                retrievalIndexedAt: Number(rawMeta.retrievalIndexedAt) || 0,
+                sourceCandidateId: typeof rawMeta.sourceCandidateId === 'string' ? rawMeta.sourceCandidateId : '',
+                sourceRoundId: typeof rawMeta.sourceRoundId === 'string' ? rawMeta.sourceRoundId : '',
+                tagSource: typeof rawMeta.tagSource === 'string' ? rawMeta.tagSource : '',
+                workflow: rawMeta.workflow && typeof rawMeta.workflow === 'object' ? rawMeta.workflow : null
             }
         };
         (table.columns || []).forEach(field => {
@@ -556,9 +567,12 @@
         });
         rows.push(row);
         if (MemoryLifecycle) {
-            const sourceMap = { manual: 'manual', api: 'summary_api', review_v2_2: 'summary_api', candidate_approve_v2_1: 'manual', sidecar: 'assistant_inferred' };
+            const sourceMap = { manual: 'manual', api: 'summary_api', review_v2_2: 'summary_api', candidate_approve_v2_1: 'manual', candidate_approve_v2_13_r5: 'manual', sidecar: 'assistant_inferred' };
             MemoryLifecycle.ensureRowMeta(row, table, getRowSearchText(table, row));
             MemoryLifecycle.recordSource(row, sourceMap[options.source] || (String(options.source || '').includes('review') ? 'summary_api' : 'manual'), { type: options.sourceMessageId ? 'message' : 'manual', id: options.sourceMessageId || options.source || 'manual', at: Date.now() }, { userConfirmed: options.userConfirmed === true });
+        }
+        if (options.meta && typeof options.meta === 'object') {
+            row.meta = { ...(row.meta || {}), ...deepClone(options.meta) };
         }
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         pushMemoryHistory(chat, (table.columns || []).map(field => ({

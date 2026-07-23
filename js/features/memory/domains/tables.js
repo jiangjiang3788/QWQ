@@ -3,7 +3,7 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     Kernel.register('memoryTablesDomain', Object.freeze({
-        VERSION: '2.12-R5.3',
+        VERSION: '2.13-R5',
         viewport: Kernel.require('tableViewport'),
         session: Kernel.require('tableSession'),
         grouping: Kernel.require('tableGrouping'),
@@ -17,8 +17,10 @@
         presenter: Kernel.require('tablePresenter'),
         reconciler: Kernel.require('tableReconciler'),
         grid: Kernel.require('tableGrid'),
+        rowEditModal: Kernel.require('rowEditModal'),
         editor: Kernel.require('tableEditor'),
         editController: Kernel.require('tableEditController'),
+        rowEditController: Kernel.require('rowEditController'),
         updateActivity: Kernel.require('updateActivity'),
         workspace: Kernel.require('tableWorkspace')
     }));

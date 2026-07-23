@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const fieldWidth = read('js/features/memory/field_width.js');
 const schema = read('js/features/memory/schema_editor.js');
@@ -141,11 +141,11 @@ function makeContext() {
     { id: 'old', timestamp: 100, source: 'manual', changedFields: [{ tableId: 't2' }] }
   ] } };
   assert.strictEqual(activity.latest(chat).entry.id, 'new');
-  assert.strictEqual(activity.latest(chat).counts.get('t1'), 2);
+  assert.strictEqual(activity.latest(chat).counts.get('t1'), 1);
   assert.deepStrictEqual(Array.from(activity.forTable(chat, 't2'), item => item.id), ['new', 'old']);
   const summary = activity.tableSummary(chat.memoryTables.history[0], [{ tables: [{ id: 't1', name: '当前状态' }, { id: 't2', name: '待办' }] }]);
-  assert.deepStrictEqual(Array.from(summary, item => `${item.tableName}:${item.count}`), ['当前状态:2', '待办:1']);
-  assert(activity.banner(chat, { id: 't1' }, []).includes('本次更新了这张表'));
+  assert.deepStrictEqual(Array.from(summary, item => `${item.tableName}:${item.count}`), ['当前状态:1', '待办:1']);
+  assert(activity.banner(chat, { id: 't1' }, []).includes('本次更新了 1 条记忆'));
 }
 
 console.log('V2.12-R5 MEMORY USABILITY REVISION CHECKS: PASS');

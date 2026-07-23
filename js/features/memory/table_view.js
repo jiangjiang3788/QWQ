@@ -4,6 +4,7 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
+    const Effects = Kernel.get('effects');
 
     function normalizeList(value) {
         if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
@@ -63,7 +64,7 @@
             ${input('scene', '场景', bundle.scene)}
             ${input('entity', '主体', bundle.entity)}
             <label class="memory-tag-edit-field"><span>作用</span><select class="memory-table-tag-input" data-tag-dimension="effect">
-                ${['fact','temporary_state','soft_preference','hard_boundary','reminder','historical_context','candidate'].map(value => `<option value="${value}" ${effect === value ? 'selected' : ''}>${value}</option>`).join('')}
+                ${(Effects?.effectOptions?.() || [{value:'fact',label:'已确认事实'},{value:'temporary_state',label:'临时状态'},{value:'soft_preference',label:'柔性偏好'},{value:'hard_boundary',label:'明确边界'},{value:'reminder',label:'提醒事项'},{value:'historical_context',label:'历史背景'},{value:'candidate',label:'未审核候选'}]).map(option => `<option value="${option.value}" ${effect === option.value ? 'selected' : ''}>${Core.escapeHtml(option.label)}</option>`).join('')}
             </select></label>
         </div>`;
     }

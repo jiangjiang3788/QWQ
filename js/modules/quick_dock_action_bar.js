@@ -1,12 +1,10 @@
-// QuickDock action rail · V2.12-R2
+// QuickDock action rail · V2.13-R1
 (() => {
     'use strict';
 
-    const VERSION = '2.12-R2';
+    const VERSION = '2.13-R1';
     const ACTIONS = Object.freeze([
-        { action: 'main', label: '操作', hint: '状态与历史', panel: 'main' },
-        { action: 'open-operation', label: '详情', hint: '阶段与请求', panel: 'operation', needsOperation: true },
-        { action: 'open-proment-full', label: 'Proment', hint: 'Prompt 与记忆' },
+        { action: 'main', label: '操作记录', hint: '状态、历史与详情', panel: 'main' },
         { action: 'open-console', label: '日志', hint: '错误排查', panel: 'console' },
         { action: 'open-coverage', label: '覆盖', hint: '能力核验', panel: 'coverage' },
         { action: 'git-upload', label: 'Git 上传', hint: '同步当前数据' },
@@ -17,13 +15,12 @@
     const escapeHtml = value => String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 
     function renderAction(action, context) {
-        const disabled = action.needsOperation && !context.operationId;
-        const selected = action.panel && action.panel === context.activePanel;
-        const operationAttr = action.action === 'open-operation' && context.operationId
-            ? ` data-operation-id="${escapeHtml(context.operationId)}"`
-            : '';
-        return `<button type="button" class="quick-dock-top-action" data-qd-action="${escapeHtml(action.action)}"${operationAttr}${disabled ? ' disabled' : ''}${selected ? ' aria-current="page"' : ''}>
-            <b>${escapeHtml(action.label)}</b><small>${escapeHtml(disabled ? '暂无记录' : action.hint)}</small>
+        const selected = action.panel && (
+            action.panel === context.activePanel ||
+            (action.action === 'main' && context.activePanel === 'operation')
+        );
+        return `<button type="button" class="quick-dock-top-action" data-qd-action="${escapeHtml(action.action)}"${selected ? ' aria-current="page"' : ''}>
+            <b>${escapeHtml(action.label)}</b><small>${escapeHtml(action.hint)}</small>
         </button>`;
     }
 

@@ -1,0 +1,13 @@
+QWQ V2.13-R0 自动检查结果
+===========================
+
+1. JavaScript 语法检查：PASS（全部 js 文件）
+2. 静态完整性检查：PASS
+3. 记忆架构门禁：PASS
+4. Node 回归测试：PASS（54/54）
+5. 新增专项测试：
+   - run_v213_r0_api_vector_architecture_checks.js：PASS
+   - run_v213_r0_vector_transport_runtime_checks.js：PASS
+6. 文件名编码检查：PASS（无 #Uxxxx 文件名残留）
+
+说明：运行环境无法访问用户的真实 API 密钥，因此未对实际第三方网关做在线连通性测试。应用内已改为保存时发送真实 Embedding 请求，并记录成功维度或失败原因。

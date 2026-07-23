@@ -37,7 +37,7 @@
         const updated = UpdateActivity.isCellUpdated(chat, template.id, table.id, field.id);
         const valueCellClass = [editing ? 'memory-flat-cell-editing' : '', updated ? 'memory-cell-updated' : ''].filter(Boolean).join(' ');
         return `<tr data-memory-important="${field.important !== false}" class="${classes}" data-memory-edit-target data-memory-edit-kind="field" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-field-id="${Core.escapeAttribute(field.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`${field.key}，双击编辑`)}">
-            <th><div class="memory-flat-field-label"><span>${Core.escapeHtml(field.key)}</span></div>
+            <th title="${Core.escapeAttribute(field.key)}"><div class="memory-flat-field-label"><span title="${Core.escapeAttribute(field.key)}">${Core.escapeHtml(field.key)}</span></div>
             <div class="memory-v2-json-meta memory-v2-json-only">id=${Core.escapeHtml(field.id)} · type=${Core.escapeHtml(field.type)} · important=${field.important !== false}<br>${Core.escapeHtml(field.aiHint || '')}</div></th>
             <td class="${valueCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, field.id)}>${editing ? `<div class="memory-v2-inline-editor">${helpers.renderFieldEditor(template.id, table.id, field, value, locked)}</div>` : TableView.renderValue(field, value, { unclamped: true })}</td>
         </tr>`;

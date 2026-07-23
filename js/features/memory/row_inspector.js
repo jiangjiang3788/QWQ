@@ -7,6 +7,7 @@
     const TagService = Kernel.require('tagService');
     const RelationService = Kernel.require('relationService');
     const TagVocabulary = Kernel.require('tagVocabulary');
+    const Effects = Kernel.get('effects');
 
     const TABS = Object.freeze([
         { id: 'relations', label: '关联' },
@@ -88,7 +89,7 @@
         return `<form class="memory-row-tab-panel memory-row-tag-form" data-inspector-panel="tags" data-row-tag-form data-row-id="${Core.escapeAttribute(target.row.id)}">
             <div class="memory-row-inspector-section-head"><div><h3>标签</h3><p>继续使用现有 tagBundle；词表会在写入时自动归一。</p></div><label class="memory-row-tag-lock"><input type="checkbox" name="tagLocked" ${TagService.isLocked(target.row) ? 'checked' : ''}> 锁定</label></div>
             ${tagInput('topic', '主题', bundle.topic, '睡眠, 主动求助, 关系信任')}${tagInput('scene', '场景', bundle.scene, '睡前交流, 健康追踪')}${tagInput('entity', '主体', bundle.entity, '用户, 角色, 项目')}
-            <label class="memory-row-inspector-field"><span>作用</span><select name="effect">${['fact','temporary_state','soft_preference','hard_boundary','reminder','historical_context','candidate'].map(value => `<option value="${value}" ${bundle.effect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+            <label class="memory-row-inspector-field"><span>作用</span><select name="effect">${(Effects?.effectOptions?.() || [{value:'fact',label:'已确认事实'},{value:'temporary_state',label:'临时状态'},{value:'soft_preference',label:'柔性偏好'},{value:'hard_boundary',label:'明确边界'},{value:'reminder',label:'提醒事项'},{value:'historical_context',label:'历史背景'},{value:'candidate',label:'未审核候选'}]).map(option => `<option value="${option.value}" ${bundle.effect === option.value ? 'selected' : ''}>${Core.escapeHtml(option.label)}</option>`).join('')}</select></label>
             <div class="memory-row-inspector-actions"><button type="submit" class="btn btn-small btn-primary">保存标签</button><button type="button" class="btn btn-small btn-secondary" data-action="regenerate-row-tags" data-row-id="${Core.escapeAttribute(target.row.id)}" ${busy ? 'disabled' : ''}>${busy ? '生成中…' : '大模型重算'}</button></div>
             <datalist id="memory-topic-tags">${optionsHtml('topic')}</datalist><datalist id="memory-scene-tags">${optionsHtml('scene')}</datalist><datalist id="memory-entity-tags">${optionsHtml('entity')}</datalist>
         </form>`;

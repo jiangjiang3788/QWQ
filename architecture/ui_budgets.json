@@ -1,5 +1,5 @@
 {
-  "version": "2.12-R5.3",
+  "version": "2.13-R0",
   "memoryTable": {
     "maxVisibleDataRows": 30,
     "maxActiveEditors": 1,
@@ -26,6 +26,6 @@
   "schemaEditor": {
     "maxModalDepth": 1,
     "maxRawJsonEditorsVisibleByDefault": 0,
-    "requiredPeerViews": 3
+    "requiredPeerViews": 1
   }
 }

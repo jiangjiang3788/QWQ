@@ -18,7 +18,7 @@ assert(runtime.includes('BODY_PREVIEW_LIMIT = 120000'), 'raw request preview lim
 assert(runtime.includes('value.length > 80000') || runtime.includes('redacted.length > 80000'), 'operation feedback clone limit not expanded');
 assert(trace.includes('verificationView: true'), 'combined prompt verification view is missing');
 assert(trace.includes('不代表再次发送') || dock.includes('不是第二次发送'), 'UI does not explain combined/itemized views are one request');
-assert(dock.includes('模型请求（实际网络调用）'), 'actual network call count label is missing');
+assert(dock.includes('次实际网络调用'), 'actual network call count label is missing');
 assert(dock.includes('quick-dock-source-item-flat'), 'prompt source items were not flattened');
 assert(dock.includes('quick-dock-panel--app-fullscreen'), 'full-screen operation center class is missing');
 assert(dockCss.includes('quick-dock-panel--app-fullscreen'), 'full-screen operation center CSS is missing');

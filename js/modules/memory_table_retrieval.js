@@ -12,72 +12,18 @@
     const RETRIEVAL_VERSION = '2.7';
 
     function hasExplicitVectorApi() {
-        const config = window.db && db.vectorApiSettings;
-        return !!(config && config.url && config.key && config.model);
-    }
-
-    function getVectorApiConfig() {
-        const config = window.db && db.vectorApiSettings;
-        if (!config || !config.url || !config.key || !config.model) {
-            throw new Error('未配置向量 API，已回退关键词检索');
-        }
-        return config;
-    }
-
-    async function fetchEmbeddingBatch(texts) {
-        const apiConfig = getVectorApiConfig();
-        let { url, key, model } = apiConfig;
-        const provider = apiConfig.provider || 'newapi';
-        url = String(url || '').replace(/\/$/, '');
-        if (provider === 'gemini') {
-            const outputs = [];
-            for (const text of texts) {
-                const randomKey = typeof getRandomValue === 'function' ? getRandomValue(key) : key;
-                const endpoint = `${url}/v1beta/models/${model}:embedContent?key=${randomKey}`;
-                const body = { content: { parts: [{ text }] } };
-                const response = window.OVOAIRequestRuntime
-                    ? await window.OVOAIRequestRuntime.request({
-                        task: 'memory-table-embedding', operationType: 'memory.embedding', operationStage: '正在生成档案检索向量', source: 'memory-table-retrieval-gemini', provider, model,
-                        endpoint, headers: { 'Content-Type': 'application/json' }, body
-                    })
-                    : await fetch(endpoint, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-                    });
-                if (!window.OVOAIRequestRuntime && !response.ok) {
-                    throw new Error(`Embedding API Error: ${response.status} ${await response.text()}`);
-                }
-                const data = await response.json();
-                outputs.push(data.embedding?.values || []);
-            }
-            return outputs;
-        }
-
-        const endpoint = `${url}/v1/embeddings`;
-        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
-        const body = { model, input: texts.length === 1 ? texts[0] : texts };
-        if (Number.isFinite(parseInt(apiConfig.dimensions, 10))) body.dimensions = parseInt(apiConfig.dimensions, 10);
-        const response = window.OVOAIRequestRuntime
-            ? await window.OVOAIRequestRuntime.request({
-                task: 'memory-table-embedding', operationType: 'memory.embedding', operationStage: '正在生成档案检索向量', source: 'memory-table-retrieval-openai-compatible', provider, model,
-                endpoint, headers, body
-            })
-            : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!window.OVOAIRequestRuntime && !response.ok) {
-            throw new Error(`Embedding API Error: ${response.status} ${await response.text()}`);
-        }
-        const data = await response.json();
-        return (Array.isArray(data.data) ? data.data : []).map(item => item.embedding || []);
+        return !!window.OVOApiServiceRegistry?.isReady('vector');
     }
 
     async function fetchEmbeddings(texts) {
-        const list = (Array.isArray(texts) ? texts : [texts]).map(item => String(item || '').trim()).filter(Boolean);
-        if (!list.length) return [];
-        const batchSize = Math.max(1, parseInt((db.vectorApiSettings && db.vectorApiSettings.batchSize) || 8, 10) || 8);
-        const outputs = [];
-        for (let index = 0; index < list.length; index += batchSize) {
-            outputs.push(...await fetchEmbeddingBatch(list.slice(index, index + batchSize)));
-        }
-        return outputs;
+        const registry = window.OVOApiServiceRegistry;
+        if (!registry) throw new Error('统一 API 服务未加载，已回退关键词检索');
+        return registry.embed(texts, {
+            task: 'memory-table-embedding',
+            operationType: 'memory.embedding',
+            operationStage: '正在生成档案检索向量',
+            source: 'memory-table-retrieval'
+        });
     }
 
     function cosineSimilarity(a, b) {
