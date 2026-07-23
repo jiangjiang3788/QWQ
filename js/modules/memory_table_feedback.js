@@ -472,8 +472,7 @@
 
     function getPendingCount(chat) {
         const state = ensureState(chat);
-        const latest = [...(state?.rounds || [])].reverse().find(item => item.requestStatus === 'completed' && item.status === 'open');
-        return latest ? (latest.items || []).filter(item => item.feedback === 'pending').length : 0;
+        return (state?.rounds || []).reduce((total, round) => total + (round.items || []).filter(item => item.feedback === 'pending').length, 0);
     }
 
     function getStats(chat) {
@@ -574,6 +573,24 @@
         return before - state.rounds.length;
     }
 
+
+    function clearPendingTasks(chat) {
+        const state = ensureState(chat);
+        const removableIds = new Set();
+        let pendingItems = 0;
+        (state.rounds || []).forEach(round => {
+            const pending = (round.items || []).filter(item => item.feedback === 'pending').length;
+            if (pending || ['open', 'expired'].includes(round.status) || round.requestStatus === 'prepared') {
+                removableIds.add(round.id);
+                pendingItems += pending;
+            }
+        });
+        if (!removableIds.size) return { rounds: 0, items: 0 };
+        state.rounds = state.rounds.filter(round => !removableIds.has(round.id));
+        state.events = state.events.filter(event => !removableIds.has(event.snapshotId));
+        return { rounds: removableIds.size, items: pendingItems };
+    }
+
     function getLastSnapshot(chat) {
         const state = ensureState(chat);
         return [...(state?.rounds || [])].reverse().find(item => item.requestStatus === 'completed') || null;
@@ -597,6 +614,7 @@
         updateSettings,
         clearReviewedRounds,
         clearExpiredRounds,
+        clearPendingTasks,
         expireStaleSnapshots
     };
 

@@ -1,0 +1,93 @@
+{
+  "version": "2.12-R2",
+  "results": [
+    {
+      "label": "desktop",
+      "main": {
+        "topActions": [
+          "操作",
+          "详情",
+          "Proment",
+          "日志",
+          "覆盖",
+          "Git 上传",
+          "Git 恢复",
+          "Git 设置"
+        ],
+        "actionHubCount": 1,
+        "secondaryToolCards": 0,
+        "backButtons": 0,
+        "modelSelect": true,
+        "contentTitle": "AI 操作中心",
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "overflow": false
+      },
+      "logs": {
+        "hub": 1,
+        "title": "开发日志",
+        "back": 0
+      },
+      "coverage": {
+        "hub": 1,
+        "title": "AI 功能覆盖",
+        "back": 0
+      },
+      "detail": {
+        "hub": 1,
+        "title": "💬 生成阿沉回复",
+        "back": 0
+      },
+      "directProment": {
+        "screen": "magic-room-screen",
+        "setup": true,
+        "panelHidden": true
+      },
+      "errors": []
+    },
+    {
+      "label": "mobile",
+      "main": {
+        "topActions": [
+          "操作",
+          "详情",
+          "Proment",
+          "日志",
+          "覆盖",
+          "Git 上传",
+          "Git 恢复",
+          "Git 设置"
+        ],
+        "actionHubCount": 1,
+        "secondaryToolCards": 0,
+        "backButtons": 0,
+        "modelSelect": true,
+        "contentTitle": "AI 操作中心",
+        "pageWidth": 390,
+        "viewport": 390,
+        "overflow": false
+      },
+      "logs": {
+        "hub": 1,
+        "title": "开发日志",
+        "back": 0
+      },
+      "coverage": {
+        "hub": 1,
+        "title": "AI 功能覆盖",
+        "back": 0
+      },
+      "detail": {
+        "hub": 1,
+        "title": "💬 生成阿沉回复",
+        "back": 0
+      },
+      "directProment": {
+        "screen": "magic-room-screen",
+        "setup": true,
+        "panelHidden": true
+      },
+      "errors": []
+    }
+  ]
+}

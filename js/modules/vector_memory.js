@@ -188,7 +188,7 @@
                 };
                 const response = window.OVOAIRequestRuntime
                     ? await window.OVOAIRequestRuntime.request({
-                        task: 'vector-embedding',
+                        task: 'vector-embedding', operationType: 'memory.vector.embedding', operationStage: '正在生成向量索引',
                         source: 'vector-memory-gemini',
                         provider,
                         model,
@@ -225,7 +225,7 @@
         }
         const response = window.OVOAIRequestRuntime
             ? await window.OVOAIRequestRuntime.request({
-                task: 'vector-embedding',
+                task: 'vector-embedding', operationType: 'memory.vector.embedding', operationStage: '正在生成向量索引',
                 source: 'vector-memory-openai-compatible',
                 provider,
                 model,

@@ -8,13 +8,14 @@ const runtime = read('js/modules/operation_runtime.js');
 const trace = read('js/modules/prompt_trace.js');
 const chat = read('js/modules/chat_ai.js');
 const memory = read('js/modules/memory_table.js');
+const memoryUpdate = read('js/features/memory/update_service.js');
 const review = read('js/modules/memory_table_review.js');
 const dock = read('js/modules/floating_ball.js');
 const dockCss = read('css/modules/quick_dock.css');
 const memoryCss = read('css/modules/memory_table_v2.css');
 
 assert(runtime.includes('BODY_PREVIEW_LIMIT = 120000'), 'raw request preview limit not expanded');
-assert(runtime.includes('value.length > 80000'), 'operation feedback clone limit not expanded');
+assert(runtime.includes('value.length > 80000') || runtime.includes('redacted.length > 80000'), 'operation feedback clone limit not expanded');
 assert(trace.includes('verificationView: true'), 'combined prompt verification view is missing');
 assert(trace.includes('不代表再次发送') || dock.includes('不是第二次发送'), 'UI does not explain combined/itemized views are one request');
 assert(dock.includes('模型请求（实际网络调用）'), 'actual network call count label is missing');
@@ -30,8 +31,8 @@ const replyBlock = chat.slice(chat.indexOf("const promptSources = chatType === '
 assert.strictEqual((replyBlock.match(/OVOAIRequestRuntime\.request/g) || []).length, 1, 'main chat reply path appears to issue more than one runtime request');
 assert(replyBlock.includes('dedupeKey:'), 'main chat request dedupe guard is missing');
 
-assert(memory.includes('formatMemoryPromptTimestamp'), 'memory prompt timestamp helper is missing');
-assert(memory.includes('`[${formatMemoryPromptTimestamp(item.timestamp)}]'), 'memory history does not include exact message times');
+assert(memoryUpdate.includes('function timestamp(value)'), 'memory prompt timestamp helper is missing');
+assert(memoryUpdate.includes('`[${timestamp(item.timestamp)}]'), 'memory history does not include exact message times');
 assert(memory.includes("memoryTableScreenBound === '1'"), 'memory review screen binding guard is missing');
 assert(memory.includes('正在保存…'), 'memory review apply feedback is missing');
 assert(memory.includes('审核结果保存失败'), 'memory review apply failure feedback is missing');

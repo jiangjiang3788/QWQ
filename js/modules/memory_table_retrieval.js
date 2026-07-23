@@ -37,7 +37,7 @@
                 const body = { content: { parts: [{ text }] } };
                 const response = window.OVOAIRequestRuntime
                     ? await window.OVOAIRequestRuntime.request({
-                        task: 'memory-table-embedding', source: 'memory-table-retrieval-gemini', provider, model,
+                        task: 'memory-table-embedding', operationType: 'memory.embedding', operationStage: '正在生成档案检索向量', source: 'memory-table-retrieval-gemini', provider, model,
                         endpoint, headers: { 'Content-Type': 'application/json' }, body
                     })
                     : await fetch(endpoint, {
@@ -58,7 +58,7 @@
         if (Number.isFinite(parseInt(apiConfig.dimensions, 10))) body.dimensions = parseInt(apiConfig.dimensions, 10);
         const response = window.OVOAIRequestRuntime
             ? await window.OVOAIRequestRuntime.request({
-                task: 'memory-table-embedding', source: 'memory-table-retrieval-openai-compatible', provider, model,
+                task: 'memory-table-embedding', operationType: 'memory.embedding', operationStage: '正在生成档案检索向量', source: 'memory-table-retrieval-openai-compatible', provider, model,
                 endpoint, headers, body
             })
             : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });

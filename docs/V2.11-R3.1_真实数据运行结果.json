@@ -1,0 +1,152 @@
+{
+  "version": "2.11-R3.1",
+  "character": {
+    "id": "char_1769490095778",
+    "name": "阿沉",
+    "messages": 19133
+  },
+  "rows": 179,
+  "target": {
+    "rowId": "memory_row_1784414847599_2v74tv",
+    "table": "稳定长期特征库",
+    "rowIndex": 4,
+    "text": "维度或类型: 已形成的新能力 分类: 表达 内容: 在亲密关系中主动且坦白地表达对“安抚式支配/危险/控制”的深层欲望",
+    "tags": {
+      "topic": [
+        "成长沉淀",
+        "表达",
+        "关系"
+      ],
+      "scene": [
+        "关系讨论"
+      ],
+      "entity": [
+        "安抚式支配/危险/控制"
+      ],
+      "effect": "historical_context"
+    }
+  },
+  "candidate": {
+    "rowId": "memory_row_1784414847599_p768p4",
+    "table": "稳定长期特征库",
+    "rowIndex": 5,
+    "text": "维度或类型: 已形成的新能力 分类: 表达 内容: 在亲密关系中主动且坦白地表达性渴望与身心纠结",
+    "tags": {
+      "topic": [
+        "成长沉淀",
+        "表达",
+        "关系"
+      ],
+      "scene": [
+        "关系讨论"
+      ],
+      "entity": [],
+      "effect": "historical_context"
+    }
+  },
+  "analysis": {
+    "total": 14,
+    "visible": 8,
+    "counts": {
+      "review": 2,
+      "related": 12
+    },
+    "top": [
+      {
+        "rowId": "memory_row_1784414847599_p768p4",
+        "table": "稳定长期特征库",
+        "score": 0.6380582524271845,
+        "kind": "review",
+        "reasons": [
+          "主题重合 100%",
+          "场景重合 100%",
+          "内容相似 58%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847599_zjk86m",
+        "table": "稳定长期特征库",
+        "score": 0.6054054054054054,
+        "kind": "review",
+        "reasons": [
+          "主题重合 100%",
+          "场景重合 100%",
+          "内容相似 49%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847599_5tgfg4",
+        "table": "稳定长期特征库",
+        "score": 0.5467768595041322,
+        "kind": "related",
+        "reasons": [
+          "主题重合 100%",
+          "场景重合 100%",
+          "内容相似 31%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847599_vefxki",
+        "table": "稳定长期特征库",
+        "score": 0.5454263565891474,
+        "kind": "related",
+        "reasons": [
+          "主题重合 100%",
+          "场景重合 100%",
+          "内容相似 31%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847599_32z3ix",
+        "table": "稳定长期特征库",
+        "score": 0.5390551181102362,
+        "kind": "related",
+        "reasons": [
+          "主题重合 100%",
+          "场景重合 100%",
+          "内容相似 29%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847600_cunft9",
+        "table": "稳定长期特征库",
+        "score": 0.46505952380952376,
+        "kind": "related",
+        "reasons": [
+          "主题重合 67%",
+          "场景重合 100%",
+          "内容相似 35%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847600_e5p1ac",
+        "table": "稳定长期特征库",
+        "score": 0.4541666666666666,
+        "kind": "related",
+        "reasons": [
+          "主题重合 67%",
+          "场景重合 100%",
+          "内容相似 32%"
+        ]
+      },
+      {
+        "rowId": "memory_row_1784414847599_gqvn2u",
+        "table": "稳定长期特征库",
+        "score": 0.4532768361581921,
+        "kind": "related",
+        "reasons": [
+          "主题重合 67%",
+          "场景重合 100%",
+          "内容相似 31%"
+        ]
+      }
+    ]
+  },
+  "review": {
+    "fillCurrentCount": 0,
+    "fillCandidateCount": 0,
+    "conflictCount": 1,
+    "visibleFields": 1,
+    "focusedMode": true
+  }
+}

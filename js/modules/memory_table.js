@@ -5,27 +5,68 @@
     const Core = Kernel?.core;
     if (!Core) throw new Error('记忆内核未加载');
     const MEMORY_TABLE_MAX_CONTEXT_MESSAGES = 60;
-    const MemoryPolicy = Kernel.get('policy');
-    const MemoryReview = Kernel.get('review');
-    const MemoryRetrieval = Kernel.get('retrieval');
-    const MemoryEffects = Kernel.get('effects');
-    const MemoryLifecycle = Kernel.get('lifecycle');
-    const MemoryTasks = Kernel.get('tasks');
-    const MemoryFeedback = Kernel.get('feedback');
-    const MemoryQuality = Kernel.get('quality');
-    const MemorySidecar = Kernel.get('sidecar');
-    const MemorySchedule = Kernel.require('schedule');
-    const MemoryApi = Kernel.require('api');
-    const MemoryDomain = Kernel.require('domain');
-    const MemoryWorkspace = Kernel.require('workspace');
+    const MemoryPlatformDomain = Kernel.require('memoryPlatformDomain');
+    const MemoryFoundationDomain = Kernel.require('memoryFoundationDomain');
+    const MemorySchemaDomain = Kernel.require('memorySchemaDomain');
+    const MemoryGovernanceDomain = Kernel.require('memoryGovernanceDomain');
+    const MemoryRetrievalDomain = Kernel.require('memoryRetrievalDomain');
+    const MemoryUpdateDomain = Kernel.require('memoryUpdateDomain');
+    const MemoryTablesDomain = Kernel.require('memoryTablesDomain');
+    Kernel.require('memoryArchitecture').assertHealthy();
+
+    const {
+        policy: MemoryPolicy,
+        review: MemoryReview,
+        retrieval: MemoryRetrieval,
+        effects: MemoryEffects,
+        lifecycle: MemoryLifecycle,
+        tasks: MemoryTasks,
+        feedback: MemoryFeedback,
+        quality: MemoryQuality,
+        sidecar: MemorySidecar,
+        schedule: MemorySchedule
+    } = MemoryPlatformDomain;
+    const {
+        api: MemoryApi,
+        domain: MemoryDomain,
+        workspace: MemoryWorkspace
+    } = MemoryFoundationDomain;
+    const {
+        model: MemorySchemaModel,
+        editor: MemorySchemaEditor
+    } = MemorySchemaDomain;
+    const {
+        candidate: MemoryCandidateService,
+        filter: MemoryTableFilter,
+        queue: MemoryGovernanceQueue,
+        controller: MemoryGovernanceController,
+        relation: MemoryRelationService,
+        inspector: MemoryRowInspector,
+        inspectorController: MemoryRowInspectorController
+    } = MemoryGovernanceDomain;
+    const { audit: MemoryRetrievalAudit } = MemoryRetrievalDomain;
+    const {
+        tags: MemoryTagService,
+        context: MemoryContextAssembler,
+        update: MemoryUpdateService
+    } = MemoryUpdateDomain;
+    const {
+        grid: MemoryTableGrid,
+        interaction: MemoryTableInteraction,
+        session: MemoryTableSession,
+        cache: MemoryTableCache,
+        editController: MemoryTableEditController,
+        updateActivity: MemoryUpdateActivity,
+        workspace: MemoryTableWorkspace
+    } = MemoryTablesDomain;
     const {
         ensureMemoryTemplateStore, ensureMemoryTableState: ensureMemoryTableStateBase, getCurrentMemoryTableChat: getCurrentMemoryTableChatBase, createStarterTemplate,
         createEmptyFieldDraft, createEmptyTableDraft, normalizeTemplate, normalizeFieldType, parseOptionText,
         parseConditionalRulesText, serializeConditionalRules, getDefaultValueByType, getFieldDefaultValue,
         getBoundTemplates, isRowsTable, createEmptyRow, normalizeRowShape, ensureTemplateDataForChat, getRows,
         findRowById, normalizeFieldValue, clampFieldValue, getFieldValue, pushMemoryHistory, setFieldValue,
-        isSameMemoryValue, buildFieldPath, addRow, updateRowFieldValue, deleteRow, moveRow, isFieldLocked,
-        toggleFieldLock, getFieldDisplayValue, evaluateConditionalColor, isEmptyMemoryValue, getRowSearchText
+        isSameMemoryValue, addRow, updateRowFieldValue, deleteRow, moveRow, isFieldLocked,
+        toggleFieldLock, getFieldDisplayValue, isEmptyMemoryValue, getRowSearchText
     } = MemoryDomain;
     const deepClone = Core.clone;
     const createMemoryId = Core.createId;
@@ -45,12 +86,20 @@
         editingTemplateId: null,
         templateDraft: null,
         conversionState: null,
-        designerCollapsedFieldIds: {},
-        designerDrag: null,
+        schemaEditorTab: 'fields',
+        schemaEditorTableIndex: 0,
         viewMode: 'normal',
         activeTableId: null,
-        rangePreview: null
+        editingRowId: null,
+        editingFieldPath: null,
+        focusedRowId: null,
+        focusedFieldPath: null,
+        settingsOpen: false,
+        rangePreview: null,
+        inspectorOpen: false, selectedRowId: null, inspectorAnalysis: null, inspectorReview: null, inspectorBusy: false, inspectorTab: 'relations',
+        rowFilter: 'all', rowTagFilter: '', rowSorts: [], historyTableId: null
     };
+    MemoryTableSession.ensure(uiState);
     function ensureMemoryTableState(chat, options = {}) {
         ensureMemoryTableStateBase(chat);
         if (!chat) return null;
@@ -58,7 +107,8 @@
             const runtime = MemoryPolicy.ensureRuntimeState(chat);
             const shouldHydrateUi = options.forceUiHydration === true || uiState.hydratedChatId !== chat.id;
             if (shouldHydrateUi) {
-                uiState.viewMode = runtime.viewMode || 'normal';
+                uiState.viewMode = 'normal';
+                runtime.viewMode = 'normal';
                 uiState.activeTableId = runtime.activeTableId || null;
                 const normalizedWorkspace = MemoryWorkspace.normalizeState(runtime.workspace || 'memory', runtime.workspaceView || 'tables');
                 Object.assign(uiState, { workspace: normalizedWorkspace.workspace, tab: normalizedWorkspace.view, hydratedChatId: chat.id });
@@ -91,45 +141,6 @@
         return normalized;
     }
     const selectMemoryView = (chat, view) => applyMemoryWorkspaceState(chat, MemoryWorkspace.getWorkspaceForView(view), view);
-    function getVisibleFieldItems(chat) {
-        const keyword = uiState.search.trim().toLowerCase();
-        const templates = getBoundTemplates(chat);
-        const items = [];
-        templates.forEach(template => {
-            ensureTemplateDataForChat(chat, template);
-            template.tables.forEach(table => {
-                table.columns.forEach(field => {
-                    const value = getFieldValue(chat, template.id, table.id, field);
-                    const item = {
-                        template,
-                        table,
-                        field,
-                        value,
-                        locked: isFieldLocked(chat, template.id, table.id, field.id),
-                        changed: (chat.memoryTables.lastChangedFieldPaths || []).includes(buildFieldPath(template.id, table.id, field.id))
-                    };
-                    const haystack = [
-                        template.name,
-                        template.description,
-                        table.name,
-                        field.key,
-                        getFieldDisplayValue(field, value)
-                    ].join(' ').toLowerCase();
-                    if (!keyword || haystack.includes(keyword)) {
-                        items.push(item);
-                    }
-                });
-            });
-        });
-        if (uiState.sort === 'name') {
-            items.sort((a, b) => a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        } else if (uiState.sort === 'changed') {
-            items.sort((a, b) => Number(b.changed) - Number(a.changed) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        } else if (uiState.sort === 'locked') {
-            items.sort((a, b) => Number(b.locked) - Number(a.locked) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        }
-        return items;
-    }
     function findBestMemoryTableCursorFallback(chat) {
         const history = Array.isArray(chat && chat.history) ? chat.history : [];
         if (!history.length || !chat || !chat.memoryTables || !chat.memoryTables.lastUpdateMsgTimestamp) {
@@ -392,6 +403,7 @@
             return;
         }
         ensureMemoryTableState(chat);
+        MemoryTableCache.touchChat(chat.id, 'full-screen-render');
         if (MemoryQuality && MemoryTasks) MemoryQuality.enqueuePendingAutoRun(chat);
         if (MemoryTasks) {
             const taskState = MemoryTasks.ensureState(chat);
@@ -402,18 +414,9 @@
             }
         }
         const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        if (uiState.viewMode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
-            uiState.viewMode = 'normal';
-            if (runtime) runtime.viewMode = 'normal';
-        }
-        screen.classList.toggle('memory-json-mode', uiState.viewMode === 'json');
-        const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
-        const jsonModeBtn = document.getElementById('memory-table-json-mode-btn');
-        if (normalModeBtn) normalModeBtn.classList.toggle('active', uiState.viewMode === 'normal');
-        if (jsonModeBtn) {
-            jsonModeBtn.classList.toggle('active', uiState.viewMode === 'json');
-            jsonModeBtn.disabled = !!(MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable());
-        }
+        uiState.viewMode = 'normal';
+        if (runtime) runtime.viewMode = 'normal';
+        screen.classList.remove('memory-json-mode');
         const boundTemplates = getBoundTemplates(chat);
         const normalizedWorkspace = MemoryWorkspace.normalizeState(uiState.workspace, uiState.tab);
         uiState.workspace = normalizedWorkspace.workspace;
@@ -436,7 +439,12 @@
         });
         if (memoryToolbar) memoryToolbar.hidden = uiState.workspace !== 'memory';
         if (manageTools) manageTools.hidden = uiState.workspace !== 'manage';
-        if (settingsPanel) settingsPanel.hidden = uiState.workspace !== 'memory';
+        if (settingsPanel) {
+            settingsPanel.hidden = uiState.workspace !== 'memory';
+            settingsPanel.classList.toggle('visible', uiState.workspace === 'memory' && uiState.settingsOpen);
+        }
+        const settingsBackdrop = document.getElementById('memory-workbench-settings-backdrop');
+        if (settingsBackdrop) settingsBackdrop.classList.toggle('visible', uiState.workspace === 'memory' && uiState.settingsOpen);
         if (updateBtn) updateBtn.hidden = uiState.workspace !== 'memory';
         if (createTemplateBtn) createTemplateBtn.hidden = uiState.workspace !== 'manage';
         const modeLabel = chat.memoryMode === 'table'
@@ -467,7 +475,7 @@
             reviewCountEl.style.display = reviewCount > 0 ? 'inline-flex' : 'none';
         }
         const feedbackCount = MemoryFeedback ? MemoryFeedback.getPendingCount(chat) : 0;
-        const feedbackCountEl = document.getElementById('memory-feedback-tab-count');
+        const feedbackCountEl = document.getElementById('memory-usage-audit-tab-count');
         if (feedbackCountEl) {
             feedbackCountEl.textContent = String(feedbackCount);
             feedbackCountEl.style.display = feedbackCount > 0 ? 'inline-flex' : 'none';
@@ -488,10 +496,9 @@
                 return renderTemplateLibrary(chat);
             }
             if (view === 'review') return MemoryReview ? MemoryReview.renderReviewView(chat) : '<div class="memory-review-empty"><p>更新审核模块未加载。</p></div>';
-            if (view === 'retrieval') return MemoryRetrieval ? MemoryRetrieval.renderDiagnostics(chat) : '<div class="memory-retrieval-empty"><p>检索诊断模块未加载。</p></div>';
+            if (['usage_audit', 'retrieval', 'feedback'].includes(view)) return MemoryRetrievalAudit.render(chat);
             if (view === 'sidecar') return MemorySidecar ? MemorySidecar.renderCandidatesView(chat) : '<div class="memory-review-empty"><p>短期候选模块未加载。</p></div>';
             if (view === 'reliability') return MemoryLifecycle ? MemoryLifecycle.renderReliabilityView(chat, boundTemplates) : '<div class="memory-review-empty"><p>可靠性模块未加载。</p></div>';
-            if (view === 'feedback') return MemoryFeedback ? MemoryFeedback.renderView(chat) : '<div class="memory-review-empty"><p>使用反馈模块未加载。</p></div>';
             if (view === 'tasks') return MemoryTasks ? MemoryTasks.renderView(chat) : '<div class="memory-review-empty"><p>任务队列模块未加载。</p></div>';
             if (view === 'quality') return MemoryQuality ? MemoryQuality.renderView(chat) : '<div class="memory-review-empty"><p>质量评估模块未加载。</p></div>';
             if (view === 'history') {
@@ -514,623 +521,150 @@
             } else if (!content.innerHTML.trim()) {
                 empty.style.display = 'block';
                 empty.innerHTML = '<p>没有匹配结果</p>';
-            } else {
-                drawAllCharts(chat);
             }
         } else {
             const title = MemoryWorkspace.viewTitle(uiState.tab);
             const body = renderTechnicalView(uiState.tab);
             content.innerHTML = `${MemoryWorkspace.renderDetailHeader(uiState.workspace, title)}${body}`;
         }
+        MemoryTableGrid.bind(content, { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen });
         try { window.dispatchEvent(new CustomEvent('memory-table-screen-opened')); } catch (_) {}
     }
     function renderTemplateLibrary(chat) {
         ensureMemoryTemplateStore();
         const templates = db.memoryTableTemplates;
         if (templates.length === 0) return '';
-        return templates.map(template => {
+        return `<div class="memory-template-library">${templates.map(template => {
             const bound = chat.memoryTables.boundTemplateIds.includes(template.id);
-            const tableCount = Array.isArray(template.tables) ? template.tables.length : 0;
-            const fieldCount = (template.tables || []).reduce((sum, table) => sum + ((table.columns || []).length), 0);
-            return `
-                <div class="memory-template-card" style="background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 6px 20px rgba(0,0,0,0.04); border:1px solid #f1f1f1;">
-                    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-                        <div style="flex:1;">
-                            <div style="font-size:15px; font-weight:700; color:#333;">${escapeHtml(template.name)}</div>
-                            <div style="font-size:12px; color:#888; margin-top:4px;">${escapeHtml(template.description || '无描述')}</div>
-                            <div style="font-size:12px; color:#999; margin-top:8px;">${tableCount} 张表 · ${fieldCount} 个字段</div>
-                        </div>
-                        <label class="kkt-switch">
-                            <input type="checkbox" class="memory-template-bind-toggle" data-template-id="${template.id}" ${bound ? 'checked' : ''}>
-                            <span class="kkt-slider"></span>
-                        </label>
-                    </div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-                        <button class="btn btn-small btn-primary" data-action="edit-template-visual" data-template-id="${template.id}">可视化编辑</button>
-                        <button class="btn btn-small btn-secondary" data-action="edit-template-json" data-template-id="${template.id}">JSON</button>
-                        <button class="btn btn-small btn-secondary" data-action="export-template" data-template-id="${template.id}">导出</button>
-                        <button class="btn btn-small btn-secondary" data-action="export-template-package" data-template-id="${template.id}">导出记忆包</button>
-                        <button class="btn btn-small btn-danger" data-action="delete-template" data-template-id="${template.id}">删除</button>
-                    </div>
+            const summary = MemorySchemaModel.summarize(template);
+            return `<div class="memory-template-list-row">
+                <div class="memory-template-list-main"><strong>${escapeHtml(template.name)}</strong><p>${escapeHtml(template.description || '无描述')}</p><small>${summary.tableCount} 张表 · ${summary.fieldCount} 个字段 · ${summary.groupCount} 个分组</small></div>
+                <div class="memory-template-list-actions">
+                    <label class="kkt-switch" title="绑定到当前角色"><input type="checkbox" class="memory-template-bind-toggle" data-template-id="${escapeAttribute(template.id)}" ${bound ? 'checked' : ''}><span class="kkt-slider"></span></label>
+                    <button class="btn btn-small btn-primary memory-template-edit-structure" data-action="open-schema-editor" data-template-id="${escapeAttribute(template.id)}">编辑结构</button>
+                    <button class="btn btn-small btn-secondary" data-action="export-template" data-template-id="${escapeAttribute(template.id)}">导出</button>
+                    <button class="btn btn-small btn-secondary" data-action="export-template-package" data-template-id="${escapeAttribute(template.id)}">导出记忆包</button>
+                    <button class="btn btn-small btn-danger" data-action="delete-template" data-template-id="${escapeAttribute(template.id)}">删除</button>
                 </div>
-            `;
-        }).join('');
+            </div>`;
+        }).join('')}</div>`;
     }
-    function openTemplateDesigner(template) {
-        const modal = document.getElementById('memory-template-designer-modal');
+    function activeTemplateForSchema(chat) {
+        const bound = getBoundTemplates(chat);
+        const activeTableId = uiState.activeTableId || MemoryPolicy?.ensureRuntimeState?.(chat)?.activeTableId;
+        return bound.find(template => (template.tables || []).some(table => table.id === activeTableId)) || bound[0] || db.memoryTableTemplates[0] || null;
+    }
+    function renderSchemaEditor() {
+        const draft = uiState.templateDraft;
+        const body = document.getElementById('memory-schema-editor-body');
+        const title = document.getElementById('memory-schema-editor-title');
+        if (!draft || !body || !title) return;
+        title.textContent = uiState.editingTemplateId ? '编辑表结构' : '新建表结构';
+        body.innerHTML = MemorySchemaEditor.render(draft, { tab: uiState.schemaEditorTab, activeTableIndex: uiState.schemaEditorTableIndex });
+    }
+    function openSchemaEditor(template) {
+        const modal = document.getElementById('memory-schema-editor-modal');
         if (!modal) return;
-        const working = template ? deepClone(template) : createStarterTemplate();
-        working.tables = Array.isArray(working.tables) && working.tables.length > 0 ? working.tables : [createEmptyTableDraft()];
-        working.tables.forEach(table => {
-            table.columns = Array.isArray(table.columns) && table.columns.length > 0 ? table.columns : [createEmptyFieldDraft()];
-        });
-        uiState.editingTemplateId = template ? template.id : null;
-        uiState.templateDraft = working;
-        uiState.designerCollapsedFieldIds = {};
-        uiState.designerDrag = null;
-        renderTemplateDesigner();
+        uiState.editingTemplateId = template?.id || null;
+        uiState.templateDraft = MemorySchemaEditor.prepare(template || null);
+        uiState.schemaEditorTab = 'fields';
+        uiState.schemaEditorTableIndex = 0;
+        renderSchemaEditor();
         modal.classList.add('visible');
     }
-    function closeTemplateDesigner() {
-        const modal = document.getElementById('memory-template-designer-modal');
+    function closeSchemaEditor() {
+        const modal = document.getElementById('memory-schema-editor-modal');
         if (modal) modal.classList.remove('visible');
         uiState.templateDraft = null;
-        uiState.designerDrag = null;
+        uiState.editingTemplateId = null;
+        uiState.schemaEditorTab = 'fields';
+        uiState.schemaEditorTableIndex = 0;
     }
-    function renderTemplateDesigner() {
-        const draft = uiState.templateDraft;
-        const container = document.getElementById('memory-template-designer-body');
-        const titleEl = document.getElementById('memory-template-designer-title');
-        if (!draft || !container || !titleEl) return;
-        titleEl.textContent = uiState.editingTemplateId ? '编辑模板' : '新建模板';
-        container.innerHTML = `
-            <div class="form-group">
-                <label>模板名称</label>
-                <input type="text" data-designer-role="template-name" value="${escapeAttribute(draft.name || '')}" placeholder="例如：恋爱进展模板">
-            </div>
-            <div class="form-group">
-                <label>模板描述</label>
-                <textarea rows="3" data-designer-role="template-description" placeholder="说明这个模板适合什么场景">${escapeHtml(draft.description || '')}</textarea>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin:18px 0 10px;">
-                <div style="font-size:15px; font-weight:700; color:#333;">表格列表</div>
-                <button type="button" class="btn btn-small btn-primary" data-action="designer-add-table">新增表格</button>
-            </div>
-            ${(draft.tables || []).map((table, tableIndex) => renderDesignerTableCard(table, tableIndex)).join('')}
-        `;
+    async function saveSchemaEditor() {
+        if (!uiState.templateDraft) return;
+        let normalized;
+        try {
+            normalized = MemorySchemaEditor.normalize(uiState.templateDraft, uiState.editingTemplateId || undefined);
+        } catch (error) {
+            showToast(error.message || '表结构不合法');
+            return;
+        }
+        await persistTemplateNormalized(normalized);
+        closeSchemaEditor();
+        showToast('表结构已保存');
     }
-    function renderDesignerTableCard(table, tableIndex) {
-        const groups = getFieldGroups(table.columns || []);
-        const policy = MemoryPolicy
-            ? MemoryPolicy.normalizeTablePolicy(table)
-            : { memoryLayer: table.memoryLayer || 'short', updatePolicy: table.updatePolicy || {}, injectionPolicy: table.injectionPolicy || {} };
-        const update = policy.updatePolicy;
-        const inject = policy.injectionPolicy;
-        return `
-            <div draggable="true" data-designer-draggable="table" data-table-index="${tableIndex}" style="background:#fff; border:1px solid #ececec; border-radius:16px; padding:14px; margin-bottom:14px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
-                    <div style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:#333;">
-                        <span style="cursor:grab; color:#999;">拖拽</span>
-                        <span>表格 ${tableIndex + 1}</span>
-                        <span style="font-size:11px;color:#667085;background:#f2f4f7;border-radius:999px;padding:2px 8px;">${escapeHtml(policy.memoryLayer)}</span>
-                    </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                        <button type="button" class="btn btn-small btn-neutral" data-action="designer-move-table-up" data-table-index="${tableIndex}">上移</button>
-                        <button type="button" class="btn btn-small btn-neutral" data-action="designer-move-table-down" data-table-index="${tableIndex}">下移</button>
-                        <button type="button" class="btn btn-small btn-danger" data-action="designer-remove-table" data-table-index="${tableIndex}">删除表格</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>表格名称</label>
-                    <input type="text" data-designer-role="table-name" data-table-index="${tableIndex}" value="${escapeAttribute(table.name || '')}">
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
-                    <div class="form-group">
-                        <label>表格模式</label>
-                        <select data-designer-role="table-mode" data-table-index="${tableIndex}">
-                            <option value="keyValue" ${table.mode !== 'rows' ? 'selected' : ''}>键值表</option>
-                            <option value="rows" ${table.mode === 'rows' ? 'selected' : ''}>列表行</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>记忆层级</label>
-                        <select data-designer-role="table-memory-layer" data-table-index="${tableIndex}">
-                            ${[['core','核心'],['short','短期'],['medium','中期'],['long','长期'],['review','审核队列']].map(([value,label]) => `<option value="${value}" ${policy.memoryLayer === value ? 'selected' : ''}>${label}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>自动更新</label>
-                        <select data-designer-role="table-update-enabled" data-table-index="${tableIndex}">
-                            <option value="true" ${update.enabled ? 'selected' : ''}>开启</option>
-                            <option value="false" ${!update.enabled ? 'selected' : ''}>关闭/手动</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>触发方式</label>
-                        <select data-designer-role="table-trigger-mode" data-table-index="${tableIndex}">
-                            ${[['rounds','按轮'],['messages','按消息'],['either','先到者'],['manual','仅手动']].map(([value,label]) => `<option value="${value}" ${update.triggerMode === value ? 'selected' : ''}>${label}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>每几轮</label>
-                        <input type="number" min="0" data-designer-role="table-round-interval" data-table-index="${tableIndex}" value="${escapeAttribute(update.roundInterval ?? 0)}">
-                    </div>
-                    <div class="form-group">
-                        <label>每几条消息</label>
-                        <input type="number" min="0" data-designer-role="table-message-interval" data-table-index="${tableIndex}" value="${escapeAttribute(update.messageInterval ?? 0)}">
-                    </div>
-                    <div class="form-group">
-                        <label>单次最多读取</label>
-                        <input type="number" min="10" max="1000" data-designer-role="table-max-source-messages" data-table-index="${tableIndex}" value="${escapeAttribute(update.maxSourceMessages ?? 180)}">
-                    </div>
-                    <div class="form-group">
-                        <label>允许删除行</label>
-                        <select data-designer-role="table-allow-delete" data-table-index="${tableIndex}">
-                            <option value="false" ${update.allowDelete !== true ? 'selected' : ''}>否</option>
-                            <option value="true" ${update.allowDelete === true ? 'selected' : ''}>是</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>更新使用 API</label>
-                        <select data-designer-role="table-use-summary-api" data-table-index="${tableIndex}">
-                            <option value="false" ${update.useSummaryApi === false ? 'selected' : ''}>主聊天 API</option>
-                            <option value="true" ${update.useSummaryApi !== false ? 'selected' : ''}>总结 API</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>聊天注入</label>
-                        <select data-designer-role="table-injection-mode" data-table-index="${tableIndex}">
-                            ${[['always','始终'],['active','有效项'],['relevant','相关检索'],['never','不注入']].map(([value,label]) => `<option value="${value}" ${inject.mode === value ? 'selected' : ''}>${label}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>相关条目 Top-K</label>
-                        <input type="number" min="0" max="50" data-designer-role="table-injection-top-k" data-table-index="${tableIndex}" value="${escapeAttribute(inject.topK ?? 0)}">
-                    </div>
-                    <div class="form-group">
-                        <label>注入字符预算</label>
-                        <input type="number" min="0" max="20000" data-designer-role="table-injection-budget" data-table-index="${tableIndex}" value="${escapeAttribute(inject.budget ?? 0)}">
-                    </div>
-                    <div class="form-group">
-                        <label>有效期（天，0=不限）</label>
-                        <input type="number" min="0" data-designer-role="table-max-age-days" data-table-index="${tableIndex}" value="${escapeAttribute(inject.maxAgeDays ?? 0)}">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>提取规则</label>
-                    <textarea rows="3" data-designer-role="table-extract-prompt" data-table-index="${tableIndex}" placeholder="给总结 API 的表级提取要求">${escapeHtml(table.extractPrompt || '')}</textarea>
-                </div>
-                <div class="form-group">
-                    <label>更新附加规则</label>
-                    <textarea rows="2" data-designer-role="table-update-instructions" data-table-index="${tableIndex}" placeholder="例如：只从明确陈述更新；不得从一次情绪推断长期人格。">${escapeHtml(update.instructions || '')}</textarea>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 8px;">
-                    <div style="font-size:13px; font-weight:700; color:#555;">字段</div>
-                    <button type="button" class="btn btn-small btn-secondary" data-action="designer-add-field" data-table-index="${tableIndex}">新增字段</button>
-                </div>
-                ${groups.map(group => `
-                    <div style="margin-top:10px; padding:10px 12px; border-radius:12px; background:${group.ungrouped ? 'rgba(0,0,0,0.025)' : 'rgba(91,140,255,0.06)'};">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
-                            <div style="font-size:12px; font-weight:700; color:#666;">${escapeHtml(group.ungrouped ? '未分组字段' : group.name)}</div>
-                            <div style="font-size:11px; color:#999;">${group.fields.length} 个字段</div>
-                        </div>
-                        ${group.fields.map(({ field, index }) => renderDesignerFieldCard(field, tableIndex, index)).join('')}
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    }
-    function renderDesignerFieldCard(field, tableIndex, fieldIndex) {
-        const isCollapsed = !!uiState.designerCollapsedFieldIds[field.id];
-        const summaryTags = [
-            field.type || 'text',
-            field.group ? `分组:${field.group}` : '',
-            field.aiEditable === false ? 'AI只读' : 'AI可编辑',
-            field.important === false ? '仅JSON' : '普通模式显示'
-        ].filter(Boolean).join(' · ');
-        return `
-            <div draggable="true" data-designer-draggable="field" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" style="border:1px dashed #e6e6e6; border-radius:14px; padding:12px; margin-top:10px; background:#fcfcfc;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; ${isCollapsed ? '' : 'margin-bottom:10px;'}">
-                    <div style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <span style="cursor:grab; color:#999; font-size:12px;">拖拽</span>
-                            <div style="font-size:13px; font-weight:700; color:#444;">${escapeHtml(field.key || `字段 ${fieldIndex + 1}`)}</div>
-                            <span style="font-size:11px; color:#8a8a8a; background:rgba(0,0,0,0.05); padding:2px 8px; border-radius:999px;">${escapeHtml(field.type || 'text')}</span>
-                        </div>
-                        <div style="font-size:12px; color:#888; margin-top:4px;">${escapeHtml(summaryTags)}</div>
-                    </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-                        <button type="button" class="btn btn-small btn-neutral" data-action="designer-toggle-field-collapse" data-field-id="${field.id}">${isCollapsed ? '展开' : '折叠'}</button>
-                        <button type="button" class="btn btn-small btn-neutral" data-action="designer-move-field-up" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">上移</button>
-                        <button type="button" class="btn btn-small btn-neutral" data-action="designer-move-field-down" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">下移</button>
-                        <button type="button" class="btn btn-small btn-danger" data-action="designer-remove-field" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">删除字段</button>
-                    </div>
-                </div>
-                <div style="display:${isCollapsed ? 'none' : 'block'};">
-                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px;">
-                    <div class="form-group">
-                        <label>字段名</label>
-                        <input type="text" data-designer-role="field-key" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.key || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label>字段分组</label>
-                        <input type="text" data-designer-role="field-group" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.group || '')}" placeholder="例如：关系 / 事件 / 备注">
-                    </div>
-                    <div class="form-group">
-                        <label>类型</label>
-                        <select data-designer-role="field-type" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">
-                            ${['text', 'longtext', 'number', 'enum', 'tags', 'progress', 'date', 'boolean'].map(type => `<option value="${type}" ${field.type === type ? 'selected' : ''}>${type}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>默认值</label>
-                        <input type="text" data-designer-role="field-default" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(Array.isArray(field.default) ? field.default.join(', ') : String(field.default ?? ''))}">
-                    </div>
-                    <div class="form-group">
-                        <label>AI 可编辑</label>
-                        <select data-designer-role="field-ai-editable" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">
-                            <option value="true" ${field.aiEditable !== false ? 'selected' : ''}>是</option>
-                            <option value="false" ${field.aiEditable === false ? 'selected' : ''}>否</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>普通模式重要字段</label>
-                        <select data-designer-role="field-important" data-table-index="${tableIndex}" data-field-index="${fieldIndex}">
-                            <option value="true" ${field.important !== false ? 'selected' : ''}>显示</option>
-                            <option value="false" ${field.important === false ? 'selected' : ''}>仅 JSON 模式</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>摘要标签</label>
-                        <input type="text" data-designer-role="field-summary-label" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.summaryLabel || '')}" placeholder="可选的简短显示名">
-                    </div>
-                    <div class="form-group">
-                        <label>最小值</label>
-                        <input type="number" data-designer-role="field-min" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.min ?? '')}">
-                    </div>
-                    <div class="form-group">
-                        <label>最大值</label>
-                        <input type="number" data-designer-role="field-max" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" value="${escapeAttribute(field.max ?? '')}">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>选项（enum/tags 用，一行一个或逗号分隔）</label>
-                    <textarea rows="2" data-designer-role="field-options" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" placeholder="陌生&#10;朋友&#10;暧昧">${escapeHtml((field.options || []).join('\n'))}</textarea>
-                </div>
-                <div class="form-group">
-                    <label>AI 提示</label>
-                    <textarea rows="2" data-designer-role="field-ai-hint" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" placeholder="告诉 AI 这个字段该怎么更新">${escapeHtml(field.aiHint || '')}</textarea>
-                </div>
-                <div class="form-group">
-                    <label>条件高亮规则（每行 运算符|值|颜色，例如 <=|20|#ffe7e7）</label>
-                    <textarea rows="2" data-designer-role="field-conditional-rules" data-table-index="${tableIndex}" data-field-index="${fieldIndex}" placeholder=">=|80|#e8fff1">${escapeHtml(serializeConditionalRules(field.conditionalRules || []))}</textarea>
-                </div>
-                </div>
-            </div>
-        `;
+    function updateSchemaDraft(target) {
+        if (!uiState.templateDraft || !target?.dataset) return false;
+        if (MemorySchemaEditor.updateRole(uiState.templateDraft, target)) return true;
+        if (MemorySchemaEditor.updatePath(uiState.templateDraft, target)) return true;
+        return false;
     }
     function renderHistoryView(chat) {
-        const history = chat.memoryTables.history || [];
-        if (history.length === 0) return '';
-        return history.map(entry => {
-            const sourceLabel = entry.source === 'api'
-                ? 'API 更新'
-                : entry.source === 'auto' || entry.source === 'auto_latest'
-                    ? '自动更新'
-                    : '手动编辑';
-            const changedText = (entry.changedFields || []).map(item => `${escapeHtml(item.label)}：${escapeHtml(getShortValue(item.oldValue))} → ${escapeHtml(getShortValue(item.newValue))}`).join('<br>');
-            return `
-                <div style="background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:0 6px 20px rgba(0,0,0,0.04); border:1px solid #f1f1f1;">
-                    <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-                        <div>
-                            <div style="font-weight:700; color:#333;">${formatDateTime(entry.timestamp)}</div>
-                            <div style="font-size:12px; color:#999; margin-top:4px;">来源：${sourceLabel} · ${entry.changedFields ? entry.changedFields.length : 0} 项变化</div>
-                        </div>
-                        <button class="btn btn-small btn-primary" data-action="restore-history" data-history-id="${entry.id}">恢复</button>
-                    </div>
-                    <div style="font-size:13px; color:#555; line-height:1.65; margin-top:10px;">${changedText || '无变化详情'}</div>
-                </div>
-            `;
+        const allHistory = chat.memoryTables.history || [];
+        if (allHistory.length === 0) return '';
+        const templates = getBoundTemplates(chat);
+        const tables = new Map();
+        templates.forEach(template => (template.tables || []).forEach(table => tables.set(table.id, table)));
+        const filterTableId = uiState.historyTableId || '';
+        const history = filterTableId ? MemoryUpdateActivity.forTable(chat, filterTableId) : allHistory;
+        const filterTable = tables.get(filterTableId);
+        const filterBar = filterTableId ? `<div class="memory-history-filter"><div><strong>正在查看：${escapeHtml(filterTable?.name || '指定表格')}</strong><span>${history.length} 次更新记录</span></div><button type="button" class="btn btn-small btn-neutral" data-action="clear-memory-history-filter">查看全部历史</button></div>` : '';
+        if (!history.length) return `${filterBar}<div class="memory-review-empty"><p>这张表还没有更新历史。</p></div>`;
+        const cards = history.map((entry, entryIndex) => {
+            const sourceLabel = MemoryUpdateActivity.sourceLabel(entry.source);
+            const changes = (entry.changedFields || []).filter(item => !filterTableId || item.tableId === filterTableId);
+            const tableSummary = MemoryUpdateActivity.tableSummary(entry, templates);
+            const rows = changes.map(item => {
+                const table = tables.get(item.tableId);
+                return `<tr><td>${escapeHtml(table?.name || '未知表格')}</td><td>${escapeHtml(item.label || item.fieldId || '字段')}</td><td>${escapeHtml(getShortValue(item.oldValue))}</td><td>${escapeHtml(getShortValue(item.newValue))}</td></tr>`;
+            }).join('');
+            return `<article class="memory-history-entry ${entryIndex === 0 ? 'latest' : ''}">
+                <header><div><strong>${formatDateTime(entry.timestamp)}</strong><span>${escapeHtml(sourceLabel)} · ${changes.length} 项变化</span></div><div class="memory-history-entry-actions">${entryIndex === 0 ? '<em>最近一次</em>' : ''}<button class="btn btn-small btn-primary" data-action="restore-history" data-history-id="${escapeAttribute(entry.id)}">恢复</button></div></header>
+                <div class="memory-history-table-chips">${tableSummary.map(item => `<button type="button" data-action="open-memory-update-history" data-table-id="${escapeAttribute(item.tableId)}">${escapeHtml(item.tableName)}<b>${item.count}</b></button>`).join('')}</div>
+                <div class="memory-history-table-wrap"><table><thead><tr><th>表格</th><th>字段</th><th>修改前</th><th>修改后</th></tr></thead><tbody>${rows || '<tr><td colspan="4">没有可显示的字段变化</td></tr>'}</tbody></table></div>
+            </article>`;
         }).join('');
+        return `<div class="memory-history-page">${filterBar}${cards}</div>`;
     }
-    function matchesMemorySearch(parts) {
-        const keyword = uiState.search.trim().toLowerCase();
-        if (!keyword) return true;
-        return parts.join(' ').toLowerCase().includes(keyword);
-    }
-    function getDisplayFieldItems(chat, template, table) {
-        const items = (table.columns || []).map(field => {
-            const value = getFieldValue(chat, template.id, table.id, field);
-            return {
-                template,
-                table,
-                field,
-                value,
-                locked: isFieldLocked(chat, template.id, table.id, field.id),
-                changed: (chat.memoryTables.lastChangedFieldPaths || []).includes(buildFieldPath(template.id, table.id, field.id))
-            };
-        }).filter(item => matchesMemorySearch([
-            template.name,
-            template.description || '',
-            table.name,
-            item.field.group || '',
-            item.field.key,
-            getFieldDisplayValue(item.field, item.value)
-        ]));
-        if (uiState.sort === 'name') {
-            items.sort((a, b) => a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        } else if (uiState.sort === 'changed') {
-            items.sort((a, b) => Number(b.changed) - Number(a.changed) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        } else if (uiState.sort === 'locked') {
-            items.sort((a, b) => Number(b.locked) - Number(a.locked) || a.field.key.localeCompare(b.field.key, 'zh-CN'));
-        }
-        return items;
-    }
-    function renderKeyValueFieldCard(item) {
-        const color = evaluateConditionalColor(item.field, item.value);
-        return `
-            <div class="memory-field-card" style="
-                background:#fff;
-                border-radius:16px;
-                padding:14px;
-                margin-bottom:12px;
-                box-shadow:0 6px 20px rgba(0,0,0,0.04);
-                border:1px solid ${item.changed ? '#c6d6ff' : '#f1f1f1'};
-                ${color ? `background:${color};` : ''}
-            ">
-                <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-                    <div style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <span style="font-size:15px; font-weight:700; color:#333;">${escapeHtml(item.field.key)}</span>
-                            <span style="font-size:11px; color:#8a8a8a; background:rgba(0,0,0,0.05); padding:2px 8px; border-radius:999px;">${escapeHtml(item.field.type)}</span>
-                            ${item.field.group ? `<span style="font-size:11px; color:#5a6ab8; background:rgba(91,140,255,0.08); padding:2px 8px; border-radius:999px;">${escapeHtml(item.field.group)}</span>` : ''}
-                            ${item.changed ? '<span style="font-size:11px; color:#335eea; background:rgba(51,94,234,0.08); padding:2px 8px; border-radius:999px;">刚更新</span>' : ''}
-                            ${item.locked ? '<span style="font-size:11px; color:#b25b00; background:rgba(255,159,67,0.12); padding:2px 8px; border-radius:999px;">已锁定</span>' : ''}
-                        </div>
-                        ${item.field.aiHint ? `<div style="font-size:12px; color:#888; margin-top:6px;">${escapeHtml(item.field.aiHint)}</div>` : ''}
-                    </div>
-                    <button class="btn btn-small ${item.locked ? 'btn-secondary' : 'btn-neutral'}" data-action="toggle-lock" data-template-id="${item.template.id}" data-table-id="${item.table.id}" data-field-id="${item.field.id}">${item.locked ? '解锁' : '锁定'}</button>
-                </div>
-                <div style="margin-top:12px;">
-                    ${renderFieldEditor(item.template.id, item.table.id, item.field, item.value, item.locked)}
-                </div>
-                ${renderFieldChartContainer(item.template.id, item.table.id, item.field)}
-            </div>
-        `;
-    }
-    function renderRowsTableCard(chat, template, table) {
-        const rows = getRows(chat, template.id, table);
-        const visibleRows = rows.filter(row => matchesMemorySearch([
-            template.name,
-            template.description || '',
-            table.name,
-            ...(table.columns || []).map(field => `${field.key} ${getFieldDisplayValue(field, row.cells[field.id])}`)
-        ]));
-        if (uiState.search.trim() && visibleRows.length === 0) {
+    function renderRowInspector(chat) {
+        if (!uiState.inspectorOpen || !uiState.selectedRowId) return '';
+        const target = MemoryRelationService.findById(chat, uiState.selectedRowId);
+        if (!target) {
+            Object.assign(uiState, { inspectorOpen: false, selectedRowId: null, inspectorAnalysis: null, inspectorReview: null, inspectorTab: 'relations' });
             return '';
         }
-        return `
-            <div style="background:#fff; border-radius:18px; padding:14px; margin-bottom:16px; box-shadow:0 6px 20px rgba(0,0,0,0.04); border:1px solid #f1f1f1;">
-                <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px;">
-                    <div>
-                        <div style="font-size:15px; font-weight:700; color:#333;">${escapeHtml(template.name)} / ${escapeHtml(table.name)}</div>
-                        <div style="font-size:12px; color:#888; margin-top:4px;">多行表 · ${visibleRows.length}/${rows.length} 行</div>
-                        ${table.extractPrompt ? `<div style="font-size:12px; color:#999; margin-top:4px;">${escapeHtml(table.extractPrompt)}</div>` : ''}
-                    </div>
-                    <button type="button" class="btn btn-small btn-primary" data-action="add-row" data-template-id="${template.id}" data-table-id="${table.id}">新增行</button>
-                </div>
-                ${rows.length === 0 ? `
-                    <div style="padding:14px; border:1px dashed #e6e6e6; border-radius:14px; color:#999; font-size:13px;">还没有任何行，点击“新增行”开始录入。</div>
-                ` : visibleRows.map((row, rowIndex) => `
-                    <div style="border:1px solid #ececec; border-radius:14px; padding:12px; margin-top:10px; background:#fcfcfc;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
-                            <div style="font-size:13px; font-weight:700; color:#444;">第 ${rowIndex + 1} 行</div>
-                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                <button type="button" class="btn btn-small btn-neutral" data-action="move-row-up" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">上移</button>
-                                <button type="button" class="btn btn-small btn-neutral" data-action="move-row-down" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">下移</button>
-                                <button type="button" class="btn btn-small btn-danger" data-action="delete-row" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">删除</button>
-                            </div>
-                        </div>
-                        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px;">
-                            ${(table.columns || []).map(field => {
-                                const locked = isFieldLocked(chat, template.id, table.id, field.id);
-                                const changed = (chat.memoryTables.lastChangedFieldPaths || []).includes(buildFieldPath(template.id, table.id, field.id, row.id));
-                                return `
-                                    <div style="border:1px solid ${changed ? '#c6d6ff' : '#ececec'}; border-radius:12px; padding:10px; background:#fff;">
-                                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; margin-bottom:8px;">
-                                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                                <span style="font-size:13px; font-weight:700; color:#444;">${escapeHtml(field.key)}</span>
-                                                <span style="font-size:11px; color:#8a8a8a; background:rgba(0,0,0,0.05); padding:2px 8px; border-radius:999px;">${escapeHtml(field.type)}</span>
-                                                ${changed ? '<span style="font-size:11px; color:#335eea;">刚更新</span>' : ''}
-                                                ${locked ? '<span style="font-size:11px; color:#b25b00;">已锁定</span>' : ''}
-                                            </div>
-                                            <button class="btn btn-small ${locked ? 'btn-secondary' : 'btn-neutral'}" data-action="toggle-lock" data-template-id="${template.id}" data-table-id="${table.id}" data-field-id="${field.id}">${locked ? '解锁' : '锁定'}</button>
-                                        </div>
-                                        ${renderFieldEditor(template.id, table.id, field, row.cells[field.id], locked, row.id)}
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
+        const analysis = uiState.inspectorAnalysis?.target?.row?.id === target.row.id
+            ? uiState.inspectorAnalysis
+            : MemoryRelationService.analyze(chat, target, { topK: 14 });
+        uiState.inspectorAnalysis = analysis;
+        return MemoryRowInspector.render({ chat, target, analysis, review: uiState.inspectorReview, busy: uiState.inspectorBusy, tab: uiState.inspectorTab });
     }
-    function getActiveTableDescriptor(chat) {
-        const descriptors = [];
-        getBoundTemplates(chat).forEach(template => {
-            ensureTemplateDataForChat(chat, template);
-            (template.tables || []).forEach(table => descriptors.push({ template, table }));
-        });
-        if (!descriptors.length) return { descriptors, active: null };
-        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        const requestedId = uiState.activeTableId || runtime?.activeTableId;
-        const active = descriptors.find(item => item.table.id === requestedId) || descriptors[0];
-        uiState.activeTableId = active.table.id;
-        if (runtime) runtime.activeTableId = active.table.id;
-        return { descriptors, active };
-    }
-    function getVisibleColumnsForMode(table) {
-        const jsonMode = uiState.viewMode === 'json' && (!MemoryPolicy || MemoryPolicy.isDesktopJsonAvailable());
-        return (table.columns || []).filter(field => jsonMode || field.important !== false);
-    }
-    function renderV2PolicySummary(table) {
-        const policy = getTableRuntimePolicy(table);
-        const update = policy.updatePolicy;
-        const inject = policy.injectionPolicy;
-        return `
-            <div class="memory-v2-policy-summary memory-v2-json-only">
-                <span>layer: ${escapeHtml(policy.memoryLayer)}</span>
-                <span>update: ${escapeHtml(update.enabled ? update.triggerMode : 'manual/off')}</span>
-                <span>rounds: ${escapeHtml(String(update.roundInterval || 0))}</span>
-                <span>messages: ${escapeHtml(String(update.messageInterval || 0))}</span>
-                <span>api: ${escapeHtml(update.useSummaryApi === false ? 'main' : 'summary')}</span>
-                <span>inject: ${escapeHtml(inject.mode)}</span>
-                <span>topK: ${escapeHtml(String(inject.topK || 0))}</span>
-                <span>budget: ${escapeHtml(String(inject.budget || 0))}</span>
-            </div>
-        `;
-    }
-    function renderV2KeyValueSheet(chat, template, table) {
-        const columns = getVisibleColumnsForMode(table).filter(field => matchesMemorySearch([
-            template.name,
-            table.name,
-            field.key,
-            field.group || '',
-            field.aiHint || '',
-            getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field))
-        ]));
-        const rowsHtml = columns.map(field => {
-            const value = getFieldValue(chat, template.id, table.id, field);
-            const locked = isFieldLocked(chat, template.id, table.id, field.id);
-            return `
-                <tr data-memory-important="${field.important !== false}">
-                    <th>
-                        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
-                            <span>${escapeHtml(field.key)}</span>
-                            <button class="btn btn-small ${locked ? 'btn-secondary' : 'btn-neutral'} memory-v2-json-only" data-action="toggle-lock" data-template-id="${template.id}" data-table-id="${table.id}" data-field-id="${field.id}">${locked ? '解锁' : '锁定'}</button>
-                        </div>
-                        ${field.group ? `<div style="font-size:10px;color:#98a2b3;margin-top:3px;">${escapeHtml(field.group)}</div>` : ''}
-                        <div class="memory-v2-json-meta memory-v2-json-only">id=${escapeHtml(field.id)} · type=${escapeHtml(field.type)} · important=${field.important !== false}<br>${escapeHtml(field.aiHint || '')}</div>
-                    </th>
-                    <td><div class="memory-v2-inline-editor">${renderFieldEditor(template.id, table.id, field, value, locked)}</div></td>
-                </tr>
-            `;
-        }).join('');
-        return `<table class="memory-v2-kv"><tbody>${rowsHtml || '<tr><td class="memory-v2-empty">当前模式下没有匹配字段。</td></tr>'}</tbody></table>`;
-    }
-    function renderV2RowsSheet(chat, template, table) {
-        const columns = getVisibleColumnsForMode(table);
-        const isReviewTable = getTableRuntimePolicy(table).memoryLayer === 'review';
-        const reviewStatusField = isReviewTable ? (table.columns || []).find(field => field.key === '审核状态') : null;
-        const allRows = getRows(chat, template.id, table);
-        const rows = allRows.filter(row => matchesMemorySearch([
-            template.name,
-            table.name,
-            ...(columns || []).map(field => `${field.key} ${getFieldDisplayValue(field, row.cells?.[field.id])}`)
-        ]));
-        const head = columns.map(field => `
-            <th data-memory-important="${field.important !== false}">
-                ${escapeHtml(field.key)}
-                <div class="memory-v2-json-meta memory-v2-json-only">${escapeHtml(field.id)}<br>${escapeHtml(field.type)}${field.aiHint ? `<br>${escapeHtml(field.aiHint)}` : ''}</div>
-            </th>
-        `).join('');
-        const body = rows.map((row, rowIndex) => {
-            const cells = columns.map(field => {
-                const locked = isFieldLocked(chat, template.id, table.id, field.id);
-                return `<td data-memory-important="${field.important !== false}"><div class="memory-v2-inline-editor">${renderFieldEditor(template.id, table.id, field, row.cells?.[field.id], locked, row.id)}</div></td>`;
-            }).join('');
-            return `
-                <tr>
-                    <td>
-                        <div>${rowIndex + 1}</div>
-                        <div class="memory-v2-row-actions">
-                            <button class="btn btn-small btn-neutral" data-action="move-row-up" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">↑</button>
-                            <button class="btn btn-small btn-neutral" data-action="move-row-down" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">↓</button>
-                            <button class="btn btn-small btn-danger" data-action="delete-row" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">×</button>
-                        </div>
-                        ${MemoryEffects ? MemoryEffects.renderRowMetaSummary(row, table) : ''}
-                        <div class="memory-effect-actions">
-                            <button class="btn btn-small btn-secondary" data-action="edit-row-effect-policy" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">标签/策略</button>
-                            <button class="btn btn-small btn-secondary" data-action="edit-row-reliability" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">来源/时效</button>
-                            <button class="btn btn-small btn-neutral memory-v2-json-only" data-action="row-supersedes" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">替代旧条目</button>
-                            <button class="btn btn-small btn-neutral memory-v2-json-only" data-action="row-conflicts" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">标记冲突</button>
-                            <button class="btn btn-small btn-neutral memory-v2-json-only" data-action="row-clear-relations" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">清除关系</button>
-                            <button class="btn btn-small btn-neutral" data-action="toggle-row-effect-pause" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">${row.meta?.usePolicy?.paused ? '启用' : '暂停'}</button>
-                            <button class="btn btn-small btn-neutral" data-action="toggle-row-pin" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">${row.meta?.pinned ? '取消固定' : '固定'}</button>
-                        </div>
-                        ${isReviewTable ? `<div class="memory-v2-candidate-actions">
-                            <button class="btn btn-small btn-primary" data-action="approve-long-candidate" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">批准晋升</button>
-                            <button class="btn btn-small btn-secondary" data-action="more-evidence-candidate" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">更多证据</button>
-                            <button class="btn btn-small btn-danger" data-action="reject-long-candidate" data-template-id="${template.id}" data-table-id="${table.id}" data-row-id="${row.id}">拒绝</button>
-                            ${reviewStatusField ? `<span style="font-size:10px;color:#667085;">${escapeHtml(getFieldDisplayValue(reviewStatusField, row.cells?.[reviewStatusField.id]))}</span>` : ''}
-                        </div>` : ''}
-                        <div class="memory-v2-json-meta memory-v2-json-only">${escapeHtml(row.id)}</div>
-                    </td>
-                    ${cells}
-                </tr>
-            `;
-        }).join('');
-        return `
-            <div class="memory-v2-rows-wrap">
-                <table class="memory-v2-rows">
-                    <thead><tr><th>#</th>${head}</tr></thead>
-                    <tbody>${body || `<tr><td colspan="${columns.length + 1}" class="memory-v2-empty">暂无匹配记录。</td></tr>`}</tbody>
-                </table>
-            </div>
-        `;
-    }
-    function renderV2RawJson(chat, template, table) {
-        const tableData = deepClone(chat.memoryTables.data?.[template.id]?.[table.id] || {});
-        const payload = { schema: table, data: tableData, lockedFields: chat.memoryTables.lockedFields?.[template.id]?.[table.id] || [] };
-        return `<pre class="memory-v2-json-raw memory-v2-json-only">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
+    function getMemoryTableWorkspaceConfig(chat) {
+        return {
+            chat,
+            templates: getBoundTemplates(chat),
+            state: uiState,
+            renderFieldEditor,
+            renderInspector: renderRowInspector,
+            interactionContext: { state: uiState, refreshGrid: refreshActiveMemoryTable, render: renderMemoryTableScreen }
+        };
     }
     function renderTableView(chat) {
-        const { descriptors, active } = getActiveTableDescriptor(chat);
-        if (!active) return '';
-        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        if (uiState.viewMode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
-            uiState.viewMode = 'normal';
-            if (runtime) runtime.viewMode = 'normal';
+        return MemoryTableWorkspace.render(getMemoryTableWorkspaceConfig(chat));
+    }
+    function refreshActiveMemoryTable(options = {}) {
+        const chat = getCurrentMemoryTableChat();
+        const root = document.querySelector('[data-memory-table-grid]');
+        if (!chat || !root || uiState.workspace !== 'memory') {
+            renderMemoryTableScreen();
+            return false;
         }
-        const sidebar = descriptors.map(({ template, table }) => {
-            const policy = getTableRuntimePolicy(table);
-            const count = isRowsTable(table) ? `${getRows(chat, template.id, table).length} 行` : `${(table.columns || []).length} 字段`;
-            return `
-                <button type="button" class="memory-v2-table-item ${table.id === active.table.id ? 'active' : ''}" data-action="select-memory-table" data-table-id="${table.id}">
-                    <span class="name">${escapeHtml(table.name)}</span>
-                    <span class="meta">${escapeHtml(template.name)} · ${escapeHtml(policy.memoryLayer)} · ${count}</span>
-                </button>
-            `;
-        }).join('');
-        const policy = getTableRuntimePolicy(active.table);
-        const tableContent = isRowsTable(active.table)
-            ? renderV2RowsSheet(chat, active.template, active.table)
-            : renderV2KeyValueSheet(chat, active.template, active.table);
-        const rawJson = renderV2RawJson(chat, active.template, active.table);
-        return `
-            <div class="memory-v2-workspace">
-                <aside class="memory-v2-sidebar">${sidebar}</aside>
-                <section class="memory-v2-main">
-                    <div class="memory-v2-sheet">
-                        <div class="memory-v2-sheet-head">
-                            <div>
-                                <h2>${escapeHtml(active.table.name)}</h2>
-                                <div class="sub">${escapeHtml(active.template.name)} · ${isRowsTable(active.table) ? '多行记录' : '键值档案'}${uiState.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'}</div>
-                                ${renderV2PolicySummary(active.table)}
-                                ${active.table.extractPrompt ? `<div class="memory-v2-json-meta memory-v2-json-only">extractPrompt: ${escapeHtml(active.table.extractPrompt)}</div>` : ''}
-                            </div>
-                            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-                                <span class="memory-v2-layer-badge">${escapeHtml(policy.memoryLayer)}</span>
-                                ${isRowsTable(active.table) ? `<button type="button" class="btn btn-small btn-primary" data-action="add-row" data-template-id="${active.template.id}" data-table-id="${active.table.id}">新增行</button>` : ''}
-                            </div>
-                        </div>
-                        ${tableContent}
-                        ${rawJson}
-                    </div>
-                </section>
-            </div>
-        `;
+        const config = MemoryTableWorkspace.getGridConfig(getMemoryTableWorkspaceConfig(chat));
+        if (!config) {
+            renderMemoryTableScreen();
+            return false;
+        }
+        return MemoryTableGrid.refresh(root, config, options);
     }
     function renderFieldEditor(templateId, tableId, field, value, locked, rowId = '') {
         const disabled = locked ? 'disabled' : '';
@@ -1163,84 +697,6 @@
             default:
                 return `<input ${baseAttrs} type="text" value="${escapeAttribute(String(value || ''))}" style="width:100%; border:1px solid #ececec; border-radius:12px; padding:10px; font-size:14px;">`;
         }
-    }
-    function renderFieldChartContainer(templateId, tableId, field) {
-        const type = normalizeFieldType(field.type);
-        if (!['number', 'progress'].includes(type)) return '';
-        return `
-            <div style="margin-top:12px; border-top:1px dashed #efefef; padding-top:12px;">
-                <div style="font-size:12px; color:#999; margin-bottom:6px;">趋势</div>
-                <canvas class="memory-field-chart" data-template-id="${templateId}" data-table-id="${tableId}" data-field-id="${field.id}" height="54" style="width:100%; height:54px;"></canvas>
-            </div>
-        `;
-    }
-    function getFieldHistorySeries(chat, templateId, tableId, fieldId, currentValue) {
-        const entries = [...(chat.memoryTables.history || [])].reverse();
-        const result = [];
-        entries.forEach(entry => {
-            const value = entry.snapshot?.[templateId]?.[tableId]?.[fieldId];
-            if (typeof value === 'number') {
-                result.push(value);
-            }
-        });
-        if (typeof currentValue === 'number') {
-            result.push(currentValue);
-        }
-        return result.slice(-12);
-    }
-    function drawAllCharts(chat) {
-        const canvases = document.querySelectorAll('#memory-table-screen .memory-field-chart');
-        canvases.forEach(canvas => {
-            const templateId = canvas.dataset.templateId;
-            const tableId = canvas.dataset.tableId;
-            const fieldId = canvas.dataset.fieldId;
-            const template = db.memoryTableTemplates.find(item => item.id === templateId);
-            const table = template ? template.tables.find(item => item.id === tableId) : null;
-            const field = table ? table.columns.find(item => item.id === fieldId) : null;
-            if (!field) return;
-            const value = getFieldValue(chat, templateId, tableId, field);
-            const series = getFieldHistorySeries(chat, templateId, tableId, fieldId, value);
-            drawSparkline(canvas, series, field);
-        });
-    }
-    function drawSparkline(canvas, series, field) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.clientWidth || 300;
-        const height = canvas.height || 54;
-        canvas.width = width;
-        ctx.clearRect(0, 0, width, height);
-        ctx.strokeStyle = '#e6e9f2';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, height - 10);
-        ctx.lineTo(width, height - 10);
-        ctx.stroke();
-        if (!Array.isArray(series) || series.length < 2) {
-            ctx.fillStyle = '#aaa';
-            ctx.font = '12px sans-serif';
-            ctx.fillText('暂无足够历史数据', 10, 28);
-            return;
-        }
-        const min = typeof field.min === 'number' ? field.min : Math.min(...series);
-        const max = typeof field.max === 'number' ? field.max : Math.max(...series);
-        const range = Math.max(1, max - min);
-        ctx.strokeStyle = '#5b8cff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        series.forEach((value, index) => {
-            const x = (width - 12) * (index / Math.max(1, series.length - 1)) + 6;
-            const y = height - 10 - ((value - min) / range) * (height - 24);
-            if (index === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-        const lastValue = series[series.length - 1];
-        const lastX = width - 6;
-        const lastY = height - 10 - ((lastValue - min) / range) * (height - 24);
-        ctx.fillStyle = '#5b8cff';
-        ctx.beginPath();
-        ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
-        ctx.fill();
     }
     function formatDateTime(timestamp) {
         const date = new Date(timestamp);
@@ -1565,7 +1021,7 @@
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         const block = await prepareMemoryTableContext(chat, { preview: true });
         await saveCharacter(chat.id);
-        selectMemoryView(chat, 'retrieval');
+        selectMemoryView(chat, 'usage_audit');
         renderMemoryTableScreen();
         return block;
     }
@@ -1716,107 +1172,9 @@
         }
     }
 
-    function getHistoryMessageContent(item) {
-        let content = item.content || '';
-        if (item.parts && item.parts.length > 0) {
-            content = item.parts.map(part => part.text || '[图片]').join('');
-        }
-        return content;
-    }
-
-    function collectMessagesForMemoryTable(chat, options = {}) {
-        let history = Array.isArray(chat.history) ? [...chat.history] : [];
-        if (options.start && options.end) {
-            const startIndex = Math.max(0, options.start - 1);
-            const endIndex = Math.min(history.length, options.end);
-            history = history.slice(startIndex, endIndex);
-        }
-        if (typeof filterHistoryForAI === 'function') {
-            history = filterHistoryForAI(chat, history);
-        }
-        history = history.filter(item => !item.isContextDisabled && !item.isThinking);
-        if (!options.start && !options.end) {
-            const configuredMax = Math.max(10, parseInt(options.maxContextMessages, 10) || (MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat).engineSettings.maxSourceMessages : MEMORY_TABLE_MAX_CONTEXT_MESSAGES));
-            history = history.slice(-configuredMax);
-        }
-        return history;
-    }
-
-    function buildTemplateDefinitionForPrompt(chat, templates, options = {}) {
-        const queryText = options.queryText || '';
-        const relevantRowsOnly = !!options.relevantRowsOnly;
-        const maxCandidateRows = Math.max(3, parseInt(options.maxCandidateRows, 10) || 12);
-        return templates.map(template => {
-            return [
-                `模板ID=${template.id} 名称=${template.name}`,
-                template.description ? `描述=${template.description}` : '',
-                ...(template.tables || []).map(table => {
-                    const tablePolicy = getTableRuntimePolicy(table);
-                    const tableRowsText = isRowsTable(table)
-                        ? (() => {
-                            let rows = getRows(chat, template.id, table);
-                            if (relevantRowsOnly && rows.length > maxCandidateRows && MemoryPolicy) {
-                                const candidates = rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
-                                const selected = MemoryPolicy.selectRelevantItems(candidates, queryText, {
-                                    ...tablePolicy.injectionPolicy,
-                                    mode: 'relevant',
-                                    topK: maxCandidateRows,
-                                    threshold: 0,
-                                    includeCompleted: true,
-                                    maxAgeDays: 0
-                                });
-                                rows = selected.map(item => item.row);
-                                const newest = getRows(chat, template.id, table)
-                                    .slice()
-                                    .sort((a, b) => getRowTimestamp(table, b) - getRowTimestamp(table, a))
-                                    .slice(0, Math.min(4, maxCandidateRows));
-                                const merged = new Map();
-                                [...rows, ...newest].forEach(row => merged.set(row.id, row));
-                                rows = Array.from(merged.values()).slice(0, maxCandidateRows);
-                            }
-                            if (!rows.length) return '  现有候选行=空';
-                            return rows.map((row, rowIndex) => {
-                                const cells = (table.columns || []).map(field => `${field.key}=${getFieldDisplayValue(field, row.cells[field.id]) || '空'}`).join(' | ');
-                                return `  候选行ID=${row.id} 候选号=${rowIndex + 1} ${cells}`;
-                            }).join('\n');
-                        })()
-                        : '';
-                    return [
-                        `  表格ID=${table.id} 名称=${table.name} 层级=${tablePolicy.memoryLayer} 模式=${isRowsTable(table) ? 'rows' : 'keyValue'}`,
-                        `  更新策略=${tablePolicy.updatePolicy.enabled ? tablePolicy.updatePolicy.triggerMode : 'manual'}；允许新增=${tablePolicy.updatePolicy.allowAdd !== false ? '是' : '否'}；允许修改=${tablePolicy.updatePolicy.allowUpdate !== false ? '是' : '否'}；允许删除=${tablePolicy.updatePolicy.allowDelete === true ? '是' : '否'}`,
-                        table.extractPrompt ? `  表格提取规则=${table.extractPrompt}` : '',
-                        tablePolicy.updatePolicy.instructions ? `  本表附加规则=${tablePolicy.updatePolicy.instructions}` : '',
-                        ...(table.columns || []).map(field => {
-                            const currentValue = isRowsTable(table)
-                                ? '见候选行'
-                                : getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field));
-                            const locked = isFieldLocked(chat, template.id, table.id, field.id);
-                            const optionsText = Array.isArray(field.options) && field.options.length > 0 ? ` 可选值=${field.options.join('|')}` : '';
-                            const range = (typeof field.min === 'number' || typeof field.max === 'number')
-                                ? ` 范围=${field.min ?? ''}~${field.max ?? ''}`
-                                : '';
-                            const group = field.group ? ` 分组=${field.group}` : '';
-                            return `    字段ID=${field.id} 字段名=${field.key}${group} 类型=${field.type}${optionsText}${range} 当前值=${currentValue || '空'} 锁定=${locked ? '是' : '否'} AI可编辑=${field.aiEditable === false ? '否' : '是'} 重要字段=${field.important !== false ? '是' : '否'} 说明=${field.aiHint || '无'}`;
-                        }),
-                        tableRowsText
-                    ].filter(Boolean).join('\n');
-                })
-            ].filter(Boolean).join('\n');
-        }).join('\n\n');
-    }
-
-    function formatMemoryPromptTimestamp(timestamp) {
-        const date = new Date(Number(timestamp));
-        if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0 || Number.isNaN(date.getTime())) return '时间未记录';
-        const pad2 = number => String(number).padStart(2, '0'), offset = -date.getTimezoneOffset(), abs = Math.abs(offset);
-        return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} UTC${offset >= 0 ? '+' : '-'}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
-    }
-    function buildHistoryTextForPrompt(chat, history) {
-        return history.map(item => {
-            const name = item.role === 'user' ? (chat.myName || '用户') : (item.role === 'system' ? '系统' : (chat.realName || '角色'));
-            return `[${formatMemoryPromptTimestamp(item.timestamp)}] ${name}: ${getHistoryMessageContent(item)}`;
-        }).join('\n');
-    }
+    const collectMessagesForMemoryTable = MemoryUpdateService.collectMessages;
+    const buildTemplateDefinitionForPrompt = MemoryUpdateService.buildTemplateDefinition;
+    const buildHistoryTextForPrompt = MemoryUpdateService.buildHistoryText;
 
     async function updateMemoryTablesFromApi(options = {}) {
         const chat = options.chat || getCurrentMemoryTableChat();
@@ -1853,56 +1211,27 @@
 
         templates.forEach(template => ensureTemplateDataForChat(chat, template));
 
-        const historyText = buildHistoryTextForPrompt(chat, history);
-        const templateText = buildTemplateDefinitionForPrompt(chat, templates, {
-            queryText: historyText,
-            relevantRowsOnly: options.relevantRowsOnly !== false,
-            maxCandidateRows: options.maxCandidateRows || 12
+        const updatePrompt = MemoryUpdateService.buildUpdatePrompt({
+            chat,
+            templates,
+            history,
+            maxCandidateRows: options.maxCandidateRows || 12,
+            relatedBudget: options.relatedBudget || 7200
         });
-        const prompt = `你现在要帮一个聊天角色更新“结构化记忆表”。请根据给定的模板、字段规则和最近聊天记录，只提取明确发生过的信息，并且只输出发生变化的字段。
-
-严格要求：
-1. 只更新没有锁定且允许 AI 编辑的字段。
-2. keyValue 表只能输出 <field>。
-3. rows 表必须使用 <row op="add|update|delete">：
-   - 新增一行用 <row op="add">，可不给 rowId。
-   - 修改已有行用 <row op="update" rowId="现有行ID">。
-   - 删除一行用 <row op="delete" rowId="现有行ID"></row>。
-4. 如果某字段或某一行没有新变化，就不要输出它。
-5. 不要臆测、不要补完、不要写解释。
-6. 如果没有任何变化，输出 <memory_updates></memory_updates>
-7. 你必须严格使用以下 XML：
-<memory_updates>
-  <memory_update templateId="模板ID" tableId="表格ID">
-    <field fieldId="字段ID">新值</field>
-    <row op="add">
-      <field fieldId="字段ID">值</field>
-    </row>
-    <row op="update" rowId="现有行ID">
-      <field fieldId="字段ID">新值</field>
-    </row>
-    <row op="delete" rowId="现有行ID"></row>
-  </memory_update>
-</memory_updates>
-
-角色信息：
-- 角色名：${chat.realName || ''}
-- 角色人设：${chat.persona || ''}
-- 用户称呼：${chat.myName || ''}
-- 用户人设：${chat.myPersona || ''}
-
-模板定义如下：
-${templateText}
-
-最近聊天记录如下：
-${historyText}`;
+        const { prompt, historyText, templateText, related } = updatePrompt;
+        const relatedContextSummary = { targetRole: related?.targetRole || '', tables: related?.tables || [], rowCount: related?.rowCount || 0, chars: related?.chars || 0 };
 
         try {
             const preferSummaryApi = templates.some(template => (template.tables || []).some(table => {
                 const policy = getTableRuntimePolicy(table);
                 return policy.updatePolicy.useSummaryApi !== false;
             }));
-            const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update', { operationId: options.operationId || null });
+            const promptSources = [
+                { type: 'task_instruction', title: '目标记忆表定义', content: templateText, reason: '本次允许修改的目标表、字段规则和已有候选行' },
+                ...(related?.text ? [{ type: 'structured_archive_memory', title: `相关记忆表 · ${related.tables.length} 张`, content: related.text, reason: '只读参与去重、冲突核对和阶段判断' }] : []),
+                { type: 'chat_history', title: '本次整理消息范围', content: historyText, reason: '本次结构化记忆整理的直接证据' }
+            ];
+            const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update', { operationId: options.operationId || null, promptSources });
             const apiRoute = MemoryApi.getLastRoute() || { requestedMode: preferSummaryApi ? 'summary' : 'main', actualMode: preferSummaryApi ? 'summary' : 'main', fallback: false };
             const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
             const requireReview = !!options.forceReview || (!!MemoryReview && MemoryReview.shouldRequireReview(runtime?.engineSettings || {}, {
@@ -1924,7 +1253,8 @@ ${historyText}`;
                     requestedApiMode: apiRoute.requestedMode || (preferSummaryApi ? 'summary' : 'main'),
                     apiFallback: !!apiRoute.fallback,
                     apiModel: apiRoute.model || '',
-                    memoryLayer: firstTable ? getTableRuntimePolicy(firstTable).memoryLayer : ''
+                    memoryLayer: firstTable ? getTableRuntimePolicy(firstTable).memoryLayer : '',
+                    relatedContext: relatedContextSummary
                 });
                 if (!batch) {
                     if (MemoryPolicy && firstTemplate && firstTable) {
@@ -1946,7 +1276,7 @@ ${historyText}`;
                 if (!options.isAutoUpdate) selectMemoryView(chat, 'review');
                 if (!options.skipRender) renderMemoryTableScreen();
                 if (!options.suppressSuccessToast) showToast(`已生成 ${queued.proposals.length} 项更新草案，等待审核`);
-                return { status: 'pending_review', changedFields: [], batchId: queued.id, proposedCount: queued.proposals.length };
+                return { status: 'pending_review', changedFields: [], batchId: queued.id, proposedCount: queued.proposals.length, relatedContext: relatedContextSummary };
             }
 
             const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
@@ -1970,7 +1300,7 @@ ${historyText}`;
                     ? `表格已更新，变更 ${changedFields.length} 项`
                     : '没有检测到可更新的字段');
             }
-            return { status: 'success', changedFields };
+            return { status: 'success', changedFields, relatedContext: relatedContextSummary };
         } catch (error) {
             console.error('[MemoryTable] update failed:', error);
             if (options.propagateError) throw error;
@@ -2026,14 +1356,16 @@ ${historyText}`;
         const history = collectMessagesForMemoryTable(chat, { start: range.start, end: range.end });
         const historyText = buildHistoryTextForPrompt(chat, history);
         let definitionChars = 0;
+        let relatedChars = 0;
         try {
             definitionChars = buildTemplateDefinitionForPrompt(chat, [template], {
                 queryText: historyText,
                 relevantRowsOnly: true,
                 maxCandidateRows: 12
             }).length;
+            relatedChars = MemoryContextAssembler.assemble({ chat, template, table, queryText: historyText, budget: 7200 }).chars;
         } catch (_) {}
-        return historyText.length + definitionChars + 2600;
+        return historyText.length + definitionChars + relatedChars + 2600;
     }
 
     function enqueueMemoryTableUpdateTask(chat, template, table, options = {}) {
@@ -2259,7 +1591,8 @@ ${historyText}`;
         const tail = history.length > 6 ? history.slice(-3) : history.slice(3);
         const previewMessages = [...head, ...(history.length > 6 ? [{ role: 'system', content: `……中间省略 ${history.length - 6} 条……` }] : []), ...tail];
         const previewText = buildHistoryTextForPrompt(chat, previewMessages);
-        uiState.rangePreview = { chatId: chat.id, templateId, tableId, start: range.start, end: range.end };
+        const relatedPreview = MemoryContextAssembler.assemble({ chat, template, table, queryText: buildHistoryTextForPrompt(chat, history), budget: 7200 });
+        uiState.rangePreview = { chatId: chat.id, templateId, tableId, start: range.start, end: range.end, relatedContext: { tableCount: relatedPreview.tables.length, rowCount: relatedPreview.rowCount, chars: relatedPreview.chars } };
         const content = document.getElementById('memory-range-preview-content');
         const modal = document.getElementById('memory-range-preview-modal');
         if (!content || !modal) return;
@@ -2270,8 +1603,10 @@ ${historyText}`;
                     <div><strong>处理范围</strong><span>${range.start}–${range.end}</span></div>
                     <div><strong>有效消息</strong><span>${history.length} 条</span></div>
                     <div><strong>API / 审核</strong><span>${escapeHtml(apiDisplay)} · ${requireReview ? '先审核' : '直接应用'}</span></div>
+                    <div><strong>相关记忆表</strong><span>${relatedPreview.tables.length} 张 · ${relatedPreview.rowCount} 行 · ${relatedPreview.chars} 字符</span></div>
                 </div>
-                <div style="font-size:12px;color:#667085;line-height:1.6;">游标尚未推进。点击“生成更新草案”后，V2.2 会强制进入审核队列，只有完成审核才推进该表游标。</div>
+                ${relatedPreview.tables.length ? `<div class="memory-range-related-summary">${relatedPreview.tables.map(item => `<span>${escapeHtml(item.tableName)} · ${escapeHtml(item.reason)}${item.rowCount ? ` · ${item.rowCount} 行` : ''}</span>`).join('')}</div>` : ''}
+                <div style="font-size:12px;color:#667085;line-height:1.6;">相关表仅用于去重、冲突和阶段判断，不会在本次操作中被直接修改。游标尚未推进，只有完成审核才推进该表游标。</div>
                 <pre>${escapeHtml(previewText || '没有可显示的消息')}</pre>
             </div>`;
         modal.classList.add('visible');
@@ -2599,10 +1934,11 @@ ${tableContext}`;
                         });
                         if (!Object.keys(values).length) return;
                         const duplicateSuggestion = findDuplicateSuggestionForReview(chat, template, table, display);
+                        const tagBundle = MemoryTagService.parseRowNode(rowNode);
                         proposals.push({
                             id: createMemoryId('proposal'), kind: 'row_add', actionLabel: '新增记录',
                             templateId, tableId, templateName: template.name, tableName: table.name,
-                            label: `${table.name} / 新增记录`, oldValue: '', newValue: display, fieldValues: values,
+                            label: `${table.name} / 新增记录`, oldValue: '', newValue: display, fieldValues: values, tagBundle,
                             valid: policy.updatePolicy.allowAdd !== false,
                             error: policy.updatePolicy.allowAdd === false ? '该表禁止 AI 新增记录' : '',
                             risk: getReviewRiskLevel(table, 'add'), editable: false,
@@ -2631,6 +1967,17 @@ ${tableContext}`;
                             risk: getReviewRiskLevel(table, 'update'), editable: true, fieldType: field.type
                         });
                     });
+                    const tagBundle = MemoryTagService.parseRowNode(rowNode);
+                    if (tagBundle && (!targetRow || !MemoryTagService.equals(targetRow.meta?.tagBundle, tagBundle))) {
+                        proposals.push({
+                            id: createMemoryId('proposal'), kind: 'row_tags', actionLabel: '更新标签',
+                            templateId, tableId, templateName: template.name, tableName: table.name, rowId,
+                            label: `${table.name} / 模型标签`, oldValue: targetRow?.meta?.tagBundle || {}, newValue: tagBundle, tagBundle,
+                            valid: !!targetRow && policy.updatePolicy.allowUpdate !== false && !MemoryTagService.isLocked(targetRow),
+                            error: !targetRow ? '目标行不存在' : (policy.updatePolicy.allowUpdate === false ? '该表禁止 AI 修改记录' : (MemoryTagService.isLocked(targetRow) ? '标签已锁定，不接受模型覆盖' : '')),
+                            risk: 'low', editable: false
+                        });
+                    }
                 });
                 return;
             }
@@ -2672,6 +2019,7 @@ ${tableContext}`;
             historyPreview: options.historyPreview || '',
             beforeTableState: tableState ? deepClone(tableState) : null,
             rawContent: rawContent || '',
+            relatedContext: options.relatedContext || null,
             proposals
         };
     }
@@ -2702,6 +2050,10 @@ ${tableContext}`;
                     target.meta.lastMentionedAt = Date.now();
                     target.meta.retrievalVector = [];
                     target.meta.retrievalVectorFingerprint = '';
+                    if (proposal.tagBundle) {
+                        const tagChange = MemoryTagService.applyToRow(target, proposal.tagBundle, { chat, source: 'review_v2_11_r1' });
+                        if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: target.id, fieldId: '__tags__', label: `${table.name} / 模型标签（审核合并）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
+                    }
                     if (MemoryLifecycle) MemoryLifecycle.recordSource(target, 'summary_api', { type: 'review_batch', id: batch.id, at: Date.now() });
                     return;
                 }
@@ -2711,6 +2063,10 @@ ${tableContext}`;
                     if (proposal.fieldValues?.[field.id] === undefined) return;
                     changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: field.id, label: `${table.name} / ${field.key}（审核新增）`, oldValue: '', newValue: added.cells[field.id] });
                 });
+                if (proposal.tagBundle) {
+                    const tagChange = MemoryTagService.applyToRow(added, proposal.tagBundle, { chat, source: 'review_v2_11_r1' });
+                    if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: '__tags__', label: `${table.name} / 模型标签（审核新增）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
+                }
                 return;
             }
             if (proposal.kind === 'row_delete') {
@@ -2719,6 +2075,14 @@ ${tableContext}`;
                 if (!row) return;
                 (table.columns || []).forEach(field => changedFields.push({ templateId: template.id, tableId: table.id, rowId: proposal.rowId, fieldId: field.id, label: `${table.name} / ${field.key}（审核删除）`, oldValue: row.cells[field.id], newValue: '' }));
                 deleteRow(chat, template.id, table, proposal.rowId, { source: 'review_v2_1', skipHistory: true });
+                return;
+            }
+            if (proposal.kind === 'row_tags') {
+                if (policy.allowUpdate === false) return;
+                const row = findRowById(chat, template.id, table, proposal.rowId);
+                if (!row) return;
+                const tagChange = MemoryTagService.applyToRow(row, proposal.tagBundle || proposal.newValue, { chat, source: 'review_v2_11_r1' });
+                if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: row.id, fieldId: '__tags__', label: `${table.name} / 模型标签`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
                 return;
             }
             const field = (table.columns || []).find(item => item.id === proposal.fieldId);
@@ -2750,8 +2114,13 @@ ${tableContext}`;
         const runtime = window.OVOOperationRuntime;
         if (!runtime?.recordMutations || !operationId) return [];
         return runtime.recordMutations(operationId, (Array.isArray(changedFields) ? changedFields : []).slice(0, 80).map(change => {
-            const oldText = change?.oldValue == null ? '' : String(change.oldValue);
-            const newText = change?.newValue == null ? '' : String(change.newValue);
+            const stringifyMutationValue = value => {
+                if (value == null) return '';
+                if (typeof value === 'object') { try { return JSON.stringify(value); } catch (_) {} }
+                return String(value);
+            };
+            const oldText = stringifyMutationValue(change?.oldValue);
+            const newText = stringifyMutationValue(change?.newValue);
             const action = !oldText && newText ? 'create' : (oldText && !newText ? 'delete' : 'update');
             return {
                 action,
@@ -2928,6 +2297,11 @@ ${tableContext}`;
                                 newValue: addedRow.cells[field.id]
                             });
                         });
+                        const tagBundle = MemoryTagService.parseRowNode(rowNode);
+                        if (tagBundle) {
+                            const tagChange = MemoryTagService.applyToRow(addedRow, tagBundle, { chat, source: options.source || 'api' });
+                            if (tagChange.changed) changedFields.push({ templateId, tableId, rowId: addedRow.id, fieldId: '__tags__', label: `${table.name} / 模型标签（新增行）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
+                        }
                         return;
                     }
 
@@ -2958,6 +2332,14 @@ ${tableContext}`;
                             newValue
                         });
                     });
+                    const tagBundle = MemoryTagService.parseRowNode(rowNode);
+                    if (tagBundle) {
+                        const tagChange = MemoryTagService.applyToRow(targetRow, tagBundle, { chat, source: options.source || 'api' });
+                        if (tagChange.changed) {
+                            rowChanged = true;
+                            changedFields.push({ templateId, tableId, rowId, fieldId: '__tags__', label: `${table.name} / 模型标签`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
+                        }
+                    }
                     if (rowChanged && MemoryLifecycle) MemoryLifecycle.recordSource(targetRow, options.source === 'manual' ? 'manual' : 'summary_api', { type: options.source === 'manual' ? 'manual' : 'review_batch', id: options.source || 'api', at: Date.now() }, { verified: options.source === 'manual' });
                 });
                 return;
@@ -3000,100 +2382,6 @@ ${tableContext}`;
     }
 
 
-    function getTableFieldByKey(table, key) {
-        return (table?.columns || []).find(field => field.key === key) || null;
-    }
-
-    function getRowValueByKey(table, row, key) {
-        const field = getTableFieldByKey(table, key);
-        return field ? row?.cells?.[field.id] : undefined;
-    }
-
-    async function setLongCandidateStatus(chat, template, table, row, status) {
-        const statusField = getTableFieldByKey(table, '审核状态');
-        if (!statusField || !row) return false;
-        const oldValue = row.cells[statusField.id];
-        const nextValue = normalizeFieldValue(statusField, status);
-        if (isSameMemoryValue(oldValue, nextValue)) return false;
-        row.cells[statusField.id] = nextValue;
-        row.meta ||= {};
-        row.meta.updatedAt = Date.now();
-        pushMemoryHistory(chat, [{ templateId: template.id, tableId: table.id, rowId: row.id, fieldId: statusField.id, label: `${table.name} / 审核状态`, oldValue, newValue: nextValue }], { source: 'candidate_review_v2_1' });
-        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        await saveCharacter(chat.id);
-        renderMemoryTableScreen();
-        return true;
-    }
-
-    async function approveLongCandidate(chat, templateId, tableId, rowId) {
-        const template = getBoundTemplates(chat).find(item => item.id === templateId);
-        const sourceTable = template?.tables?.find(item => item.id === tableId);
-        const sourceRow = sourceTable ? findRowById(chat, templateId, sourceTable, rowId) : null;
-        if (!template || !sourceTable || !sourceRow) return;
-        const targetTable = (template.tables || []).find(table => getTableRuntimePolicy(table).memoryLayer === 'long' && isRowsTable(table));
-        if (!targetTable) {
-            showToast('当前模板没有可接收候选的长期 rows 表');
-            return;
-        }
-        const content = getRowValueByKey(sourceTable, sourceRow, '候选内容');
-        const category = getRowValueByKey(sourceTable, sourceRow, '候选类别');
-        if (!String(content || '').trim()) {
-            showToast('候选内容为空，无法晋升');
-            return;
-        }
-        const originalIdField = getTableFieldByKey(targetTable, '原始记录ID');
-        const contentField = getTableFieldByKey(targetTable, '内容');
-        const duplicate = getRows(chat, template.id, targetTable).find(row => {
-            if (originalIdField && row.cells?.[originalIdField.id] === sourceRow.id) return true;
-            return contentField && String(row.cells?.[contentField.id] || '').trim() === String(content).trim();
-        });
-        if (duplicate) {
-            await setLongCandidateStatus(chat, template, sourceTable, sourceRow, '已批准');
-            showToast('长期库已有相同记录，已将候选标记为批准');
-            return;
-        }
-        const values = {};
-        const assign = (key, value) => {
-            const field = getTableFieldByKey(targetTable, key);
-            if (field && value !== undefined && value !== null && value !== '') values[field.id] = value;
-        };
-        const sourceDomainField = getTableFieldByKey(targetTable, '来源域');
-        if (sourceDomainField) {
-            const preferred = (sourceDomainField.options || []).includes('长期候选审核') ? '长期候选审核'
-                : ((sourceDomainField.options || []).includes('成长沉淀') ? '成长沉淀' : sourceDomainField.options?.[0]);
-            assign('来源域', preferred);
-        }
-        assign('维度或类型', category);
-        assign('分类', category);
-        assign('内容', content);
-        assign('原置信度', getRowValueByKey(sourceTable, sourceRow, '置信度'));
-        assign('确认状态', '用户确认');
-        const evidence = getRowValueByKey(sourceTable, sourceRow, '支持证据');
-        const exception = getRowValueByKey(sourceTable, sourceRow, '反例或例外');
-        assign('例外或适用场景', [exception ? `例外：${exception}` : '', evidence ? `支持证据：${evidence}` : ''].filter(Boolean).join('\n'));
-        assign('原始记录ID', sourceRow.id);
-
-        const beforeSnapshot = deepClone(chat.memoryTables.data);
-        const added = addRow(chat, template.id, targetTable, values, { source: 'candidate_approve_v2_1', skipHistory: true, userConfirmed: true });
-        const statusField = getTableFieldByKey(sourceTable, '审核状态');
-        const oldStatus = statusField ? sourceRow.cells[statusField.id] : undefined;
-        if (statusField) sourceRow.cells[statusField.id] = normalizeFieldValue(statusField, '已批准');
-        if (MemoryLifecycle) {
-            MemoryLifecycle.recordSource(added, 'manual', { type: 'manual', id: sourceRow.id, at: Date.now(), excerpt: String(content).slice(0, 300) }, { userConfirmed: true, verified: true });
-            MemoryLifecycle.setStatus(added, 'active', '由用户批准长期候选后生效');
-        }
-        const changed = [];
-        (targetTable.columns || []).forEach(field => {
-            if (values[field.id] === undefined) return;
-            changed.push({ templateId: template.id, tableId: targetTable.id, rowId: added.id, fieldId: field.id, label: `${targetTable.name} / ${field.key}（候选晋升）`, oldValue: '', newValue: added.cells[field.id] });
-        });
-        if (statusField) changed.push({ templateId: template.id, tableId: sourceTable.id, rowId: sourceRow.id, fieldId: statusField.id, label: `${sourceTable.name} / 审核状态`, oldValue: oldStatus, newValue: sourceRow.cells[statusField.id] });
-        pushMemoryHistory(chat, changed, { source: 'candidate_approve_v2_1', snapshot: beforeSnapshot });
-        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        await saveCharacter(chat.id);
-        renderMemoryTableScreen();
-        showToast('候选已批准并晋升到稳定长期特征库');
-    }
 
     async function restoreHistoryEntry(historyId) {
         const chat = getCurrentMemoryTableChat();
@@ -3158,158 +2446,6 @@ ${tableContext}`;
         }
         await saveCharacter(chat.id);
         renderMemoryTableScreen();
-    }
-
-    function openTemplateEditor(template) {
-        const modal = document.getElementById('memory-template-editor-modal');
-        const textarea = document.getElementById('memory-template-json');
-        if (!modal || !textarea) return;
-
-        const working = template
-            ? deepClone(template)
-            : (uiState.templateDraft ? deepClone(uiState.templateDraft) : createStarterTemplate());
-        uiState.editingTemplateId = working.id || (template ? template.id : null);
-        textarea.value = JSON.stringify(working, null, 2);
-        modal.classList.add('visible');
-    }
-
-    function closeTemplateEditor() {
-        const modal = document.getElementById('memory-template-editor-modal');
-        if (modal) modal.classList.remove('visible');
-        uiState.editingTemplateId = null;
-    }
-
-    async function saveTemplateFromEditor() {
-        ensureMemoryTemplateStore();
-        const textarea = document.getElementById('memory-template-json');
-        if (!textarea) return;
-        let parsed;
-        try {
-            parsed = JSON.parse(textarea.value);
-        } catch (error) {
-            showToast('JSON 解析失败，请检查格式');
-            return;
-        }
-
-        let normalized;
-        try {
-            normalized = normalizeTemplate(parsed, uiState.editingTemplateId || undefined);
-        } catch (error) {
-            showToast(error.message || '模板格式不合法');
-            return;
-        }
-        uiState.templateDraft = deepClone(normalized);
-        await persistTemplateNormalized(normalized);
-        closeTemplateEditor();
-        if (document.getElementById('memory-template-designer-modal')?.classList.contains('visible')) {
-            renderTemplateDesigner();
-        }
-        renderMemoryTableScreen();
-        showToast('模板已保存');
-    }
-
-    function getDesignerDraftTarget(tableIndex, fieldIndex) {
-        const draft = uiState.templateDraft;
-        if (!draft) return null;
-        if (tableIndex === undefined || tableIndex === null) return draft;
-        const table = draft.tables?.[tableIndex];
-        if (!table) return null;
-        if (fieldIndex === undefined || fieldIndex === null) return table;
-        return table.columns?.[fieldIndex] || null;
-    }
-
-    function updateDesignerDraftFromInput(target) {
-        const role = target.dataset.designerRole;
-        if (!role || !uiState.templateDraft) return;
-        const tableIndex = target.dataset.tableIndex !== undefined ? Number(target.dataset.tableIndex) : undefined;
-        const fieldIndex = target.dataset.fieldIndex !== undefined ? Number(target.dataset.fieldIndex) : undefined;
-        const draftTarget = getDesignerDraftTarget(tableIndex, fieldIndex);
-        if (!draftTarget) return;
-
-        const value = target.type === 'checkbox' ? target.checked : target.value;
-        const ensurePolicies = () => {
-            const layer = MemoryPolicy ? MemoryPolicy.normalizeLayer(draftTarget.memoryLayer, draftTarget.name) : (draftTarget.memoryLayer || 'short');
-            draftTarget.memoryLayer = layer;
-            draftTarget.updatePolicy = MemoryPolicy ? MemoryPolicy.normalizeUpdatePolicy(draftTarget.updatePolicy || {}, layer) : (draftTarget.updatePolicy || {});
-            draftTarget.injectionPolicy = MemoryPolicy ? MemoryPolicy.normalizeInjectionPolicy(draftTarget.injectionPolicy || {}, layer) : (draftTarget.injectionPolicy || {});
-        };
-        switch (role) {
-            case 'template-name': uiState.templateDraft.name = value; break;
-            case 'template-description': uiState.templateDraft.description = value; break;
-            case 'table-name': draftTarget.name = value; break;
-            case 'table-mode': draftTarget.mode = value === 'rows' ? 'rows' : 'keyValue'; break;
-            case 'table-memory-layer':
-                draftTarget.memoryLayer = value;
-                if (MemoryPolicy) {
-                    draftTarget.updatePolicy = MemoryPolicy.normalizeUpdatePolicy({}, value);
-                    draftTarget.injectionPolicy = MemoryPolicy.normalizeInjectionPolicy({}, value);
-                }
-                break;
-            case 'table-extract-prompt': draftTarget.extractPrompt = value; break;
-            case 'table-update-enabled': ensurePolicies(); draftTarget.updatePolicy.enabled = value !== 'false'; break;
-            case 'table-trigger-mode': ensurePolicies(); draftTarget.updatePolicy.triggerMode = value; break;
-            case 'table-round-interval': ensurePolicies(); draftTarget.updatePolicy.roundInterval = Math.max(0, Number(value) || 0); break;
-            case 'table-message-interval': ensurePolicies(); draftTarget.updatePolicy.messageInterval = Math.max(0, Number(value) || 0); break;
-            case 'table-max-source-messages': ensurePolicies(); draftTarget.updatePolicy.maxSourceMessages = Math.max(10, Number(value) || 10); break;
-            case 'table-allow-delete': ensurePolicies(); draftTarget.updatePolicy.allowDelete = value === 'true'; break;
-            case 'table-use-summary-api': ensurePolicies(); draftTarget.updatePolicy.useSummaryApi = value === 'true'; break;
-            case 'table-update-instructions': ensurePolicies(); draftTarget.updatePolicy.instructions = value; break;
-            case 'table-injection-mode': ensurePolicies(); draftTarget.injectionPolicy.mode = value; break;
-            case 'table-injection-top-k': ensurePolicies(); draftTarget.injectionPolicy.topK = Math.max(0, Number(value) || 0); break;
-            case 'table-injection-budget': ensurePolicies(); draftTarget.injectionPolicy.budget = Math.max(0, Number(value) || 0); break;
-            case 'table-max-age-days': ensurePolicies(); draftTarget.injectionPolicy.maxAgeDays = Math.max(0, Number(value) || 0); break;
-            case 'field-key': draftTarget.key = value; break;
-            case 'field-group': draftTarget.group = value; break;
-            case 'field-type': draftTarget.type = normalizeFieldType(value); break;
-            case 'field-default': draftTarget.default = draftTarget.type === 'tags' ? parseOptionText(value) : value; break;
-            case 'field-ai-editable': draftTarget.aiEditable = value !== 'false'; break;
-            case 'field-important': draftTarget.important = value !== 'false'; break;
-            case 'field-summary-label': draftTarget.summaryLabel = value; break;
-            case 'field-min': draftTarget.min = value === '' ? undefined : Number(value); break;
-            case 'field-max': draftTarget.max = value === '' ? undefined : Number(value); break;
-            case 'field-options': draftTarget.options = parseOptionText(value); break;
-            case 'field-ai-hint': draftTarget.aiHint = value; break;
-            case 'field-conditional-rules': draftTarget.conditionalRules = parseConditionalRulesText(value); break;
-            default: break;
-        }
-    }
-
-    function mutateDesignerDraft(action, tableIndex, fieldIndex) {
-        const draft = uiState.templateDraft;
-        if (!draft) return;
-        if (action === 'add-table') {
-            draft.tables.push(createEmptyTableDraft());
-        } else if (action === 'remove-table') {
-            if (draft.tables.length > 1) draft.tables.splice(tableIndex, 1);
-        } else if (action === 'move-table-up') {
-            moveArrayItem(draft.tables, tableIndex, tableIndex - 1);
-        } else if (action === 'move-table-down') {
-            moveArrayItem(draft.tables, tableIndex, tableIndex + 1);
-        } else if (action === 'add-field') {
-            draft.tables[tableIndex].columns.push(createEmptyFieldDraft());
-        } else if (action === 'remove-field') {
-            const table = draft.tables[tableIndex];
-            if (table.columns.length > 1) table.columns.splice(fieldIndex, 1);
-        } else if (action === 'move-field-up') {
-            moveArrayItem(draft.tables[tableIndex].columns, fieldIndex, fieldIndex - 1);
-        } else if (action === 'move-field-down') {
-            moveArrayItem(draft.tables[tableIndex].columns, fieldIndex, fieldIndex + 1);
-        }
-    }
-
-    async function saveTemplateFromDesigner() {
-        if (!uiState.templateDraft) return;
-        let normalized;
-        try {
-            normalized = normalizeTemplate(uiState.templateDraft, uiState.editingTemplateId || undefined);
-        } catch (error) {
-            showToast(error.message || '模板格式不合法');
-            return;
-        }
-        uiState.templateDraft = deepClone(normalized);
-        await persistTemplateNormalized(normalized);
-        closeTemplateDesigner();
-        showToast('模板已保存');
     }
 
     async function deleteTemplate(templateId) {
@@ -3578,7 +2714,7 @@ ${tableContext}`;
                     runtime.engineSettings = MemoryPolicy.normalizeEngineSettings(parsed.binding.engineSettings || {
                         messageInterval: chat.memoryTables.autoUpdateInterval
                     });
-                    runtime.viewMode = parsed.binding.viewMode === 'json' && MemoryPolicy.isDesktopJsonAvailable() ? 'json' : 'normal';
+                    runtime.viewMode = 'normal';
                 }
                 if (parsed.binding.sidecar && typeof parsed.binding.sidecar === 'object') {
                     chat.memoryTables.sidecar = deepClone(parsed.binding.sidecar);
@@ -3615,25 +2751,12 @@ ${tableContext}`;
     }
 
     async function handleFieldInputChange(target) {
-        const chat = getCurrentMemoryTableChat();
-        if (!chat) return;
-        const templateId = target.dataset.templateId;
-        const tableId = target.dataset.tableId;
-        const fieldId = target.dataset.fieldId;
-        const template = db.memoryTableTemplates.find(item => item.id === templateId);
-        const table = template ? (template.tables || []).find(item => item.id === tableId) : null;
-        const field = table ? (table.columns || []).find(item => item.id === fieldId) : null;
-        if (!field) return;
-
-        const rawValue = target.type === 'checkbox' ? target.checked : target.value;
-        const rowId = target.dataset.rowId || '';
-        if (rowId && isRowsTable(table)) {
-            updateRowFieldValue(chat, templateId, table, rowId, field, rawValue, { source: 'manual' });
-        } else {
-            setFieldValue(chat, templateId, tableId, field, rawValue, { source: 'manual' });
-        }
-        await saveCharacter(chat.id);
-        renderMemoryTableScreen();
+        return MemoryTableEditController.handleFieldInput(target, {
+            getChat: getCurrentMemoryTableChat,
+            templates: db.memoryTableTemplates,
+            save: saveCharacter,
+            gridRoot: () => document.querySelector('[data-memory-table-grid]')
+        });
     }
 
     function bindMemoryWorkspaceNavigation(screen) {
@@ -3663,7 +2786,15 @@ ${tableContext}`;
                 return;
             }
             const workbenchBack = event.target.closest('[data-workbench-back]');
-            if (workbenchBack) selectMemoryWorkspace(workbenchBack.dataset.workbenchBack, '');
+            if (workbenchBack) {
+                selectMemoryWorkspace(workbenchBack.dataset.workbenchBack, '');
+                return;
+            }
+            const governanceFilter = event.target.closest('[data-governance-filter]');
+            if (governanceFilter) {
+                MemoryGovernanceQueue.setFilter(governanceFilter.dataset.governanceFilter || 'all');
+                renderMemoryTableScreen();
+            }
         });
     }
 
@@ -3677,8 +2808,9 @@ ${tableContext}`;
         const searchInput = document.getElementById('memory-table-search-input');
         if (searchInput) {
             searchInput.addEventListener('input', () => {
-                uiState.search = searchInput.value || '';
-                renderMemoryTableScreen();
+                MemoryTableSession.setSearch(uiState, searchInput.value || '');
+                if (uiState.workspace === 'memory') refreshActiveMemoryTable();
+                else renderMemoryTableScreen();
             });
         }
 
@@ -3720,23 +2852,12 @@ ${tableContext}`;
                 await (window.OVOOperationRuntime?.run ? window.OVOOperationRuntime.run('memory.table.update', { title: `更新${chat.remarkName || chat.realName || chat.name || '角色'}的结构化档案`, source: 'memory-table-manual', scope: { characterId: chat.id, templateId: active.template.id, tableId: active.table.id, tableName: active.table.name || '' }, stage: '读取聊天范围与档案规则', getSummary: result => result?.changedFields?.length ? `结构化档案已更新 ${result.changedFields.length} 项` : (result?.status === 'waiting_review' ? '已生成结构化档案审核草案' : '结构化档案更新流程已完成') }, updateAction) : updateAction());
             });
         }
-        const normalModeBtn = document.getElementById('memory-table-normal-mode-btn');
-        const jsonModeBtn = document.getElementById('memory-table-json-mode-btn');
-        const setViewMode = async mode => {
+        uiState.viewMode = 'normal';
+        const openSchemaEditorBtn = document.getElementById('memory-table-open-schema-editor-btn');
+        if (openSchemaEditorBtn) openSchemaEditorBtn.addEventListener('click', () => {
             const chat = getCurrentMemoryTableChat();
-            if (!chat) return;
-            if (mode === 'json' && MemoryPolicy && !MemoryPolicy.isDesktopJsonAvailable()) {
-                showToast('JSON 模式仅电脑端开放');
-                return;
-            }
-            uiState.viewMode = mode === 'json' ? 'json' : 'normal';
-            const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-            if (runtime) runtime.viewMode = uiState.viewMode;
-            await saveCharacter(chat.id);
-            renderMemoryTableScreen();
-        };
-        if (normalModeBtn) normalModeBtn.addEventListener('click', () => setViewMode('normal'));
-        if (jsonModeBtn) jsonModeBtn.addEventListener('click', () => setViewMode('json'));
+            openSchemaEditor(chat ? activeTemplateForSchema(chat) : null);
+        });
 
         const persistEngineControls = async () => {
             const chat = getCurrentMemoryTableChat();
@@ -3883,7 +3004,7 @@ ${tableContext}`;
         }
 
         const createTemplateBtn = document.getElementById('memory-table-create-template-btn');
-        if (createTemplateBtn) createTemplateBtn.addEventListener('click', () => openTemplateDesigner(null));
+        if (createTemplateBtn) createTemplateBtn.addEventListener('click', () => openSchemaEditor(null));
 
         const importBtn = document.getElementById('memory-table-import-btn');
         const importInput = document.getElementById('memory-table-import-input');
@@ -3950,6 +3071,14 @@ ${tableContext}`;
                         showToast(`已清理 ${count} 个过期反馈请求`);
                         return;
                     }
+                    if (feedbackAction === 'clear-pending-tasks') {
+                        if (!window.confirm('清空后这些引用轮次不再要求反馈，已完成的反馈效果会保留。确定继续吗？')) return;
+                        const result = MemoryFeedback.clearPendingTasks(chat);
+                        await saveCharacter(chat.id);
+                        renderMemoryTableScreen();
+                        showToast(`已清空 ${result.rounds} 轮、${result.items} 项待反馈任务`);
+                        return;
+                    }
                     if (feedbackAction === 'forget' && !window.confirm('这会停止使用并归档该条记忆。确定继续吗？')) return;
                     const result = MemoryFeedback.applyAction(chat, feedbackEl.dataset.snapshotId, feedbackEl.dataset.feedbackItemId, feedbackAction);
                     if (result.changed) await saveCharacter(chat.id);
@@ -3957,10 +3086,72 @@ ${tableContext}`;
                     showToast(result.message);
                     return;
                 }
+                const governanceEl = event.target.closest('[data-governance-action]');
+                if (governanceEl) {
+                    const chat = getCurrentMemoryTableChat();
+                    const governanceAction = governanceEl.dataset.governanceAction || '';
+                    await MemoryGovernanceController.handle(governanceAction, governanceEl, {
+                        chat,
+                        templates: chat ? getBoundTemplates(chat) : [],
+                        save: saveCharacter,
+                        render: renderMemoryTableScreen,
+                        confirm: message => window.confirm(message),
+                        toast: showToast,
+                        navigate: view => selectMemoryWorkspace(MemoryWorkspace.getWorkspaceForView(view), view),
+                        openRow: item => {
+                            MemoryTableSession.selectTable(uiState, item.tableId);
+                            uiState.inspectorOpen = true;
+                            uiState.selectedRowId = item.rowId;
+                            uiState.inspectorAnalysis = null;
+                            uiState.inspectorReview = null;
+                            uiState.inspectorTab = 'relations';
+                            applyMemoryWorkspaceState(chat, 'memory', 'tables');
+                            const runtime = MemoryPolicy?.ensureRuntimeState?.(chat);
+                            if (runtime) runtime.activeTableId = item.tableId;
+                            renderMemoryTableScreen();
+                        }
+                    });
+                    return;
+                }
                 const actionEl = event.target.closest('[data-action]');
                 if (!actionEl) return;
                 const action = actionEl.dataset.action;
-                if (action === 'quality-run') {
+                if (MemoryTableInteraction.handleAction(action, actionEl, {
+                    state: uiState,
+                    root: document.getElementById('memory-table-content') || document,
+                    render: renderMemoryTableScreen,
+                    refreshGrid: refreshActiveMemoryTable
+                })) return;
+                if (await MemoryTableEditController.handleAction(action, actionEl, {
+                    getChat: getCurrentMemoryTableChat,
+                    templates: db.memoryTableTemplates,
+                    getBoundTemplates,
+                    state: uiState,
+                    save: saveCharacter,
+                    render: renderMemoryTableScreen,
+                    refreshGrid: refreshActiveMemoryTable,
+                    gridRoot: () => document.querySelector('[data-memory-table-grid]'),
+                    confirm: message => window.confirm(message)
+                })) return;
+                if (action === 'toggle-memory-settings') {
+                    uiState.settingsOpen = !uiState.settingsOpen;
+                    renderMemoryTableScreen();
+                } else if (action === 'open-memory-update-history') {
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat) return;
+                    uiState.historyTableId = actionEl.dataset.tableId || null;
+                    applyMemoryWorkspaceState(chat, 'manage', 'history');
+                    renderMemoryTableScreen();
+                } else if (action === 'clear-memory-history-filter') {
+                    uiState.historyTableId = null;
+                    renderMemoryTableScreen();
+                } else if (MemoryRowInspectorController.handles(action)) {
+                    await MemoryRowInspectorController.handleAction(action, actionEl, {
+                        chat: getCurrentMemoryTableChat(), state: uiState, save: saveCharacter,
+                        render: renderMemoryTableScreen, toast: showToast,
+                        showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '操作失败')
+                    });
+                } else if (action === 'quality-run') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryQuality) return;
                     try {
@@ -4201,7 +3392,14 @@ ${tableContext}`;
                 } else if (action === 'approve-long-candidate') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
-                    await approveLongCandidate(chat, actionEl.dataset.templateId, actionEl.dataset.tableId, actionEl.dataset.rowId);
+                    const template = getBoundTemplates(chat).find(item => item.id === actionEl.dataset.templateId);
+                    const table = template?.tables?.find(item => item.id === actionEl.dataset.tableId);
+                    const row = table ? findRowById(chat, template.id, table, actionEl.dataset.rowId) : null;
+                    if (!template || !table || !row) return;
+                    const result = MemoryCandidateService.approve(chat, { template, table }, row);
+                    if (result.changed) await saveCharacter(chat.id);
+                    renderMemoryTableScreen();
+                    showToast(result.changed ? (result.duplicate ? '长期库已有相同记录，候选已标记为批准' : '候选已批准并晋升到稳定长期特征库') : (result.reason || '候选未改变'));
                 } else if (action === 'reject-long-candidate' || action === 'more-evidence-candidate') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
@@ -4209,7 +3407,9 @@ ${tableContext}`;
                     const table = template?.tables?.find(item => item.id === actionEl.dataset.tableId);
                     const row = table ? findRowById(chat, template.id, table, actionEl.dataset.rowId) : null;
                     if (!template || !table || !row) return;
-                    await setLongCandidateStatus(chat, template, table, row, action === 'reject-long-candidate' ? '已拒绝' : '需要更多证据');
+                    const result = MemoryCandidateService.setStatus(chat, { template, table }, row, action === 'reject-long-candidate' ? '已拒绝' : '需要更多证据');
+                    if (result.changed) await saveCharacter(chat.id);
+                    renderMemoryTableScreen();
                     showToast(action === 'reject-long-candidate' ? '候选已拒绝' : '候选已标记为需要更多证据');
                 } else if (action === 'lifecycle-maintenance') {
                     const chat = getCurrentMemoryTableChat();
@@ -4266,7 +3466,12 @@ ${tableContext}`;
                 } else if (action === 'select-memory-table') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
-                    uiState.activeTableId = actionEl.dataset.tableId || null;
+                    MemoryTableSession.selectTable(uiState, actionEl.dataset.tableId || null);
+                    MemoryTableSession.setFilter(uiState, 'all');
+                    MemoryTableSession.setTagFilter(uiState, '');
+                    uiState.inspectorOpen = false;
+                    uiState.selectedRowId = null;
+                    uiState.inspectorAnalysis = null;
                     const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
                     if (runtime) runtime.activeTableId = uiState.activeTableId;
                     await saveCharacter(chat.id);
@@ -4277,12 +3482,9 @@ ${tableContext}`;
                     toggleFieldLock(chat, actionEl.dataset.templateId, actionEl.dataset.tableId, actionEl.dataset.fieldId);
                     await saveCharacter(chat.id);
                     renderMemoryTableScreen();
-                } else if (action === 'edit-template-visual') {
+                } else if (action === 'open-schema-editor') {
                     const template = db.memoryTableTemplates.find(item => item.id === actionEl.dataset.templateId);
-                    if (template) openTemplateDesigner(template);
-                } else if (action === 'edit-template-json') {
-                    const template = db.memoryTableTemplates.find(item => item.id === actionEl.dataset.templateId);
-                    if (template) openTemplateEditor(template);
+                    openSchemaEditor(template || null);
                 } else if (action === 'delete-template') {
                     await deleteTemplate(actionEl.dataset.templateId);
                 } else if (action === 'export-template') {
@@ -4291,36 +3493,54 @@ ${tableContext}`;
                     exportTemplatePackage(actionEl.dataset.templateId);
                 } else if (action === 'restore-history') {
                     await restoreHistoryEntry(actionEl.dataset.historyId);
-                } else if (action === 'add-row') {
-                    const chat = getCurrentMemoryTableChat();
-                    const template = db.memoryTableTemplates.find(item => item.id === actionEl.dataset.templateId);
-                    const table = template ? (template.tables || []).find(item => item.id === actionEl.dataset.tableId) : null;
-                    if (!chat || !table) return;
-                    addRow(chat, template.id, table, {}, { source: 'manual' });
-                    await saveCharacter(chat.id);
-                    renderMemoryTableScreen();
-                } else if (action === 'delete-row') {
-                    const chat = getCurrentMemoryTableChat();
-                    const template = db.memoryTableTemplates.find(item => item.id === actionEl.dataset.templateId);
-                    const table = template ? (template.tables || []).find(item => item.id === actionEl.dataset.tableId) : null;
-                    if (!chat || !table) return;
-                    if (!window.confirm('确定删除这一行吗？')) return;
-                    deleteRow(chat, template.id, table, actionEl.dataset.rowId, { source: 'manual' });
-                    await saveCharacter(chat.id);
-                    renderMemoryTableScreen();
-                } else if (action === 'move-row-up' || action === 'move-row-down') {
-                    const chat = getCurrentMemoryTableChat();
-                    const template = db.memoryTableTemplates.find(item => item.id === actionEl.dataset.templateId);
-                    const table = template ? (template.tables || []).find(item => item.id === actionEl.dataset.tableId) : null;
-                    if (!chat || !table) return;
-                    moveRow(chat, template.id, table, actionEl.dataset.rowId, action === 'move-row-up' ? -1 : 1);
-                    await saveCharacter(chat.id);
-                    renderMemoryTableScreen();
                 }
+            });
+
+            screen.addEventListener('submit', async (event) => {
+                const form = event.target.closest('[data-row-tag-form]');
+                if (!form) return;
+                event.preventDefault();
+                await MemoryRowInspectorController.handleSubmit(form, {
+                    chat: getCurrentMemoryTableChat(), state: uiState, save: saveCharacter,
+                    render: renderMemoryTableScreen, toast: showToast,
+                    showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '操作失败')
+                });
+            });
+
+            screen.addEventListener('input', event => {
+                const target = event.target;
+                if (target.matches('[data-governance-search]')) MemoryGovernanceQueue.setQuery(target.value || '');
+            });
+
+            screen.addEventListener('click', event => {
+                const filter = event.target.closest('[data-memory-row-filter]');
+                if (filter) MemoryTableInteraction.handleFilterClick(filter, { state: uiState, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable });
+                const sortClear = event.target.closest('[data-memory-sort-clear]');
+                if (sortClear) MemoryTableInteraction.handleSortClear(sortClear, { state: uiState, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable });
             });
 
             screen.addEventListener('change', async (event) => {
                 const target = event.target;
+                if (target.matches('[data-governance-search]')) {
+                    MemoryGovernanceQueue.setQuery(target.value || '');
+                    renderMemoryTableScreen();
+                    return;
+                }
+                if (target.matches('[data-governance-select]')) {
+                    MemoryGovernanceQueue.toggleSelection(target.dataset.governanceSelect || '', target.checked);
+                    renderMemoryTableScreen();
+                    return;
+                }
+                if (target.matches('[data-memory-audit-round]')) {
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat) return;
+                    MemoryRetrievalAudit.setSelectedRound(chat.id, target.value || '');
+                    renderMemoryTableScreen();
+                    return;
+                }
+                const activeDescriptor = MemoryTableWorkspace.resolveActive(getCurrentMemoryTableChat(), getBoundTemplates(getCurrentMemoryTableChat()), uiState).active;
+                if (MemoryTableInteraction.handleSortChange(target, { state: uiState, table: activeDescriptor?.table, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable })) return;
+                if (MemoryTableInteraction.handleFilterChange(target, { state: uiState, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable })) return;
                 if (target.matches('[data-memory-automation-mode]') && MemoryPolicy) {
                     const chat = getCurrentMemoryTableChat();
                     const template = db.memoryTableTemplates.find(item => item.id === target.dataset.templateId);
@@ -4390,6 +3610,12 @@ ${tableContext}`;
                     if (!chat) return;
                     await bindTemplateToChat(chat, target.dataset.templateId, target.checked);
                 }
+                if (await MemoryTableEditController.handleTagInput(target, {
+                    getChat: getCurrentMemoryTableChat,
+                    templates: db.memoryTableTemplates,
+                    save: saveCharacter,
+                    gridRoot: () => document.querySelector('[data-memory-table-grid]')
+                })) return;
                 if (target.classList.contains('memory-table-input')) {
                     await handleFieldInputChange(target);
                 }
@@ -4404,129 +3630,84 @@ ${tableContext}`;
             });
         }
 
-        const closeModalBtn = document.getElementById('memory-template-editor-cancel-btn');
-        if (closeModalBtn) closeModalBtn.addEventListener('click', closeTemplateEditor);
-
-        const saveModalBtn = document.getElementById('memory-template-editor-save-btn');
-        if (saveModalBtn) saveModalBtn.addEventListener('click', saveTemplateFromEditor);
-
-        const starterBtn = document.getElementById('memory-template-editor-starter-btn');
-        if (starterBtn) {
-            starterBtn.addEventListener('click', () => {
-                const textarea = document.getElementById('memory-template-json');
-                if (!textarea) return;
-                textarea.value = JSON.stringify(createStarterTemplate(), null, 2);
-            });
-        }
-
-        const editorModal = document.getElementById('memory-template-editor-modal');
-        if (editorModal) {
-            editorModal.addEventListener('click', event => {
-                if (event.target === editorModal) closeTemplateEditor();
-            });
-        }
-
-        const designerModal = document.getElementById('memory-template-designer-modal');
-        if (designerModal) {
-            designerModal.addEventListener('click', async event => {
-                if (event.target === designerModal) {
-                    closeTemplateDesigner();
+        const schemaModal = document.getElementById('memory-schema-editor-modal');
+        if (schemaModal) {
+            schemaModal.addEventListener('click', async event => {
+                if (event.target === schemaModal) {
+                    closeSchemaEditor();
                     return;
                 }
-                const actionEl = event.target.closest('[data-action]');
+                const tab = event.target.closest('[data-schema-tab]');
+                if (tab) {
+                    uiState.schemaEditorTab = ['fields', 'tables', 'json'].includes(tab.dataset.schemaTab) ? tab.dataset.schemaTab : 'fields';
+                    renderSchemaEditor();
+                    return;
+                }
+                const actionEl = event.target.closest('[data-schema-action]');
                 if (!actionEl) return;
-                const action = actionEl.dataset.action;
+                const action = actionEl.dataset.schemaAction;
                 const tableIndex = actionEl.dataset.tableIndex !== undefined ? Number(actionEl.dataset.tableIndex) : undefined;
                 const fieldIndex = actionEl.dataset.fieldIndex !== undefined ? Number(actionEl.dataset.fieldIndex) : undefined;
-                if (action === 'designer-add-table') {
-                    mutateDesignerDraft('add-table');
-                    renderTemplateDesigner();
-                } else if (action === 'designer-remove-table') {
-                    mutateDesignerDraft('remove-table', tableIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-move-table-up') {
-                    mutateDesignerDraft('move-table-up', tableIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-move-table-down') {
-                    mutateDesignerDraft('move-table-down', tableIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-add-field') {
-                    mutateDesignerDraft('add-field', tableIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-remove-field') {
-                    mutateDesignerDraft('remove-field', tableIndex, fieldIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-move-field-up') {
-                    mutateDesignerDraft('move-field-up', tableIndex, fieldIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-move-field-down') {
-                    mutateDesignerDraft('move-field-down', tableIndex, fieldIndex);
-                    renderTemplateDesigner();
-                } else if (action === 'designer-toggle-field-collapse') {
-                    const fieldId = actionEl.dataset.fieldId;
-                    uiState.designerCollapsedFieldIds[fieldId] = !uiState.designerCollapsedFieldIds[fieldId];
-                    renderTemplateDesigner();
-                } else if (action === 'designer-open-json') {
-                    openTemplateEditor();
-                } else if (action === 'designer-save') {
-                    await saveTemplateFromDesigner();
-                } else if (action === 'designer-cancel') {
-                    closeTemplateDesigner();
+                if (action === 'cancel') {
+                    closeSchemaEditor();
+                    return;
+                }
+                if (action === 'save') {
+                    await saveSchemaEditor();
+                    return;
+                }
+                if (action === 'starter') {
+                    uiState.editingTemplateId = null;
+                    uiState.templateDraft = MemorySchemaEditor.prepare(null);
+                    uiState.schemaEditorTab = 'fields';
+                    uiState.schemaEditorTableIndex = 0;
+                    renderSchemaEditor();
+                    return;
+                }
+                if (action === 'select-table') {
+                    uiState.schemaEditorTableIndex = Math.max(0, tableIndex || 0);
+                    renderSchemaEditor();
+                    return;
+                }
+                if (action === 'select-fields') {
+                    uiState.schemaEditorTableIndex = Math.max(0, tableIndex || 0);
+                    uiState.schemaEditorTab = 'fields';
+                    renderSchemaEditor();
+                    return;
+                }
+                if (action === 'refresh-raw-json') {
+                    const textarea = schemaModal.querySelector('#memory-schema-raw-json');
+                    if (textarea) textarea.value = JSON.stringify(uiState.templateDraft, null, 2);
+                    return;
+                }
+                if (action === 'apply-raw-json') {
+                    const textarea = schemaModal.querySelector('#memory-schema-raw-json');
+                    if (!textarea) return;
+                    try {
+                        uiState.templateDraft = MemorySchemaEditor.applyRawJson(textarea.value, uiState.editingTemplateId || undefined);
+                        uiState.schemaEditorTableIndex = 0;
+                        renderSchemaEditor();
+                        showToast('原始 JSON 已同步到同一个表结构');
+                    } catch (error) {
+                        showToast(error.message || 'JSON 格式不合法');
+                    }
+                    return;
+                }
+                if (MemorySchemaEditor.mutate(uiState.templateDraft, action, tableIndex, fieldIndex)) {
+                    if (action === 'add-table') uiState.schemaEditorTableIndex = Math.max(0, uiState.templateDraft.tables.length - 1);
+                    else if (action === 'remove-table') uiState.schemaEditorTableIndex = Math.min(uiState.schemaEditorTableIndex, Math.max(0, uiState.templateDraft.tables.length - 1));
+                    renderSchemaEditor();
                 }
             });
-            designerModal.addEventListener('dragstart', event => {
-                const dragEl = event.target.closest('[data-designer-draggable]');
-                if (!dragEl) return;
-                uiState.designerDrag = {
-                    type: dragEl.dataset.designerDraggable,
-                    tableIndex: dragEl.dataset.tableIndex !== undefined ? Number(dragEl.dataset.tableIndex) : undefined,
-                    fieldIndex: dragEl.dataset.fieldIndex !== undefined ? Number(dragEl.dataset.fieldIndex) : undefined
-                };
-                if (event.dataTransfer) {
-                    event.dataTransfer.effectAllowed = 'move';
+            schemaModal.addEventListener('input', event => {
+                if (!updateSchemaDraft(event.target)) return;
+                if (event.target.dataset.schemaRole === 'field-key') {
+                    MemorySchemaEditor.applyFieldNameWidth(schemaModal, uiState.templateDraft, { activeTableIndex: uiState.schemaEditorTableIndex });
                 }
             });
-            designerModal.addEventListener('dragover', event => {
-                const dragEl = event.target.closest('[data-designer-draggable]');
-                if (!dragEl || !uiState.designerDrag) return;
-                event.preventDefault();
-            });
-            designerModal.addEventListener('drop', event => {
-                const dragEl = event.target.closest('[data-designer-draggable]');
-                if (!dragEl || !uiState.designerDrag || !uiState.templateDraft) return;
-                event.preventDefault();
-                const drag = uiState.designerDrag;
-                if (drag.type === 'table' && dragEl.dataset.designerDraggable === 'table') {
-                    moveArrayItem(uiState.templateDraft.tables, drag.tableIndex, Number(dragEl.dataset.tableIndex));
-                    renderTemplateDesigner();
-                } else if (
-                    drag.type === 'field' &&
-                    dragEl.dataset.designerDraggable === 'field' &&
-                    Number(dragEl.dataset.tableIndex) === drag.tableIndex
-                ) {
-                    moveArrayItem(
-                        uiState.templateDraft.tables[drag.tableIndex].columns,
-                        drag.fieldIndex,
-                        Number(dragEl.dataset.fieldIndex)
-                    );
-                    renderTemplateDesigner();
-                }
-                uiState.designerDrag = null;
-            });
-            designerModal.addEventListener('dragend', () => {
-                uiState.designerDrag = null;
-            });
-            designerModal.addEventListener('input', event => {
-                const target = event.target;
-                if (target.dataset && target.dataset.designerRole) {
-                    updateDesignerDraftFromInput(target);
-                }
-            });
-            designerModal.addEventListener('change', event => {
-                const target = event.target;
-                if (target.dataset && target.dataset.designerRole) {
-                    updateDesignerDraftFromInput(target);
-                }
+            schemaModal.addEventListener('change', event => {
+                if (!updateSchemaDraft(event.target)) return;
+                if (['field-group', 'table-name', 'table-memory-layer'].includes(event.target.dataset.schemaRole)) renderSchemaEditor();
             });
         }
 
@@ -4723,7 +3904,7 @@ ${text}`;
     window.resumeQueuedMemoryTasks = resumeQueuedMemoryTasks;
 
     function openMemoryFeedbackTab() {
-        selectMemoryWorkspace('inbox', 'feedback');
+        selectMemoryWorkspace('manage', 'usage_audit');
         if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
     }
 

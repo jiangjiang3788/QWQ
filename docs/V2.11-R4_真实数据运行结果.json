@@ -1,0 +1,83 @@
+{
+  "version": "2.11-R4",
+  "character": {
+    "id": "char_1769490095778",
+    "name": "阿沉",
+    "messages": 19133
+  },
+  "template": {
+    "id": "memory_tpl_1784414846228_08yhkm",
+    "name": "分层可检索角色记忆 V2（含原数据）",
+    "tables": 8
+  },
+  "rows": {
+    "核心确认档案": 12,
+    "当前状态（3-7天）": 17,
+    "待办、承诺与未完成事项": 15,
+    "近期经历、想法与重要事件": 2,
+    "日常观察（睡眠/饮水/身体）": 1,
+    "中期总结与成长经验": 12,
+    "长期候选审核队列": 0,
+    "稳定长期特征库": 179
+  },
+  "queue": {
+    "total": 4,
+    "categories": {
+      "all": 4,
+      "review": 1,
+      "candidate": 0,
+      "reliability": 0,
+      "system": 3
+    },
+    "items": [
+      {
+        "id": "review:memory_review_1784524898134_k2tzfy",
+        "kind": "review_batch",
+        "priority": "medium",
+        "title": "中期总结与成长经验",
+        "detail": "5 项建议",
+        "selectable": false
+      },
+      {
+        "id": "system:tasks",
+        "kind": "system",
+        "priority": "low",
+        "title": "后台任务队列",
+        "detail": "失败 0 · 排队 1 · 暂停 0",
+        "selectable": false
+      },
+      {
+        "id": "system:sidecar",
+        "kind": "system",
+        "priority": "low",
+        "title": "短期记忆候选",
+        "detail": "9 条聊天候选等待整理",
+        "selectable": false
+      },
+      {
+        "id": "system:feedback",
+        "kind": "system",
+        "priority": "low",
+        "title": "记忆使用反馈",
+        "detail": "10 项召回结果等待反馈",
+        "selectable": false
+      }
+    ]
+  },
+  "longTable": {
+    "rows": 179,
+    "filters": {
+      "all": 179,
+      "attention": 0,
+      "active": 179,
+      "pinned": 0,
+      "inactive": 0
+    },
+    "taggedRows": 179,
+    "pinnedRows": 0
+  },
+  "code": {
+    "memoryTableLines": 4416,
+    "productionJsFiles": 98
+  }
+}

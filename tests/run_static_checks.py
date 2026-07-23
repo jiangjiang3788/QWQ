@@ -1,5 +1,5 @@
 from pathlib import Path
-import re, sys, zipfile
+import re, sys, zipfile, subprocess
 root=Path(__file__).resolve().parents[1]
 errors=[]
 html=(root/'index.html').read_text(encoding='utf-8')
@@ -36,9 +36,9 @@ if 'rowId = ''' not in memory_table_js or 'data-row-id="${rowId}"' not in memory
 
 
 # 结构化记忆 V2 回归检查。
-for rel in ['js/modules/message_content.js','js/modules/memory_table_schedule.js','js/features/memory/kernel.js','js/features/memory/api_adapter.js','js/features/memory/domain.js','js/features/memory/facade.js','js/modules/memory_table_policy.js','js/modules/memory_table_lifecycle.js','js/modules/memory_table_effects.js','js/modules/memory_table_feedback.js','js/modules/memory_table_review.js','js/modules/memory_table_retrieval.js','js/modules/memory_table_sidecar.js','js/modules/memory_table_tasks.js','css/modules/memory_table_v2.css','memory_templates/当前默认记忆模板_V2.8.json']:
+for rel in ['js/modules/message_content.js','js/modules/memory_table_schedule.js','js/features/memory/kernel.js','js/features/memory/api_adapter.js','js/features/memory/domain.js','js/features/memory/schema_model.js','js/features/memory/schema_editor.js','js/features/memory/facade.js','js/modules/memory_table_policy.js','js/modules/memory_table_lifecycle.js','js/modules/memory_table_effects.js','js/modules/memory_table_feedback.js','js/modules/memory_table_review.js','js/modules/memory_table_retrieval.js','js/features/memory/retrieval_audit.js','js/modules/memory_table_sidecar.js','js/modules/memory_table_tasks.js','css/modules/memory_table_v2.css','memory_templates/当前默认记忆模板_V2.8.json']:
     if not (root/rel).exists(): errors.append('missing memory v2 asset: '+rel)
-for rid in ['memory-table-normal-mode-btn','memory-table-json-mode-btn','memory-table-trigger-mode','memory-table-round-interval','memory-table-cursor-table-select','memory-table-cursor-position','memory-table-update-selected-btn','memory-table-review-mode','memory-table-retrieval-mode','memory-table-semantic-weight','memory-table-embedding-candidate-limit','memory-table-preview-range-btn','memory-review-tab-count','memory-range-preview-modal','memory-live-state-bar','memory-sidecar-enabled-toggle','memory-sidecar-candidate-toggle','memory-sidecar-statusbar-toggle','memory-sidecar-tab-count','memory-table-tag-weight','memory-table-scene-routing-toggle','memory-table-side-effect-guard-toggle','memory-task-tab-count','memory-feedback-tab-count','memory-table-auto-schedule-list']:
+for rid in ['memory-table-normal-mode-btn','memory-table-json-mode-btn','memory-table-open-schema-editor-btn','memory-schema-editor-modal','memory-schema-editor-body','memory-table-trigger-mode','memory-table-round-interval','memory-table-cursor-table-select','memory-table-cursor-position','memory-table-update-selected-btn','memory-table-review-mode','memory-table-retrieval-mode','memory-table-semantic-weight','memory-table-embedding-candidate-limit','memory-table-preview-range-btn','memory-review-tab-count','memory-range-preview-modal','memory-live-state-bar','memory-sidecar-enabled-toggle','memory-sidecar-candidate-toggle','memory-sidecar-statusbar-toggle','memory-sidecar-tab-count','memory-table-tag-weight','memory-table-scene-routing-toggle','memory-table-side-effect-guard-toggle','memory-task-tab-count','memory-usage-audit-tab-count','memory-table-auto-schedule-list']:
     if rid not in ids: errors.append('missing memory v2 id: '+rid)
 policy_js=(root/'js/modules/memory_table_policy.js').read_text(encoding='utf-8') if (root/'js/modules/memory_table_policy.js').exists() else ''
 lifecycle_js=(root/'js/modules/memory_table_lifecycle.js').read_text(encoding='utf-8') if (root/'js/modules/memory_table_lifecycle.js').exists() else ''
@@ -61,7 +61,7 @@ if 'prepareGroups' not in retrieval_js or 'renderDiagnostics' not in retrieval_j
 if 'buildSystemPrompt' not in sidecar_js or 'extractSidecar' not in sidecar_js or 'applySidecar' not in sidecar_js: errors.append('memory v2.3 sidecar module missing')
 if 'memory_table_lifecycle.js' not in html or 'data-tab="reliability"' not in html: errors.append('memory v2.5 lifecycle UI integration missing')
 if 'memory_table_tasks.js' not in html or 'data-tab="tasks"' not in html: errors.append('memory v2.6 task queue UI integration missing')
-if 'memory_table_feedback.js' not in html or 'data-tab="feedback"' not in html: errors.append('memory v2.7 feedback UI integration missing')
+if 'memory_table_feedback.js' not in html or 'js/features/memory/retrieval_audit.js' not in html or 'data-tab="usage_audit"' not in html: errors.append('memory v2.7/R1 feedback audit UI integration missing')
 if 'captureInjection' not in feedback_js or 'applyAction' not in feedback_js or 'evaluateItem' not in feedback_js: errors.append('memory v2.7 feedback module missing')
 if 'enqueueTableUpdate' not in tasks_js or 'resolveReviewBatch' not in tasks_js or 'perRoundApiLimit' not in tasks_js: errors.append('memory v2.6 task queue module missing')
 if 'MemoryTableSidecar.extractSidecar' not in chat_ai_js or 'enableMemorySidecar' not in chat_ai_js: errors.append('chat ai sidecar integration missing')
@@ -108,9 +108,13 @@ kernel_js=(root/'js/features/memory/kernel.js').read_text(encoding='utf-8') if (
 domain_js=(root/'js/features/memory/domain.js').read_text(encoding='utf-8') if (root/'js/features/memory/domain.js').exists() else ''
 api_adapter_js=(root/'js/features/memory/api_adapter.js').read_text(encoding='utf-8') if (root/'js/features/memory/api_adapter.js').exists() else ''
 workspace_js=(root/'js/features/memory/workspace.js').read_text(encoding='utf-8') if (root/'js/features/memory/workspace.js').exists() else ''
-for token in ["Kernel.register('policy'", "Kernel.register('lifecycle'", "Kernel.register('effects'", "Kernel.register('feedback'", "Kernel.register('review'", "Kernel.register('retrieval'", "Kernel.register('sidecar'", "Kernel.register('tasks'", "Kernel.register('quality'", "Kernel.register('controller'"]:
-    if token not in ''.join([policy_js,lifecycle_js,effects_js,feedback_js,review_js,retrieval_js,sidecar_js,tasks_js,(root/'js/modules/memory_table_quality.js').read_text(encoding='utf-8'),memory_table_js]): errors.append('memory kernel registration missing: '+token)
+for token in ["Kernel.register('policy'", "Kernel.register('lifecycle'", "Kernel.register('effects'", "Kernel.register('feedback'", "Kernel.register('review'", "Kernel.register('retrieval'", "Kernel.register('retrievalAudit'", "Kernel.register('sidecar'", "Kernel.register('tasks'", "Kernel.register('quality'", "Kernel.register('controller'"]:
+    if token not in ''.join([policy_js,lifecycle_js,effects_js,feedback_js,review_js,retrieval_js,(root/'js/features/memory/retrieval_audit.js').read_text(encoding='utf-8'),sidecar_js,tasks_js,(root/'js/modules/memory_table_quality.js').read_text(encoding='utf-8'),memory_table_js]): errors.append('memory kernel registration missing: '+token)
 if "Kernel.register('domain'" not in domain_js or "Kernel.register('api'" not in api_adapter_js or "Kernel.register('workspace'" not in workspace_js: errors.append('memory domain/api/workspace registration missing')
+schema_model_js=(root/'js/features/memory/schema_model.js').read_text(encoding='utf-8') if (root/'js/features/memory/schema_model.js').exists() else ''
+schema_editor_js=(root/'js/features/memory/schema_editor.js').read_text(encoding='utf-8') if (root/'js/features/memory/schema_editor.js').exists() else ''
+if "Kernel.register('schemaModel'" not in schema_model_js or "Kernel.register('schemaEditor'" not in schema_editor_js: errors.append('memory schema editor boundary missing')
+if 'memory-template-editor-modal' in html or 'memory-template-designer-modal' in html: errors.append('retired split template editor modal remains')
 script_order=[html.find('js/features/memory/kernel.js'),html.find('js/features/memory/api_adapter.js'),html.find('js/features/memory/domain.js'),html.find('js/features/memory/workspace.js'),html.find('js/modules/memory_table.js'),html.find('js/features/memory/facade.js')]
 if any(pos < 0 for pos in script_order) or script_order != sorted(script_order): errors.append('memory kernel script order invalid')
 if len(memory_table_js.splitlines()) >= 4750: errors.append('memory_table.js exceeded V2.10-R3 integration budget')
@@ -151,6 +155,16 @@ if retired_memory_route in memory_table_js or retired_memory_route in html: erro
 required=['proment-compare-runtime','proment-preview-worldbook','proment-preview-ai-request']
 for rid in required:
     if rid not in ids: errors.append('missing required id: '+rid)
+
+# V2.12-R4 memory architecture and maintenance gates.
+architecture_check = subprocess.run(
+    [sys.executable, str(root/'tools/check_memory_architecture.py')],
+    cwd=root,
+    capture_output=True,
+    text=True
+)
+if architecture_check.returncode:
+    errors.append('memory architecture gate failed: '+(architecture_check.stdout+architecture_check.stderr).strip())
 print('STATIC CHECKS:', 'PASS' if not errors else 'FAIL')
 for e in errors: print('-',e)
 sys.exit(1 if errors else 0)

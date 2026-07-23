@@ -1,0 +1,31 @@
+{
+  "version": "2.12-R5.2",
+  "memoryTable": {
+    "maxVisibleDataRows": 30,
+    "maxActiveEditors": 1,
+    "maxOpenSharedMenus": 1,
+    "maxPersistentRowEditButtons": 0,
+    "maxPageOverflowPixels": 1
+  },
+  "rowInspector": {
+    "maxActivePanels": 1,
+    "maxReviewButtons": 6,
+    "maxReviewInputs": 0
+  },
+  "retrievalAudit": {
+    "maxLegacyHitCards": 0,
+    "maxLegacyFeedbackCards": 0,
+    "requiredSummaryTables": 1,
+    "requiredDetailTables": 1
+  },
+  "quickDock": {
+    "maxSecondaryBackButtons": 0,
+    "maxSecondaryToolEntrances": 0,
+    "requiredTopActions": 8
+  },
+  "schemaEditor": {
+    "maxModalDepth": 1,
+    "maxRawJsonEditorsVisibleByDefault": 0,
+    "requiredPeerViews": 3
+  }
+}

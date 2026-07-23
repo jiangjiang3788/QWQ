@@ -1,0 +1,108 @@
+{
+  "character": {
+    "id": "char_1769490095778",
+    "name": "阿沉",
+    "messages": 19133
+  },
+  "rows": 209,
+  "pair": {
+    "score": 0.6380582524271845,
+    "kind": "review",
+    "reasons": [
+      "主题重合 100%",
+      "场景重合 100%",
+      "内容相似 58%"
+    ],
+    "current": {
+      "table": "稳定长期特征库",
+      "rowId": "memory_row_1784414847599_2v74tv",
+      "text": "维度或类型: 已形成的新能力 分类: 表达 内容: 在亲密关系中主动且坦白地表达对“安抚式支配/危险/控制”的深层欲望",
+      "tags": {
+        "topic": [
+          "成长沉淀",
+          "表达",
+          "关系"
+        ],
+        "scene": [
+          "关系讨论"
+        ],
+        "entity": [
+          "安抚式支配/危险/控制"
+        ],
+        "effect": "historical_context"
+      }
+    },
+    "candidate": {
+      "table": "稳定长期特征库",
+      "rowId": "memory_row_1784414847599_p768p4",
+      "text": "维度或类型: 已形成的新能力 分类: 表达 内容: 在亲密关系中主动且坦白地表达性渴望与身心纠结",
+      "tags": {
+        "topic": [
+          "成长沉淀",
+          "表达",
+          "关系"
+        ],
+        "scene": [
+          "关系讨论"
+        ],
+        "entity": [],
+        "effect": "historical_context"
+      }
+    }
+  },
+  "preview": {
+    "fillCurrentCount": 0,
+    "fillCandidateCount": 0,
+    "conflictCount": 1,
+    "sourceCount": 0,
+    "fieldDiffs": [
+      {
+        "key": "内容",
+        "current": "在亲密关系中主动且坦白地表达对“安抚式支配/危险/控制”的深层欲望",
+        "candidate": "在亲密关系中主动且坦白地表达性渴望与身心纠结",
+        "conflict": true,
+        "canFillCurrent": false
+      }
+    ]
+  },
+  "merge": {
+    "changed": true,
+    "copiedFieldKeys": [],
+    "mergedSourceCount": 0,
+    "conflictFieldCount": 1,
+    "winnerStatus": "active",
+    "loserStatus": "superseded",
+    "audit": {
+      "id": "memory_merge_1784691879686_07id0y",
+      "at": 1784691879686,
+      "action": "merge",
+      "winnerId": "memory_row_1784414847599_2v74tv",
+      "loserId": "memory_row_1784414847599_p768p4",
+      "winnerTableId": "memory_table_1784414846228_3wlskf",
+      "loserTableId": "memory_table_1784414846228_3wlskf",
+      "copiedFieldKeys": [],
+      "mergedSourceCount": 0,
+      "tagsChanged": false,
+      "conflictFieldCount": 1
+    }
+  },
+  "vocabulary": {
+    "count": {
+      "topic": 1,
+      "scene": 0,
+      "entity": 0,
+      "total": 1
+    },
+    "rules": [
+      {
+        "dimension": "topic",
+        "aliasKey": "坦白表达",
+        "canonical": "表达"
+      }
+    ]
+  },
+  "safety": {
+    "currentNonEmptyContentPreserved": true,
+    "auditContainsFullText": false
+  }
+}

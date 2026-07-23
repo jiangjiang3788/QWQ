@@ -1,0 +1,103 @@
+{
+  "version": "2.12-R5.2",
+  "controller": "js/modules/memory_table.js",
+  "publicFacades": {
+    "memoryPlatformDomain": {
+      "file": "js/features/memory/domains/platform.js",
+      "owns": [
+        "policy",
+        "review",
+        "retrieval",
+        "effects",
+        "lifecycle",
+        "tasks",
+        "feedback",
+        "quality",
+        "sidecar",
+        "schedule"
+      ]
+    },
+    "memoryFoundationDomain": {
+      "file": "js/features/memory/domains/foundation.js",
+      "owns": [
+        "api",
+        "domain",
+        "workspace"
+      ]
+    },
+    "memorySchemaDomain": {
+      "file": "js/features/memory/domains/schema.js",
+      "owns": [
+        "schemaModel",
+        "schemaEditor"
+      ]
+    },
+    "memoryGovernanceDomain": {
+      "file": "js/features/memory/domains/governance.js",
+      "owns": [
+        "tagVocabulary",
+        "relationService",
+        "mergeReviewService",
+        "candidateService",
+        "tableFilter",
+        "governanceQueue",
+        "governanceController",
+        "rowInspector",
+        "rowInspectorController"
+      ]
+    },
+    "memoryRetrievalDomain": {
+      "file": "js/features/memory/domains/retrieval.js",
+      "owns": [
+        "retrievalAudit"
+      ]
+    },
+    "memoryUpdateDomain": {
+      "file": "js/features/memory/domains/update.js",
+      "owns": [
+        "tagService",
+        "contextAssembler",
+        "updateService"
+      ]
+    },
+    "memoryTablesDomain": {
+      "file": "js/features/memory/domains/tables.js",
+      "owns": [
+        "tableViewport",
+        "tableSession",
+        "tableGrouping",
+        "tableGesture",
+        "tableCache",
+        "tablePersistence",
+        "rowCommandMenu",
+        "tableInteraction",
+        "tableView",
+        "tablePresenter",
+        "tableReconciler",
+        "tableGrid",
+        "tableEditor",
+        "tableEditController",
+        "updateActivity",
+        "tableWorkspace",
+        "tableSort"
+      ]
+    }
+  },
+  "controllerAllowedRequires": [
+    "memoryPlatformDomain",
+    "memoryFoundationDomain",
+    "memorySchemaDomain",
+    "memoryGovernanceDomain",
+    "memoryRetrievalDomain",
+    "memoryUpdateDomain",
+    "memoryTablesDomain",
+    "memoryArchitecture"
+  ],
+  "budgets": {
+    "js/modules/memory_table.js": 4000,
+    "js/modules/floating_ball.js": 1020,
+    "js/features/memory/schema_editor.js": 900,
+    "js/features/memory/retrieval_audit.js": 700,
+    "js/settings.js": 500
+  }
+}

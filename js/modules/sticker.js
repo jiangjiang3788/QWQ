@@ -233,6 +233,14 @@ async function setupStickerSystem() {
             return;
         }
 
+        const operationRuntime = window.OVOOperationRuntime || null;
+        const batchOperation = operationRuntime?.start?.('vision.sticker.batch', {
+            title: `批量识别 ${idsArray.length} 个表情包`,
+            source: 'sticker-batch-recognition',
+            stage: '准备批量识别',
+            scope: { selectedCount: idsArray.length }
+        }) || null;
+
         isBatchRecognizing = true;
         cancelBatchRecognizeFlag = false;
         batchRecognizeModal.classList.add('visible');
@@ -247,6 +255,7 @@ async function setupStickerSystem() {
             }
             
             batchRecognizeText.textContent = `处理中: 第 ${i+1} 个 / 共 ${idsArray.length} 个`;
+            operationRuntime?.stage?.(batchOperation?.id, `识别第 ${i + 1}/${idsArray.length} 个表情包`, { progress: Math.round((i / Math.max(1, idsArray.length)) * 100) });
             
             const stickerId = idsArray[i];
             const sticker = db.myStickers.find(s => s.id === stickerId);
@@ -264,7 +273,11 @@ async function setupStickerSystem() {
             }
 
             try {
-                const description = await recognizeImageContent(sticker.data, apiConfig);
+                const previousDescription = sticker.description || '';
+                const description = await recognizeImageContent(sticker.data, apiConfig, {
+                    operationId: batchOperation?.id || null,
+                    stage: `正在识别：${sticker.name || `第 ${i + 1} 个表情包`}`
+                });
                 if (description) {
                     sticker.description = description;
                     successCount++;
@@ -273,7 +286,15 @@ async function setupStickerSystem() {
                 }
                 
                 // 每处理一个就保存一次，防止刷新丢失进度
-                await saveData(); 
+                await saveData();
+                if (description) {
+                    operationRuntime?.recordMutation?.(batchOperation?.id, {
+                        action: 'update', entityType: 'sticker', entityId: sticker.id,
+                        title: sticker.name || '表情包描述', summary: '已保存 AI 识别的画面描述',
+                        before: previousDescription, after: description,
+                        fields: ['description'], meta: { batchIndex: i + 1, batchTotal: idsArray.length }
+                    });
+                }
             } catch (error) {
                 console.error(`表情 ${sticker.name} 识别失败:`, error);
                 failCount++;
@@ -289,8 +310,13 @@ async function setupStickerSystem() {
         batchRecognizeModal.classList.remove('visible');
         
         if (cancelBatchRecognizeFlag) {
+            operationRuntime?.cancel?.(batchOperation?.id, `批量识别已中止：成功 ${successCount}，失败或跳过 ${failCount}`);
             showToast(`已中止。成功: ${successCount}, 失败或跳过: ${failCount}`);
         } else {
+            operationRuntime?.complete?.(batchOperation?.id, {
+                summary: `批量识别完成：成功 ${successCount}，失败或跳过 ${failCount}`,
+                result: { selectedCount: idsArray.length, successCount, failCount }
+            });
             showToast(`批量识别完成。成功: ${successCount}, 失败或跳过: ${failCount}`);
             // 退出管理模式
             exitStickerManageMode();
@@ -306,7 +332,7 @@ async function setupStickerSystem() {
     });
 
     // 通用的调用 API 识别图片的函数
-    async function recognizeImageContent(imageData, apiConfig) {
+    async function recognizeImageContent(imageData, apiConfig, runtimeMeta = {}) {
         let {url, key, model, provider} = apiConfig;
         if (url.endsWith('/')) url = url.slice(0, -1);
 
@@ -386,7 +412,14 @@ async function setupStickerSystem() {
                 model,
                 endpoint,
                 headers,
-                body: requestBody
+                body: requestBody,
+                operationId: runtimeMeta.operationId || null,
+                operationType: 'vision.sticker.recognize',
+                operationStage: runtimeMeta.stage || '正在识别表情包内容',
+                promptSources: [
+                    { type: 'task_instruction', title: '表情包识别要求', content: prompt, reason: '要求模型描述动作、表情和图片文字' },
+                    { type: 'user_input', title: '待识别表情包', content: '[图片内容]', reason: '本次请求携带的表情包图片' }
+                ]
             })
             : await fetch(endpoint, {
                 method: 'POST',

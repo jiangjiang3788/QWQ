@@ -136,7 +136,7 @@
 .quick-dock-mutation-diff p{margin:7px 0 0;font-size:8px;color:#888}
 @media(max-width:520px){.quick-dock-mutation-head{grid-template-columns:28px minmax(0,1fr)}.quick-dock-mutation-head em{grid-column:2;justify-self:start}}
 
-/* V2.10-R3.3 · 悬浮球打开即进入覆盖式操作中心 */
+/* V2.10-R4 · 悬浮球打开即进入覆盖式操作中心 */
 body.quick-dock-body-open{overflow:hidden!important}
 .quick-dock-root.quick-dock--open .quick-dock-ball{visibility:hidden;pointer-events:none}
 .quick-dock-panel.quick-dock-panel--app-fullscreen{
@@ -167,3 +167,54 @@ body.quick-dock-body-open{overflow:hidden!important}
 .quick-dock-memory-audit .is-sent{border-color:#b9e4ca;background:#f4fcf7}.quick-dock-memory-audit .is-missing{border-color:#f0c1bc;background:#fff7f6}
 .quick-dock-memory-audit-note{margin:9px 0 0;padding:9px 11px;border-radius:11px;background:#f2f4f7;color:#555f6f;font-size:11px;line-height:1.55}
 @media(max-width:520px){.quick-dock-panel.quick-dock-panel--app-fullscreen{width:100vw!important;right:0!important;left:0!important;padding-left:max(12px,env(safe-area-inset-left))!important;padding-right:max(12px,env(safe-area-inset-right))!important}}
+
+/* V2.10-R4 AI capability coverage */
+.quick-dock-coverage-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}.quick-dock-coverage-summary>div{padding:14px;border:1px solid rgba(127,127,127,.18);border-radius:14px;background:rgba(127,127,127,.06);display:flex;flex-direction:column;gap:4px}.quick-dock-coverage-summary b{font-size:22px}.quick-dock-coverage-summary span{font-size:12px;opacity:.7}.quick-dock-coverage-groups{display:flex;flex-direction:column;gap:12px}.quick-dock-coverage-list{display:flex;flex-direction:column;gap:8px}.quick-dock-coverage-list article{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(127,127,127,.16);border-radius:12px}.quick-dock-coverage-list article[data-coverage-used="true"]{border-color:rgba(36,166,96,.35);background:rgba(36,166,96,.07)}.quick-dock-coverage-list article>span{font-size:20px}.quick-dock-coverage-list article>div{display:flex;flex-direction:column;min-width:0}.quick-dock-coverage-list article small{opacity:.58;overflow:hidden;text-overflow:ellipsis}.quick-dock-coverage-list article em{font-style:normal;font-size:12px;opacity:.72;white-space:nowrap}
+
+.quick-dock-source-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:2px 0 8px}.quick-dock-source-actions button{border:1px solid #d9d4e6;border-radius:9px;padding:7px 10px;background:#fff;color:#54466f;font-size:9px;font-weight:700}.quick-dock-source-actions button:first-child{background:#5f4b8b;color:#fff;border-color:#5f4b8b}.quick-dock-source-actions small{flex:1 1 100%;font-size:8px;color:#8a8492;overflow-wrap:anywhere}
+
+/* V2.10-R6 · 操作中心产品化：分层视图、筛选和脱敏报告 */
+.quick-dock-view-mode-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 14px;padding:10px 12px;border:1px solid #e4e3e9;border-radius:14px;background:#fff}
+.quick-dock-view-mode-bar>span{font-size:11px;font-weight:700;color:#555b66}
+.quick-dock-view-switch{display:inline-flex;align-items:center;gap:3px;padding:3px;border-radius:11px;background:#f0eff4}
+.quick-dock-view-switch button{min-width:54px;border:0;border-radius:8px;padding:7px 10px;background:transparent;color:#676371;font-size:10px;font-weight:700;cursor:pointer}
+.quick-dock-view-switch button[aria-pressed="true"]{background:#fff;color:#4e3d75;box-shadow:0 1px 5px rgba(50,40,75,.12)}
+.quick-dock-history-workbench{margin:16px 0}
+.quick-dock-history-filters{display:grid;grid-template-columns:minmax(180px,2fr) minmax(120px,1fr) minmax(120px,1fr) auto auto;gap:8px;margin:10px 0}
+.quick-dock-history-filters input,.quick-dock-history-filters select{min-width:0;border:1px solid #dcdbe2;border-radius:10px;padding:10px 11px;background:#fff;color:#35343a;font-size:11px;outline:none}
+.quick-dock-history-filters input:focus,.quick-dock-history-filters select:focus{border-color:#8a78b5;box-shadow:0 0 0 3px rgba(95,75,139,.1)}
+.quick-dock-history-filters button,.quick-dock-history-actions button,.quick-dock-report-actions button,.quick-dock-show-more{border:1px solid #d8d5e1;border-radius:10px;padding:9px 12px;background:#fff;color:#504668;font-size:10px;font-weight:700;cursor:pointer}
+.quick-dock-history-filters button:first-of-type,.quick-dock-report-actions button:first-child{background:#5f4b8b;border-color:#5f4b8b;color:#fff}
+.quick-dock-history-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.quick-dock-history-actions span{margin-left:auto;font-size:9px;color:#85818c}
+.quick-dock-show-more{display:block;margin:12px auto 0;min-width:140px}
+.quick-dock-report-actions{display:flex;flex-wrap:wrap;gap:9px;margin:18px 0 8px}
+.quick-dock-report-actions button{flex:1 1 180px;padding:12px}
+.quick-dock-request-meta span{overflow-wrap:anywhere}
+@media(max-width:760px){
+  .quick-dock-history-filters{grid-template-columns:1fr 1fr}.quick-dock-history-filters input{grid-column:1/-1}.quick-dock-history-filters button{min-height:40px}
+  .quick-dock-history-actions span{flex:1 1 100%;margin-left:0}
+}
+@media(max-width:440px){.quick-dock-view-mode-bar{align-items:flex-start;flex-direction:column}.quick-dock-view-switch{width:100%}.quick-dock-view-switch button{flex:1}.quick-dock-history-filters{grid-template-columns:1fr}.quick-dock-history-filters input{grid-column:auto}}
+
+
+/* V2.12-R2 · 悬浮球主操作固定在顶部，取消二级工具入口 */
+.quick-dock-panel-header--shared{position:sticky;top:calc(-1 * max(12px,env(safe-area-inset-top)));z-index:30;margin:0;padding:10px 0 8px;background:rgba(250,250,252,.97);backdrop-filter:blur(18px)}
+.quick-dock-close-btn{font-size:24px!important;cursor:pointer}
+.quick-dock-action-hub{position:sticky;top:54px;z-index:28;margin:0 0 16px;padding:10px 0 12px;border-bottom:1px solid #e4e4e9;background:rgba(250,250,252,.97);backdrop-filter:blur(18px)}
+.quick-dock-model-control{display:grid;grid-template-columns:minmax(120px,.7fr) minmax(180px,1.6fr) auto auto;align-items:center;gap:8px;margin-bottom:9px}
+.quick-dock-model-control label{display:flex;min-width:0;flex-direction:column;gap:2px}.quick-dock-model-control label span{font-size:11px;font-weight:800;color:#34343a}.quick-dock-model-control label small{font-size:9px;color:#85858e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick-dock-model-control select{min-width:0;border:1px solid #d9d9e0;border-radius:10px;padding:9px 10px;background:#fff;color:#333;font-size:11px}
+.quick-dock-model-control button{border:1px solid #d8d8df;border-radius:10px;padding:9px 11px;background:#fff;color:#4b4559;font-size:10px;font-weight:750;cursor:pointer}.quick-dock-model-control button:last-child{border-color:#5f4b8b;background:#5f4b8b;color:#fff}
+.quick-dock-top-actions{display:grid;grid-template-columns:repeat(8,minmax(88px,1fr));gap:7px;overflow-x:auto;padding:1px 0 4px;scrollbar-width:thin}
+.quick-dock-top-action{display:flex;min-width:88px;min-height:52px;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;border:1px solid #dedee5;border-radius:11px;padding:8px 10px;background:#fff;color:#333;text-align:left;cursor:pointer}
+.quick-dock-top-action b{font-size:11px;white-space:nowrap}.quick-dock-top-action small{font-size:9px;color:#86868e;white-space:nowrap}.quick-dock-top-action[aria-current="page"]{border-color:#8170aa;background:#f3f0fa;color:#4f3e78}.quick-dock-top-action:disabled{opacity:.45;cursor:default}
+.quick-dock-panel-content{min-width:0}
+@media(max-width:760px){.quick-dock-model-control{grid-template-columns:minmax(0,1fr) auto auto}.quick-dock-model-control label{grid-column:1/-1;flex-direction:row;justify-content:space-between}.quick-dock-top-actions{grid-template-columns:repeat(8,94px)}}
+@media(max-width:440px){.quick-dock-action-hub{top:52px}.quick-dock-model-control{grid-template-columns:minmax(0,1fr) auto}.quick-dock-model-control button{min-height:38px}.quick-dock-model-control button[data-qd-action="refresh-models"]{grid-column:2}.quick-dock-model-control button[data-qd-action="switch-api"]{grid-column:1/-1}.quick-dock-top-actions{grid-template-columns:repeat(8,88px)}.quick-dock-top-action{min-width:88px}}
+/* V2.12-R2 mobile: all eight operations remain visible without horizontal paging. */
+@media(max-width:760px){
+  .quick-dock-top-actions{grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}
+  .quick-dock-top-action{min-width:0;padding:8px 7px}
+  .quick-dock-top-action b,.quick-dock-top-action small{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+}

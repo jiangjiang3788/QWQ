@@ -1,0 +1,58 @@
+{
+  "baseline": {
+    "version": "2.11-R4",
+    "totalRows": 179,
+    "renderedRows": 179,
+    "rowCommandControls": 179,
+    "rowCommandOptions": 1790,
+    "inputs": 180,
+    "buttons": 15,
+    "domNodes": 5913
+  },
+  "r5": {
+    "desktop": {
+      "version": "2.11-R5",
+      "totalRows": 179,
+      "renderedRows": 18,
+      "rowCommandButtons": 18,
+      "rowCommandOptions": 0,
+      "sharedMenus": 0,
+      "menuButtons": 0,
+      "inputs": 1,
+      "buttons": 32,
+      "domNodes": 499,
+      "scrollTop": 8096,
+      "scrollHeight": 15814,
+      "clientHeight": 694,
+      "documentWidth": 1440,
+      "viewportWidth": 1440,
+      "status": "大表优化 · 88-105 / 179 · DOM 18 行"
+    },
+    "mobile": {
+      "version": "2.11-R5",
+      "totalRows": 179,
+      "renderedRows": 17,
+      "rowCommandButtons": 17,
+      "rowCommandOptions": 0,
+      "sharedMenus": 1,
+      "menuButtons": 9,
+      "inputs": 1,
+      "buttons": 40,
+      "domNodes": 490,
+      "scrollTop": 7429,
+      "scrollHeight": 15810,
+      "clientHeight": 613,
+      "documentWidth": 390,
+      "viewportWidth": 390,
+      "status": "大表优化 · 80-96 / 179 · DOM 17 行"
+    }
+  },
+  "improvement": {
+    "desktopRenderedRowReduction": 89.9,
+    "desktopDomReduction": 91.6,
+    "desktopRowCommandReduction": 89.9,
+    "rowCommandOptionReduction": 100.0,
+    "pageHorizontalOverflowDesktop": false,
+    "pageHorizontalOverflowMobile": false
+  }
+}

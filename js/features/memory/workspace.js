@@ -11,8 +11,8 @@
         manage: Object.freeze({ id: 'manage', label: '管理', defaultView: 'manage_home' })
     });
 
-    const INBOX_VIEWS = new Set(['inbox_home', 'review', 'sidecar', 'reliability', 'feedback', 'tasks']);
-    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'retrieval', 'quality', 'history']);
+    const INBOX_VIEWS = new Set(['inbox_home', 'review', 'sidecar', 'reliability', 'tasks']);
+    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'usage_audit', 'quality', 'history']);
 
     function getModules() {
         return {
@@ -21,17 +21,24 @@
             lifecycle: Kernel.get('lifecycle'),
             feedback: Kernel.get('feedback'),
             tasks: Kernel.get('tasks'),
-            quality: Kernel.get('quality')
+            quality: Kernel.get('quality'),
+            governance: Kernel.get('governanceQueue')
         };
     }
 
+    function canonicalView(view) {
+        return ['retrieval', 'feedback'].includes(view) ? 'usage_audit' : view;
+    }
+
     function getWorkspaceForView(view) {
-        if (INBOX_VIEWS.has(view)) return 'inbox';
-        if (MANAGE_VIEWS.has(view)) return 'manage';
+        const canonical = canonicalView(view);
+        if (INBOX_VIEWS.has(canonical)) return 'inbox';
+        if (MANAGE_VIEWS.has(canonical)) return 'manage';
         return 'memory';
     }
 
     function normalizeState(workspace, view) {
+        view = canonicalView(view);
         const nextWorkspace = WORKSPACES[workspace] ? workspace : getWorkspaceForView(view);
         if (nextWorkspace === 'memory') return { workspace: 'memory', view: 'tables' };
         if (nextWorkspace === 'inbox') return { workspace: 'inbox', view: INBOX_VIEWS.has(view) ? view : 'inbox_home' };
@@ -99,18 +106,10 @@
     }
 
     function renderInboxHome(chat, templates) {
+        const governance = getModules().governance;
+        if (governance?.renderHome) return governance.renderHome(chat, templates);
         const counts = getCounts(chat, templates);
-        const cards = [
-            ['review', '更新确认', '查看总结与表格更新草案', counts.review],
-            ['sidecar', '短期候选', '整理聊天产生的近期经历与观察', counts.sidecar],
-            ['reliability', '需要复核', '处理冲突、过期和不确定记忆', counts.reliability],
-            ['feedback', '使用反馈', '告诉系统哪些记忆有用或无关', counts.feedback],
-            ['tasks', '失败与排队', '处理失败任务与后台队列', counts.tasks]
-        ];
-        return `<div class="memory-workbench-overview">
-            <div class="memory-workbench-overview-head"><div><h2>待处理</h2><p>${counts.inbox ? `共有 ${counts.inbox} 项需要关注` : '当前没有需要处理的内容'}</p></div></div>
-            <div class="memory-workbench-card-grid">${cards.map(([view, title, text, count]) => `<button type="button" class="memory-workbench-card" data-workbench-view="${view}"><span class="memory-workbench-card-icon">${renderCount(count)}</span><strong>${Core.escapeHtml(title)}</strong><small>${Core.escapeHtml(text)}</small></button>`).join('')}</div>
-        </div>`;
+        return `<div class="memory-governance-empty">${counts.inbox ? `共有 ${counts.inbox} 项需要关注` : '当前没有需要处理的内容'}</div>`;
     }
 
     function renderManageHome(chat, templates) {
@@ -118,8 +117,8 @@
         const quality = Kernel.get('quality')?.ensureState?.(chat);
         const latestRun = quality?.runs?.[quality.runs.length - 1];
         const cards = [
-            ['templates', '模板与字段', `${counts.templates} 个已绑定模板`, '管理表格结构与字段'],
-            ['retrieval', '召回与行为', '标签、场景与相关性', '查看本轮为什么召回'],
+            ['templates', '表结构编辑器', `${counts.templates} 个已绑定模板`, '统一管理字段、表格和结构 JSON'],
+            ['usage_audit', '记忆引用与作用', '按表查看来源、原因与效果', '核对本轮实际使用的记忆'],
             ['quality', '质量与诊断', latestRun ? `最近得分 ${Math.round(latestRun.score || 0)}` : '尚未建立质量基线', '运行回归与质量测试'],
             ['history', '更新历史', '查看表格变更快照', '用于核对和回滚']
         ];
@@ -135,14 +134,15 @@
 
     function viewTitle(view) {
         return ({
-            review: '更新确认', sidecar: '短期候选', reliability: '需要复核', feedback: '使用反馈', tasks: '任务队列',
-            templates: '模板与字段', retrieval: '召回与行为', quality: '质量与诊断', history: '更新历史'
+            review: '更新确认', sidecar: '短期候选', reliability: '需要复核', tasks: '任务队列',
+            templates: '表结构编辑器', usage_audit: '记忆引用与作用', retrieval: '记忆引用与作用', feedback: '记忆引用与作用', quality: '质量与诊断', history: '更新历史'
         })[view] || '';
     }
 
     Kernel.register('workspace', {
-        VERSION: '2.9-R2',
+        VERSION: '2.12-R3',
         WORKSPACES,
+        canonicalView,
         getWorkspaceForView,
         normalizeState,
         getCounts,

@@ -1,18 +1,7 @@
-章鱼机 V2.10-R3.3 任务稳定与记忆核验修复 Netlify 直接部署版
+章鱼机 V2.12-R2 悬浮球主操作收敛 Netlify 直接部署版
 
-方法一：
-1. 登录 Netlify。
-2. 打开 Deploys。
-3. 将本 ZIP 直接拖入部署区域。
-
-方法二：
-1. 解压本 ZIP。
-2. 将解压后的全部文件拖入 Netlify Deploys。
-
-部署要求：
-- 不需要 npm install。
-- 不需要构建命令。
-- Publish directory 为根目录“.”。
-- index.html 必须位于部署根目录。
-
-首次升级后若仍加载旧页面，请在浏览器中清除该站点缓存和 Service Worker 后刷新。
+部署方式：
+1. 解压本压缩包，将根目录整体上传到 Netlify。
+2. 根目录包含 index.html、netlify.toml、_headers 与 _redirects。
+3. 本版将模型切换、操作、详情、Proment、日志、功能覆盖和 Git 操作统一放到悬浮球页面顶部。
+4. 记忆数据协议、备份格式和模型请求协议保持不变。

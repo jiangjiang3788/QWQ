@@ -1,9 +1,9 @@
-// QuickDock · V2.10-R3.3：全屏操作中心、后台任务稳定性与记忆请求核验。
+// QuickDock · V2.12-R2：顶部主操作、单层内容与脱敏报告。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null };
+    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, viewMode: 'simple', historyQuery: '', historyStatus: '', historyCategory: '', historyType: '', historyFrom: '', historyTo: '', historyVisible: 20 };
     let rootEl = null;
     let panelEl = null;
     let ballEl = null;
@@ -22,11 +22,16 @@
             const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
             state.x = Number.isFinite(saved.x) ? saved.x : null;
             state.y = Number.isFinite(saved.y) ? saved.y : null;
+            state.viewMode = ['simple', 'detailed', 'advanced'].includes(saved.viewMode) ? saved.viewMode : 'simple';
         } catch (_) {}
     }
 
+    function saveDockPreferences() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: state.x, y: state.y, viewMode: state.viewMode })); } catch (_) {}
+    }
+
     function savePosition() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: state.x, y: state.y })); } catch (_) {}
+        saveDockPreferences();
     }
 
     function applyPosition(x, y) {
@@ -248,6 +253,51 @@
         if (el) el.textContent = state.status || '快捷工具已就绪';
     }
 
+    function viewModeLabel(mode) {
+        return ({ simple: '普通', detailed: '详细', advanced: '高级' })[mode] || '普通';
+    }
+
+    function renderViewModeSwitch() {
+        return `<div class="quick-dock-view-switch" role="group" aria-label="操作详情级别">
+            ${['simple', 'detailed', 'advanced'].map(mode => `<button type="button" data-qd-action="set-view-mode" data-view-mode="${mode}" aria-pressed="${state.viewMode === mode ? 'true' : 'false'}">${viewModeLabel(mode)}</button>`).join('')}
+        </div>`;
+    }
+
+    function formatStorageSize(chars) {
+        const value = Math.max(0, Number(chars) || 0);
+        if (value < 1000) return `${value} 字符`;
+        if (value < 1000000) return `${(value / 1000).toFixed(1)}k 字符`;
+        return `${(value / 1000000).toFixed(2)}M 字符`;
+    }
+
+    function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
+        const blob = new Blob([String(text || '')], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function reportFilename(prefix, extension = 'md') {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        return `${prefix}_${stamp}.${extension}`;
+    }
+
+    function readHistoryFilterControls() {
+        return {
+            query: panelEl?.querySelector('#quick-dock-history-query')?.value?.trim() || '',
+            status: panelEl?.querySelector('#quick-dock-history-status')?.value || '',
+            category: panelEl?.querySelector('#quick-dock-history-category')?.value || '',
+            type: panelEl?.querySelector('#quick-dock-history-type')?.value || '',
+            from: panelEl?.querySelector('#quick-dock-history-from')?.value || '',
+            to: panelEl?.querySelector('#quick-dock-history-to')?.value || ''
+        };
+    }
+
 
     function getOperationRuntime() {
         return window.OVOOperationRuntime || null;
@@ -332,36 +382,92 @@
         return meta || { title: '其他上下文', icon: '📎' };
     }
 
-    function renderPromptSourceItems(section) {
+    function promptSourceStateLabel(section) {
+        const labels = { sent: '实际发送', verified: '已核对', contributed: '参与组装', excluded: '未发送' };
+        return labels[section?.state] || (section?.sent === false ? '未发送' : '参与组装');
+    }
+
+    function promptSourceFocusAttributes(operation, request, section) {
+        return `data-operation-id="${escapeHtml(operation?.id || '')}" data-request-id="${escapeHtml(request?.id || '')}" data-source-id="${escapeHtml(section?.id || '')}"`;
+    }
+
+    function findPromptSource(trigger) {
+        const operation = getOperationRuntime()?.get?.(trigger?.dataset?.operationId || state.selectedOperationId);
+        const request = (operation?.requests || []).find(item => item.id === trigger?.dataset?.requestId) || null;
+        const source = (request?.promptTrace?.sections || []).find(item => item.id === trigger?.dataset?.sourceId) || null;
+        return { operation, request, source };
+    }
+
+    function rememberPromptSourceFocus(operation, request, source) {
+        const focus = {
+            version: 'proment-focus.v1',
+            operationId: operation?.id || '', requestId: request?.id || '', sourceId: source?.id || '',
+            characterId: source?.navigation?.characterId || operation?.scope?.characterId || operation?.scope?.chatId || '',
+            capturedAt: new Date().toISOString()
+        };
+        try { sessionStorage.setItem('ovo_proment_focus_v1', JSON.stringify(focus)); } catch (_) {}
+        return focus;
+    }
+
+    function activatePromptCharacter(characterId) {
+        if (!characterId || !Array.isArray(window.db?.characters)) return null;
+        const character = db.characters.find(item => String(item.id) === String(characterId));
+        if (!character) return null;
+        window.currentChatId = character.id;
+        window.currentChatType = 'private';
+        return character;
+    }
+
+    function openPromptSourceManagement(source) {
+        const navigation = source?.navigation || {};
+        activatePromptCharacter(navigation.characterId);
+        state.open = false; state.panel = 'main'; render();
+        if (navigation.kind === 'worldbook') {
+            if (typeof renderWorldBookList === 'function') renderWorldBookList();
+            if (typeof switchScreen === 'function') switchScreen('world-book-screen');
+            return;
+        }
+        if (navigation.kind === 'structured-memory') {
+            if (navigation.characterId && typeof window.openMemoryTableForCharacter === 'function') window.openMemoryTableForCharacter(navigation.characterId);
+            else if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
+            return;
+        }
+        if (navigation.kind === 'vector-memory' && typeof switchScreen === 'function') { switchScreen('vector-memory-screen'); return; }
+        if (navigation.kind === 'journal-memory' && typeof switchScreen === 'function') { switchScreen('memory-journal-screen'); return; }
+        if (typeof setupMagicRoomApp === 'function') setupMagicRoomApp();
+        if (typeof switchScreen === 'function') switchScreen('magic-room-screen');
+    }
+
+    function renderPromptSourceItems(section, mode = state.viewMode) {
         const items = Array.isArray(section?.items) ? section.items : [];
-        if (!items.length) return '';
+        if (!items.length || mode === 'simple') return '';
         return `<div class="quick-dock-source-items-flat">${items.map(item => `
             <article class="quick-dock-source-item-flat ${item.sent === false ? 'is-excluded' : ''}">
                 <div class="quick-dock-source-item-head">
                     <b>${escapeHtml(item.title || '来源条目')}</b>
-                    <span>${item.sent === false ? '未发送' : escapeHtml(formatSourceChars(item.chars))}</span>
+                    <span>${escapeHtml(promptSourceStateLabel(item))} · ${escapeHtml(formatSourceChars(item.chars))}</span>
                 </div>
                 ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ''}
                 ${item.content ? `<div class="quick-dock-source-item-content">${escapeHtml(item.content)}</div>` : '<p>本条没有进入最终请求，因此不保留正文。</p>'}
             </article>`).join('')}</div>`;
     }
 
-    function renderPromptTrace(request) {
+    function renderPromptTrace(request, operation, mode = state.viewMode) {
         const trace = request?.promptTrace;
         const sections = Array.isArray(trace?.sections) ? trace.sections : [];
-        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求还没有可解释的来源记录，可继续查看下方原始请求。</p>';
-
+        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求没有可解释的来源记录。</p>';
         const sourceSections = sections.filter(section => !section?.metadata?.verificationView);
         const verificationSections = sections.filter(section => section?.metadata?.verificationView);
         const groups = Array.isArray(trace?.summary?.byType) ? trace.summary.byType : [];
-
+        const overview = `<div class="quick-dock-prompt-overview">
+            <div class="quick-dock-prompt-overview-head"><b>发送内容来源（同一次请求）</b><span>${sourceSections.filter(section => section.sent !== false).length} 类已发送</span></div>
+            <div class="quick-dock-source-chips">${groups.map(group => { const meta = promptSourceMeta(group.type); return `<span>${escapeHtml(meta.icon)} ${escapeHtml(group.title || meta.title)} · ${escapeHtml(group.count || group.sections || 0)}</span>`; }).join('')}</div>
+            <p>${mode === 'simple' ? '普通模式仅显示来源类别和数量；切换到“详细”可核对正文。' : '统一来源协议 v2 记录发送状态、证据等级、内容指纹和业务入口。'}</p>
+        </div>`;
+        if (mode === 'simple') return overview;
         const renderSection = section => {
             const meta = promptSourceMeta(section.type);
-            const status = section.sent === false
-                ? '未发送'
-                : (['request_exact', 'inferred_exact', 'source_exact'].includes(section.traceMode)
-                    ? '实际发送'
-                    : (section.traceMode === 'source_verified' ? '已核对' : '参与组装'));
+            const status = promptSourceStateLabel(section);
             return `<details class="quick-dock-source-card ${section.sent === false ? 'is-excluded' : ''}">
                 <summary>
                     <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon)}</span>
@@ -371,27 +477,18 @@
                 <div class="quick-dock-source-body">
                     ${section.summary ? `<p class="quick-dock-source-summary">${escapeHtml(section.summary)}</p>` : ''}
                     ${section.content ? `<div class="quick-dock-source-content">${escapeHtml(section.content)}</div>` : (!section.items?.length ? '<p class="quick-dock-operation-muted">该来源没有保留正文。</p>' : '')}
-                    ${renderPromptSourceItems(section)}
-                    ${section.clipped ? '<p class="quick-dock-truncation-note">该来源超过 6 万字符，操作记录中仅保留前 6 万字符；最终原始请求仍可在下方核对。</p>' : ''}
+                    ${renderPromptSourceItems(section, mode)}
+                    <div class="quick-dock-source-actions">
+                        <button type="button" data-qd-action="open-prompt-source" ${promptSourceFocusAttributes(operation, request, section)}>在 Proment 核对</button>
+                        ${section.navigation?.kind && section.navigation.kind !== 'proment' ? `<button type="button" data-qd-action="open-source-management" ${promptSourceFocusAttributes(operation, request, section)}>${escapeHtml(section.navigation.label || '打开来源')}</button>` : ''}
+                        <small>${escapeHtml(section.evidence || '')}${section.fingerprint ? ` · ${escapeHtml(section.fingerprint)}` : ''}</small>
+                    </div>
+                    ${section.clipped ? '<p class="quick-dock-truncation-note">该来源过长，操作记录仅保留受控预览。</p>' : ''}
                 </div>
             </details>`;
         };
-
-        return `
-            <div class="quick-dock-prompt-overview">
-                <div class="quick-dock-prompt-overview-head"><b>发送内容来源（同一次请求）</b><span>${sourceSections.filter(section => section.sent !== false).length} 类已发送</span></div>
-                <div class="quick-dock-source-chips">
-                    ${groups.map(group => { const meta = promptSourceMeta(group.type); return `<span>${escapeHtml(meta.icon)} ${escapeHtml(group.title || meta.title)} · ${escapeHtml(group.count || group.sections || 0)}</span>`; }).join('')}
-                </div>
-                <p>下面的“分条来源”和“最终合并结果”是同一次网络调用的两种查看方式，不会向模型发送两次。</p>
-            </div>
-            <div class="quick-dock-source-list">
-                ${sourceSections.map(renderSection).join('')}
-            </div>
-            ${verificationSections.length ? `<details class="quick-dock-verification-card">
-                <summary><b>查看最终合并结果</b><span>核对视图 · 不是第二次发送</span></summary>
-                ${verificationSections.map(section => `<div class="quick-dock-verification-content">${escapeHtml(section.content || '')}</div>`).join('')}
-            </details>` : ''}`;
+        return `${overview}<div class="quick-dock-source-list">${sourceSections.map(renderSection).join('')}</div>
+            ${mode === 'advanced' && verificationSections.length ? `<details class="quick-dock-verification-card"><summary><b>查看最终合并结果</b><span>高级核对视图 · 不是第二次发送</span></summary>${verificationSections.map(section => `<div class="quick-dock-verification-content">${escapeHtml(section.content || '')}</div>`).join('')}</details>` : ''}`;
     }
 
     function mutationActionMeta(action) {
@@ -515,8 +612,31 @@
         ballEl.setAttribute('aria-expanded', state.open ? 'true' : 'false');
     }
 
+    function getDockOperation() {
+        const runtime = getOperationRuntime();
+        return runtime?.get?.(state.selectedOperationId) || runtime?.getCurrent?.() || runtime?.list?.({ limit: 1, rootsOnly: true })?.[0] || null;
+    }
+
+    function renderActionHub(operation = getDockOperation()) {
+        return window.QuickDockActionBar?.render?.({
+            activePanel: state.panel,
+            api: getCurrentApi(),
+            operationId: operation?.id || ''
+        }) || '';
+    }
+
+    function renderPanelShell(title, subtitle, body, operation = getDockOperation()) {
+        panelEl.innerHTML = `<header class="quick-dock-panel-header quick-dock-panel-header--shared">
+            <div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subtitle || '')}</span></div>
+            <button type="button" class="quick-dock-icon-btn quick-dock-close-btn" data-qd-action="close" aria-label="关闭操作中心">×</button>
+        </header>
+        ${renderActionHub(operation)}
+        <main class="quick-dock-panel-content" data-quick-dock-panel-content>${body}</main>`;
+        setTimeout(() => refreshModelSelect(false), 0);
+    }
+
     async function refreshModelSelect(forceFetch = false) {
-        const modelSelect = panelEl && panelEl.querySelector('#quick-dock-model-select');
+        const modelSelect = panelEl && panelEl.querySelector('#quick-dock-top-model-select');
         if (!modelSelect) return;
         modelSelect.disabled = true;
         modelSelect.innerHTML = '<option value="">正在拉取模型…</option>';
@@ -543,148 +663,130 @@
 
     function renderMain() {
         const runtime = getOperationRuntime();
-        const operations = runtime?.list?.({ limit: 8, rootsOnly: true }) || [];
-        const active = operations.filter(item => item.status === 'running' || item.status === 'queued');
-        const current = active[0] || operations[0] || null;
-        const history = current ? operations.filter(item => item.id !== current.id).slice(0, 5) : operations.slice(0, 5);
+        const allRoots = runtime?.list?.({ limit: 100, rootsOnly: true }) || [];
+        const active = allRoots.filter(item => item.status === 'running' || item.status === 'queued');
+        const current = active[0] || allRoots[0] || null;
+        const filtered = runtime?.list?.({ limit: 100, rootsOnly: true, query: state.historyQuery, status: state.historyStatus, category: state.historyCategory, type: state.historyType, from: state.historyFrom ? `${state.historyFrom}T00:00:00` : '', to: state.historyTo ? `${state.historyTo}T23:59:59.999` : '' }) || [];
+        const history = filtered.filter(item => !current || item.id !== current.id).slice(0, state.historyVisible);
+        const allFacets = runtime?.getFacets?.({ rootsOnly: true }) || {};
+        const categories = Object.keys(allFacets.categories || {}).sort((a, b) => a.localeCompare(b));
+        const types = Object.keys(allFacets.types || {}).sort((a, b) => a.localeCompare(b));
+        const storage = runtime?.getStorageStats?.() || {};
         const currentApi = getCurrentApi();
-        panelEl.innerHTML = `
-            <header class="quick-dock-panel-header">
-                <div><strong>AI 操作中心</strong><span>V2.10-R3.3 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}</span></div>
-                <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="close" aria-label="返回页面">‹</button>
-            </header>
+        const body = `
+            <section class="quick-dock-view-mode-bar"><span>查看级别</span>${renderViewModeSwitch()}</section>
             <section class="quick-dock-operation-current">
                 <div class="quick-dock-section-title"><b>${active.length ? '当前操作' : '最近一次操作'}</b><small>${escapeHtml(currentApi.provider)} · ${escapeHtml(currentApi.model)}</small></div>
                 ${renderOperationCard(current)}
             </section>
-            <section class="quick-dock-operation-history">
-                <div class="quick-dock-section-title"><b>最近操作</b>${operations.length ? '<button type="button" class="quick-dock-clear-history" data-qd-action="clear-operations">清除已完成</button>' : ''}</div>
-                <div class="quick-dock-operation-list">
-                    ${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">完成更多操作后会显示在这里。</p>'}
+            <section class="quick-dock-history-workbench">
+                <div class="quick-dock-section-title"><b>操作历史</b><small>${filtered.length} 条匹配</small></div>
+                <div class="quick-dock-history-filters">
+                    <input id="quick-dock-history-query" type="search" value="${escapeHtml(state.historyQuery)}" placeholder="搜索功能、模型、角色或错误">
+                    <select id="quick-dock-history-status"><option value="">全部状态</option>${['running','queued','success','failed','cancelled','interrupted','skipped'].map(value => `<option value="${value}" ${state.historyStatus === value ? 'selected' : ''}>${escapeHtml(operationStatusMeta(value).label)}</option>`).join('')}</select>
+                    <select id="quick-dock-history-category"><option value="">全部分类</option>${categories.map(value => `<option value="${escapeHtml(value)}" ${state.historyCategory === value ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select>
+                    <select id="quick-dock-history-type"><option value="">全部功能</option>${types.map(value => { const def = window.OVOOperationRegistry?.get?.(value); return `<option value="${escapeHtml(value)}" ${state.historyType === value ? 'selected' : ''}>${escapeHtml(def?.title || value)}</option>`; }).join('')}</select>
+                    <input id="quick-dock-history-from" type="date" value="${escapeHtml(state.historyFrom)}" aria-label="开始日期">
+                    <input id="quick-dock-history-to" type="date" value="${escapeHtml(state.historyTo)}" aria-label="结束日期">
+                    <button type="button" data-qd-action="apply-history-filters">筛选</button>
+                    <button type="button" data-qd-action="reset-history-filters">重置</button>
                 </div>
+                <div class="quick-dock-history-actions">
+                    <button type="button" data-qd-action="export-history">导出当前筛选报告</button>
+                    ${allRoots.length ? '<button type="button" data-qd-action="clear-operations">清除全部已完成</button>' : ''}
+                    <span>记录占用 ${escapeHtml(formatStorageSize(storage.chars))} / ${escapeHtml(formatStorageSize(storage.budget))}${storage.compacted ? ' · 已自动压缩' : ''}</span>
+                </div>
+                <div class="quick-dock-operation-list">${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">当前筛选条件没有匹配记录。</p>'}</div>
+                ${history.length < filtered.filter(item => !current || item.id !== current.id).length ? '<button type="button" class="quick-dock-show-more" data-qd-action="show-more-history">显示更多</button>' : ''}
             </section>
-            <div class="quick-dock-grid quick-dock-grid--primary quick-dock-operation-tools">
-                <button type="button" data-qd-action="open-tools"><b>API 与 Git</b><small>模型切换和数据同步</small></button>
-                <button type="button" data-qd-action="open-proment"><b>Proment</b><small>Prompt 与记忆状态</small></button>
-                <button type="button" data-qd-action="open-console"><b>开发日志</b><small>错误排查和复制</small></button>
-                ${current ? `<button type="button" data-qd-action="open-operation" data-operation-id="${escapeHtml(current.id)}"><b>操作详情</b><small>阶段、数据变化与请求</small></button>` : '<button type="button" disabled><b>操作详情</b><small>暂无可查看记录</small></button>'}
-            </div>
-            <p class="quick-dock-status">主操作完成后仍会持续汇总自动日记、结构化记忆、向量记忆和角色小剧场等后台工作。</p>`;
+            <p class="quick-dock-status">主操作始终固定在页面顶部；普通模式不展示 JSON，详细模式核对真实来源，高级模式才展示原始请求。</p>`;
+        renderPanelShell('AI 操作中心', `V2.12-R2 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
     }
 
-    function renderTools() {
-        const current = getCurrentApi();
-        const config = normalizeCurrentApiConfig();
-        const apiLabel = config.url ? `${current.provider} · ${config.url}` : `${current.provider} · 未配置地址`;
-        panelEl.innerHTML = `
-            <header class="quick-dock-panel-header">
-                <div><strong>API 与数据工具</strong><span>${escapeHtml(current.provider)} · ${escapeHtml(current.model)}</span></div>
-                <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
-            </header>
-            <div class="quick-dock-section">
-                <div class="quick-dock-current-api"><b>当前 API</b><span>${escapeHtml(apiLabel)}</span></div>
-                <label class="quick-dock-label quick-dock-label--spaced" for="quick-dock-model-select">模型列表</label>
-                <div class="quick-dock-model-row">
-                    <select id="quick-dock-model-select"><option value="${escapeHtml(current.model)}">${escapeHtml(current.model)}</option></select>
-                    <button type="button" data-qd-action="refresh-models">拉取</button>
-                </div>
-                <button type="button" class="quick-dock-primary-wide quick-dock-switch-btn" data-qd-action="switch-api">切换到所选模型</button>
-            </div>
-            <div class="quick-dock-grid quick-dock-grid--primary">
-                <button type="button" data-qd-action="git-upload"><b>Git 上传</b><small>同步当前精简数据</small></button>
-                <button type="button" data-qd-action="git-restore"><b>Git 下载</b><small>下载最新备份并恢复</small></button>
-                <button type="button" data-qd-action="open-git-settings"><b>Git 设置</b><small>仓库、分支和 Token</small></button>
-                <button type="button" data-qd-action="main"><b>返回操作中心</b><small>查看当前进度</small></button>
-            </div>
-            <p class="quick-dock-git-status"><b>Git 状态：</b>${escapeHtml(formatGitStatus())}</p>
-            <p class="quick-dock-status">${escapeHtml(state.status || '点击“拉取”读取当前 API 的模型列表。')}</p>`;
-        setTimeout(() => refreshModelSelect(false), 0);
-    }
 
     function renderOperationDetail() {
         const runtime = getOperationRuntime();
         const operation = runtime?.get?.(state.selectedOperationId) || runtime?.getCurrent?.() || null;
-        if (!operation) {
-            state.panel = 'main';
-            renderMain();
-            return;
-        }
+        if (!operation) { state.panel = 'main'; renderMain(); return; }
         state.selectedOperationId = operation.id;
         const meta = operationStatusMeta(operation.status);
         const steps = Array.isArray(operation.steps) ? operation.steps : [];
         const requests = Array.isArray(operation.requests) ? operation.requests : [];
-        const resultText = operation.result ? JSON.stringify(operation.result, null, 2) : '';
-        panelEl.innerHTML = `
-            <header class="quick-dock-panel-header">
-                <div><strong>${escapeHtml(operation.icon || '✨')} ${escapeHtml(operation.title)}</strong><span>${escapeHtml(operation.category || '其他')} · ${escapeHtml(formatOperationTime(operation.createdAt))}</span></div>
-                <div class="quick-dock-header-actions">
-                    <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="main" aria-label="返回操作中心">‹</button>
-                </div>
-            </header>
+        const isAdvanced = state.viewMode === 'advanced';
+        const isDetailed = state.viewMode === 'detailed' || isAdvanced;
+        const resultText = isAdvanced && operation.result ? JSON.stringify(operation.result, null, 2) : '';
+        const body = `
+            <section class="quick-dock-view-mode-bar"><span>查看级别</span>${renderViewModeSwitch()}</section>
             <section class="quick-dock-operation-detail-head" data-operation-status="${escapeHtml(meta.className)}">
                 <div><b>${escapeHtml(meta.label)}</b><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>
                 <p>${escapeHtml(operationResultText(operation))}</p>
                 ${(operation.status === 'running' || operation.status === 'queued') ? `<button type="button" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消本次操作</button>` : ''}
             </section>
-            <section class="quick-dock-detail-section">
-                <h4>执行阶段</h4>
-                <div class="quick-dock-step-list">
-                    ${steps.length ? steps.map(step => `<div class="quick-dock-step" data-step-status="${escapeHtml(step.status || '')}"><i></i><span><b>${escapeHtml(step.title || '处理')}</b>${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}</span><time>${escapeHtml(formatOperationTime(step.at))}</time></div>`).join('') : '<p class="quick-dock-operation-muted">暂无阶段记录</p>'}
-                </div>
-            </section>
-            <section class="quick-dock-detail-section">
-                <h4>后台工作 <small>${escapeHtml(operation?.background?.total || 0)} 项</small></h4>
-                ${renderChildOperationList(operation)}
-            </section>
-            <section class="quick-dock-detail-section quick-dock-mutation-section">
-                <h4>数据变化 <small>${escapeHtml(operation?.mutationSummary?.total || 0)} 项${operation?.mutationSummary?.descendant ? ` · 含后台 ${escapeHtml(operation.mutationSummary.descendant)} 项` : ''}</small></h4>
-                ${renderOperationMutations(operation)}
-            </section>
-            <section class="quick-dock-detail-section quick-dock-memory-audit-section">
-                <h4>本次聊天记忆核验 <small>最终请求体</small></h4>
-                ${renderMemoryPayloadAudit(operation)}
-            </section>
+            <section class="quick-dock-detail-section"><h4>执行阶段</h4><div class="quick-dock-step-list">${steps.length ? steps.map(step => `<div class="quick-dock-step" data-step-status="${escapeHtml(step.status || '')}"><i></i><span><b>${escapeHtml(step.title || '处理')}</b>${isDetailed && step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}</span><time>${escapeHtml(formatOperationTime(step.at))}</time></div>`).join('') : '<p class="quick-dock-operation-muted">暂无阶段记录</p>'}</div></section>
+            <section class="quick-dock-detail-section"><h4>后台工作 <small>${escapeHtml(operation?.background?.total || 0)} 项</small></h4>${renderChildOperationList(operation)}</section>
+            <section class="quick-dock-detail-section quick-dock-mutation-section"><h4>数据变化 <small>${escapeHtml(operation?.mutationSummary?.total || 0)} 项${operation?.mutationSummary?.descendant ? ` · 含后台 ${escapeHtml(operation.mutationSummary.descendant)} 项` : ''}</small></h4>${renderOperationMutations(operation)}</section>
+            <section class="quick-dock-detail-section quick-dock-memory-audit-section"><h4>本次聊天记忆核验 <small>最终请求体</small></h4>${renderMemoryPayloadAudit(operation)}</section>
             <section class="quick-dock-detail-section quick-dock-request-section">
                 <h4>模型请求（实际网络调用） <small>${requests.length} 次</small></h4>
-                ${requests.length ? requests.map((request, index) => `
-                    <article class="quick-dock-request-card is-flat">
-                        <div class="quick-dock-request-head">
-                            <span><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></span>
-                            <em>第 ${index + 1} 次 · ${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em>
-                        </div>
-                        <div class="quick-dock-request-meta"><span>来源：${escapeHtml(request.source || '未标记')}</span><span>消息：${escapeHtml(request.messageCount || 0)} 条</span><span>耗时：${escapeHtml(formatDuration(request.durationMs))}</span></div>
-                        ${request.errorMessage ? `<p class="quick-dock-request-error">${escapeHtml(request.errorMessage)}</p>` : ''}
-                        ${renderPromptTrace(request)}
-                        ${request.bodyPreview ? `<details class="quick-dock-raw-request"><summary>查看最终原始请求${request.bodyTruncated ? '（操作记录超过 12 万字符，已截断）' : ''}</summary><pre>${escapeHtml(request.bodyPreview)}</pre></details>` : '<p class="quick-dock-operation-muted">该历史记录未保留请求正文。</p>'}
-                    </article>`).join('') : '<p class="quick-dock-operation-muted">本次操作尚未发送模型请求，或属于本地操作。</p>'}
+                ${requests.length ? requests.map((request, index) => `<article class="quick-dock-request-card is-flat">
+                    <div class="quick-dock-request-head"><span><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></span><em>第 ${index + 1} 次 · ${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em></div>
+                    <div class="quick-dock-request-meta"><span>来源：${escapeHtml(request.source || '未标记')}</span><span>消息：${escapeHtml(request.messageCount || 0)} 条</span><span>耗时：${escapeHtml(formatDuration(request.durationMs))}</span>${isAdvanced && request.endpoint ? `<span>端点：${escapeHtml(request.endpoint)}</span>` : ''}</div>
+                    ${request.errorMessage ? `<p class="quick-dock-request-error">${escapeHtml(request.errorMessage)}</p>` : ''}
+                    ${renderPromptTrace(request, operation, state.viewMode)}
+                    ${isAdvanced && request.bodyPreview ? `<details class="quick-dock-raw-request"><summary>查看最终原始请求${request.bodyTruncated ? '（已截断）' : ''}</summary><pre>${escapeHtml(request.bodyPreview)}</pre></details>` : ''}
+                </article>`).join('') : '<p class="quick-dock-operation-muted">本次操作没有发送模型请求，或属于本地操作。</p>'}
             </section>
-            ${(resultText || operation.error) ? `<section class="quick-dock-detail-section"><h4>${operation.error ? '错误信息' : '结果反馈'}</h4><pre class="quick-dock-result-pre">${escapeHtml(operation.error ? (operation.error.message || JSON.stringify(operation.error, null, 2)) : resultText)}</pre></section>` : ''}
-            <button type="button" class="quick-dock-text-link" data-qd-action="copy-operation" data-operation-id="${escapeHtml(operation.id)}">复制本次操作报告</button>`;
+            ${operation.error ? `<section class="quick-dock-detail-section"><h4>错误信息</h4><pre class="quick-dock-result-pre">${escapeHtml(operation.error.message || '操作失败')}</pre></section>` : ''}
+            ${isAdvanced && resultText ? `<section class="quick-dock-detail-section"><h4>高级结果数据</h4><pre class="quick-dock-result-pre">${escapeHtml(resultText)}</pre></section>` : ''}
+            <div class="quick-dock-report-actions">
+                <button type="button" data-qd-action="copy-operation" data-operation-id="${escapeHtml(operation.id)}">复制${escapeHtml(viewModeLabel(state.viewMode))}报告</button>
+                <button type="button" data-qd-action="download-operation-report" data-operation-id="${escapeHtml(operation.id)}">下载脱敏报告</button>
+            </div>`;
+        renderPanelShell(`${operation.icon || '✨'} ${operation.title}`, `${operation.category || '其他'} · ${formatOperationTime(operation.createdAt)}`, body, operation);
     }
 
 
-    function renderPromentStatus() {
-        const char = (db.characters || []).find(item => item.id === window.currentChatId) || (db.characters || [])[0] || null;
-        const policy = Object.assign({ worldBookEnabled: true, structuredEnabled: true }, db.magicRoom?.contextPolicy || {});
-        const vectorPolicy = char?.vectorMemory?.injectionPolicy || { budget: 2600, priority: 40 };
-        const memoryModeLabel = char?.memoryMode === 'table'
-            ? '仅结构化档案'
-            : (char?.memoryMode === 'vector' ? '结构化档案 + 向量补充' : '结构化档案 + 回忆日记');
-        panelEl.innerHTML = `
-            <header class="quick-dock-panel-header">
-                <div><strong>Proment 状态</strong><span>R3 · 与操作来源、后台回执和数据变化互通</span></div>
-                <button type="button" class="quick-dock-icon-btn" data-qd-action="main" aria-label="返回">‹</button>
-            </header>
-            <div class="quick-dock-section quick-dock-proment-status">
-                <p><b>当前角色</b><span>${escapeHtml(char ? (char.remarkName || char.name || '未命名') : '暂无角色')}</span></p>
-                <p><b>世界书</b><span>${policy.worldBookEnabled ? `开启 · 预算 ${policy.worldBookBudget || 2400}` : '关闭'}</span></p>
-                <p><b>长期记忆组合</b><span>当前使用：${memoryModeLabel}</span></p>
-                <p><b>结构化档案</b><span>真实聊天始终按绑定模板与注入预算读取；本页开关只控制设计预览</span></p>
-                <p><b>向量记忆设置</b><span>独立管理 · 预算 ${vectorPolicy.budget || 2600}</span></p>
-                <p><b>最近聊天</b><span>${policy.historyEnabled === false ? '关闭' : `${policy.historyCount || 30} 条`}</span></p>
+
+    function renderCapabilityCoverage() {
+        const catalog = window.OVOAICapabilityCatalog;
+        const definitions = (catalog?.list?.() || []).filter(item => item.type !== 'ai.request');
+        const recent = window.OVOAIRequestRuntime?.getCapabilityCoverage?.() || [];
+        const recentMap = new Map(recent.map(item => [item.type, item]));
+        const generic = recentMap.get('ai.request') || null;
+        const categories = new Map();
+        definitions.forEach(item => {
+            if (!categories.has(item.category || '其他')) categories.set(item.category || '其他', []);
+            categories.get(item.category || '其他').push(item);
+        });
+        const recentTotal = recent.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+        const usedCount = definitions.filter(item => recentMap.has(item.type)).length;
+        const body = `
+            <section class="quick-dock-coverage-summary">
+                <div><b>${escapeHtml(definitions.length)}</b><span>已登记产品操作</span></div>
+                <div><b>${escapeHtml(usedCount)}</b><span>最近会话已实际调用</span></div>
+                <div><b>${escapeHtml(recentTotal)}</b><span>最近保留的网络请求</span></div>
+                <div><b>${escapeHtml(generic?.count || 0)}</b><span>仍为通用分类</span></div>
+            </section>
+            <p class="quick-dock-operation-muted">“已登记”表示该功能具有专属名称、类别和图标；“最近调用”来自当前会话真实请求诊断，不调用的功能不会凭空显示成功。</p>
+            <div class="quick-dock-coverage-groups">
+                ${Array.from(categories.entries()).map(([category, items]) => `
+                    <section class="quick-dock-detail-section quick-dock-coverage-group">
+                        <h4>${escapeHtml(category)} <small>${items.length} 项</small></h4>
+                        <div class="quick-dock-coverage-list">
+                            ${items.map(item => {
+                                const usage = recentMap.get(item.type);
+                                const status = usage ? (usage.failed > 0 && usage.success === 0 ? '最近失败' : '最近已调用') : '尚未调用';
+                                return `<article data-coverage-used="${usage ? 'true' : 'false'}">
+                                    <span>${escapeHtml(item.icon || '✨')}</span>
+                                    <div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.type)}</small></div>
+                                    <em>${escapeHtml(status)}${usage ? ` · ${usage.count} 次` : ''}</em>
+                                </article>`;
+                            }).join('')}
+                        </div>
+                    </section>`).join('')}
             </div>
-            <button type="button" class="quick-dock-primary-wide" data-qd-action="open-proment-full">打开完整 Proment</button>
-            <p class="quick-dock-status">操作详情显示本次真实来源；完整 Proment 继续负责 Prompt 与记忆的深度查看。</p>`;
+            <p class="quick-dock-status">静态发布检查还会阻止新增的未登记 AI task，避免后续功能绕回笼统日志。</p>`;
+        renderPanelShell('AI 功能覆盖', 'V2.12-R2 · 能力目录与请求核验', body);
     }
 
     function filteredLogs() {
@@ -713,18 +815,14 @@
     }
 
     function renderConsole() {
-        panelEl.innerHTML = `
-            <header class="quick-dock-panel-header">
-                <div><strong>控制台</strong><span>仅捕获 OVO 页面自身日志</span></div>
-                <button type="button" class="quick-dock-icon-btn quick-dock-back-btn" data-qd-action="main" aria-label="返回操作中心">‹</button>
-            </header>
+        const body = `
             <div class="quick-dock-console-toolbar">
                 <select id="quick-dock-console-filter"><option value="all">全部</option><option value="error">错误</option><option value="warn">警告</option><option value="info">信息</option><option value="log">日志</option></select>
                 <button type="button" data-qd-action="copy-console">复制全部</button>
                 <button type="button" data-qd-action="clear-console">清空</button>
-                <button type="button" data-qd-action="main">返回操作中心</button>
             </div>
             <div id="quick-dock-console-rows" class="quick-dock-console-rows"></div>`;
+        renderPanelShell('开发日志', '仅捕获 OVO 页面自身日志', body);
         panelEl.querySelector('#quick-dock-console-filter').addEventListener('change', renderConsoleRows);
         renderConsoleRows();
     }
@@ -740,8 +838,7 @@
         if (!state.open) return;
         refreshOperationBall();
         if (state.panel === 'console') renderConsole();
-        else if (state.panel === 'proment') renderPromentStatus();
-        else if (state.panel === 'tools') renderTools();
+        else if (state.panel === 'coverage') renderCapabilityCoverage();
         else if (state.panel === 'operation') renderOperationDetail();
         else renderMain();
     }
@@ -750,7 +847,25 @@
         if (action === 'close') { state.open = false; state.panel = 'main'; render(); return; }
         if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
-        if (action === 'open-tools') { state.panel = 'tools'; render(); return; }
+        if (action === 'open-coverage') { state.panel = 'coverage'; render(); return; }
+        if (action === 'set-view-mode') {
+            const mode = trigger?.dataset?.viewMode;
+            if (['simple', 'detailed', 'advanced'].includes(mode)) { state.viewMode = mode; saveDockPreferences(); render(); }
+            return;
+        }
+        if (action === 'apply-history-filters') {
+            const filters = readHistoryFilterControls();
+            state.historyQuery = filters.query; state.historyStatus = filters.status; state.historyCategory = filters.category; state.historyType = filters.type; state.historyFrom = filters.from; state.historyTo = filters.to; state.historyVisible = 20; render(); return;
+        }
+        if (action === 'reset-history-filters') {
+            state.historyQuery = ''; state.historyStatus = ''; state.historyCategory = ''; state.historyType = ''; state.historyFrom = ''; state.historyTo = ''; state.historyVisible = 20; render(); return;
+        }
+        if (action === 'show-more-history') { state.historyVisible = Math.min(100, state.historyVisible + 20); render(); return; }
+        if (action === 'export-history') {
+            const text = getOperationRuntime()?.exportHistory?.({ mode: state.viewMode, format: 'markdown', query: state.historyQuery, status: state.historyStatus, category: state.historyCategory, type: state.historyType, from: state.historyFrom ? `${state.historyFrom}T00:00:00` : '', to: state.historyTo ? `${state.historyTo}T23:59:59.999` : '', rootsOnly: true, limit: 100 });
+            if (text) { downloadText(reportFilename('章鱼机_AI操作历史报告'), text); toast('筛选后的脱敏报告已下载'); }
+            return;
+        }
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
             state.panel = 'operation';
@@ -769,19 +884,34 @@
             render();
             return;
         }
-        if (action === 'copy-operation') {
+        if (action === 'open-prompt-source' || action === 'open-source-management') {
+            const { operation, request, source } = findPromptSource(trigger);
+            if (!source) { toast('没有找到该来源记录'); return; }
+            rememberPromptSourceFocus(operation, request, source);
+            if (action === 'open-source-management') openPromptSourceManagement(source);
+            else {
+                activatePromptCharacter(source?.navigation?.characterId || operation?.scope?.characterId || operation?.scope?.chatId);
+                state.open = false; state.panel = 'main'; render();
+                if (typeof setupMagicRoomApp === 'function') setupMagicRoomApp();
+                if (typeof switchScreen === 'function') switchScreen('magic-room-screen');
+            }
+            return;
+        }
+        if (action === 'copy-operation' || action === 'download-operation-report') {
             const operationId = trigger?.dataset?.operationId || state.selectedOperationId;
-            const operation = getOperationRuntime()?.get?.(operationId);
-            if (operation) {
-                const text = JSON.stringify(operation, null, 2);
+            const runtime = getOperationRuntime();
+            const text = runtime?.exportReport?.(operationId, { mode: state.viewMode, format: 'markdown', includeChildren: true }) || '';
+            if (text && action === 'download-operation-report') {
+                downloadText(reportFilename('章鱼机_AI操作报告'), text);
+                toast('脱敏操作报告已下载');
+            } else if (text) {
                 try { await navigator.clipboard.writeText(text); }
                 catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-                toast('本次操作报告已复制');
+                toast('脱敏操作报告已复制');
             }
             return;
         }
         if (action === 'open-git-settings') { openGitSettings(); return; }
-        if (action === 'open-proment') { state.panel = 'proment'; render(); return; }
         if (action === 'open-proment-full') {
             state.open = false; state.panel = 'main'; render();
             if (typeof setupMagicRoomApp === 'function') setupMagicRoomApp();
@@ -791,7 +921,7 @@
         try {
             rootEl.classList.add('quick-dock--busy');
             if (action === 'switch-api') {
-                const modelSelect = panelEl.querySelector('#quick-dock-model-select');
+                const modelSelect = panelEl.querySelector('#quick-dock-top-model-select');
                 await switchCurrentModel(modelSelect ? modelSelect.value : '');
             } else if (action === 'refresh-models') await refreshModelSelect(true);
             else if (action === 'git-upload') await gitUpload();
@@ -810,7 +940,7 @@
             toast(state.status);
         } finally {
             rootEl.classList.remove('quick-dock--busy');
-            if (state.panel === 'main' || state.panel === 'tools') render();
+            if (state.panel === 'main') render();
         }
     }
 
@@ -852,6 +982,7 @@
         ballEl = rootEl.querySelector('.quick-dock-ball');
         applyPosition(state.x == null ? window.innerWidth - 64 : state.x, state.y == null ? Math.round(window.innerHeight * 0.52) : state.y);
         panelEl.addEventListener('click', onPanelClick);
+        panelEl.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target?.id === 'quick-dock-history-query') { event.preventDefault(); runAction('apply-history-filters', event.target); } });
         ballEl.addEventListener('pointerdown', onPointerDown);
         ballEl.addEventListener('pointermove', onPointerMove);
         ballEl.addEventListener('pointerup', onPointerUp);

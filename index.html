@@ -49,6 +49,9 @@
 <link href="css/modules/memory_mode_ui.css" rel="stylesheet"/>
 <link href="css/modules/memory_table_v2.css" rel="stylesheet"/>
 <link href="css/modules/memory_workspace.css" rel="stylesheet"/>
+<link href="css/modules/memory_table_flat.css" rel="stylesheet"/>
+<link href="css/modules/memory_schema_editor.css" rel="stylesheet"/>
+<link href="css/modules/memory_retrieval_audit.css" rel="stylesheet"/>
 <link href="css/modules/app_workspace.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
@@ -401,6 +404,10 @@
 </div>
 </div>
 <div id="multi-select-bar"><span id="select-count">已选择 0 项</span>
+<div class="chat-range-select-actions" id="chat-range-select-actions">
+<button class="btn btn-neutral btn-small" id="select-first-message-btn" type="button">选择第一条</button>
+<button class="btn btn-neutral btn-small" id="select-to-message-btn" type="button" disabled>选择到这里</button>
+</div>
 <button class="btn btn-danger" id="delete-selected-btn" style="width: auto; padding: 8px 16px;">删除已选</button>
 <button class="btn btn-primary" id="favorite-selected-btn" style="display: none; width: auto; padding: 8px 16px;">收藏选中</button>
 <button class="btn btn-primary" id="favorite-merge-btn" style="display: none; width: auto; padding: 8px 16px;" title="将选中的多条消息合并为一条收藏">合并为一条</button>
@@ -5480,6 +5487,7 @@
 <select id="memory-table-sort-select">
 <option value="default">默认排序</option><option value="name">名称</option><option value="changed">最近变更</option><option value="locked">已锁定</option>
 </select>
+<button type="button" class="btn btn-small btn-secondary memory-flat-settings-trigger" data-action="toggle-memory-settings">整理设置</button>
 </div>
 <div class="memory-workbench-tools" id="memory-workbench-manage-tools" hidden>
 <button class="btn btn-small btn-secondary" id="memory-table-import-btn" type="button">导入</button>
@@ -5488,11 +5496,14 @@
 <button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转档案</button>
 <button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">档案转日记</button>
 <input accept=".json,application/json" id="memory-table-import-input" hidden type="file"/>
-<div class="memory-v2-mode-switch" aria-label="档案查看模式">
+<button class="btn btn-small btn-primary" id="memory-table-open-schema-editor-btn" type="button">表结构</button>
+<div class="memory-v2-mode-switch" aria-hidden="true" hidden>
 <button type="button" id="memory-table-normal-mode-btn" class="active">普通</button><button type="button" id="memory-table-json-mode-btn">JSON</button>
 </div>
 </div>
+<button type="button" class="memory-flat-settings-backdrop" id="memory-workbench-settings-backdrop" data-action="toggle-memory-settings" aria-label="关闭整理设置"></button>
 <section class="memory-workbench-settings" id="memory-workbench-settings" hidden>
+<div class="memory-flat-drawer-head"><strong>更新与整理</strong><button type="button" class="btn btn-small btn-secondary" data-action="toggle-memory-settings">关闭</button></div>
 <details id="memory-workbench-advanced-settings" open>
 <summary>更新与整理 <small>高频操作</small></summary>
 <div class="memory-workbench-settings-body">
@@ -5544,10 +5555,9 @@
 <button class="memory-table-tab-btn" data-tab="tables" type="button">当前表格</button>
 <button class="memory-table-tab-btn" data-tab="templates" type="button">模板库</button>
 <button class="memory-table-tab-btn" data-tab="review" type="button">更新审核<span id="memory-review-tab-count">0</span></button>
-<button class="memory-table-tab-btn" data-tab="retrieval" type="button">检索诊断</button>
+<button class="memory-table-tab-btn" data-tab="usage_audit" type="button">记忆引用与作用<span id="memory-usage-audit-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="sidecar" type="button">短期候选<span id="memory-sidecar-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="reliability" type="button">可靠性</button>
-<button class="memory-table-tab-btn" data-tab="feedback" type="button">使用反馈<span id="memory-feedback-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="tasks" type="button">任务队列<span id="memory-task-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="quality" type="button">质量评估</button>
 <button class="memory-table-tab-btn" data-tab="history" type="button">历史</button>
@@ -6366,33 +6376,16 @@
 </form>
 </div>
 </div>
-<div class="modal-overlay" id="memory-template-editor-modal">
-<div class="modal-window" style="width:min(92vw, 720px); max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
-<h3 style="margin:0 0 10px 0;">模板 JSON 编辑器</h3>
-<p style="font-size:12px; color:#888; margin:0 0 12px 0; line-height:1.5;">
-                这里支持 100% 自定义模板。你可以直接编辑 JSON，字段类型支持 text / longtext / number / enum / tags / progress / date / boolean。
-            </p>
-<textarea id="memory-template-json" style="width:100%; min-height:340px; flex:1; border:1px solid #ececec; border-radius:12px; padding:12px; font-size:13px; line-height:1.6; font-family:Consolas, monospace; resize:vertical;"></textarea>
-<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-<button class="btn btn-secondary" id="memory-template-editor-starter-btn" type="button">填入骨架模板</button>
-<button class="btn btn-neutral" id="memory-template-editor-cancel-btn" type="button">取消</button>
-<button class="btn btn-primary" id="memory-template-editor-save-btn" type="button">保存模板</button>
+<div class="modal-overlay" id="memory-schema-editor-modal">
+<div class="modal-window memory-schema-editor-window">
+<div class="memory-schema-editor-head">
+<div><h3 id="memory-schema-editor-title">表结构编辑器</h3><p>字段、表格设置与结构 JSON 共用同一份 schema；切换视图不会复制配置。</p></div>
+<button type="button" class="memory-schema-editor-close" data-schema-action="cancel" aria-label="关闭">×</button>
 </div>
-</div>
-</div>
-<div class="modal-overlay" id="memory-template-designer-modal">
-<div class="modal-window" style="width:min(94vw, 860px); max-height:84vh; overflow:hidden; display:flex; flex-direction:column;">
-<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px;">
-<div>
-<h3 id="memory-template-designer-title" style="margin:0;">模板设计器</h3>
-<p style="font-size:12px; color:#888; margin:6px 0 0; line-height:1.5;">这里是第二版可视化编辑器。你可以直接增删表格、字段、选项、规则，不需要手写 JSON。</p>
-</div>
-<button class="btn btn-small btn-secondary" data-action="designer-open-json" type="button">切到 JSON</button>
-</div>
-<div id="memory-template-designer-body" style="flex:1; overflow:auto; padding-right:4px;"></div>
-<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-<button class="btn btn-neutral" data-action="designer-cancel" type="button">取消</button>
-<button class="btn btn-primary" data-action="designer-save" type="button">保存模板</button>
+<div class="memory-schema-editor-body" id="memory-schema-editor-body"></div>
+<div class="memory-schema-editor-footer">
+<div><button class="btn btn-small btn-secondary" data-schema-action="starter" type="button">使用骨架模板</button></div>
+<div><button class="btn btn-neutral" data-schema-action="cancel" type="button">取消</button><button class="btn btn-primary" data-schema-action="save" type="button">保存结构</button></div>
 </div>
 </div>
 </div>
@@ -6681,6 +6674,7 @@
 <script src="js/modules/character_create.js"></script>
 <script src="js/modules/chat_render.js"></script>
 <script src="js/modules/prompt_trace.js"></script>
+<script src="js/modules/ai_capability_catalog.js"></script>
 <script src="js/modules/operation_runtime.js"></script>
 <script src="js/modules/ai_request_runtime.js"></script>
     <script src="js/modules/chat_ai.js"></script>
@@ -6718,12 +6712,54 @@
 <script src="js/modules/memory_table_feedback.js"></script>
 <script src="js/modules/memory_table_review.js"></script>
 <script src="js/modules/memory_table_retrieval.js"></script>
+<script src="js/features/memory/retrieval_audit.js"></script>
 <script src="js/modules/memory_table_sidecar.js"></script>
 <script src="js/modules/memory_table_tasks.js"></script>
 <script src="js/modules/memory_table_quality.js"></script>
 <script src="js/features/memory/api_adapter.js"></script>
 <script src="js/features/memory/domain.js"></script>
+<script src="js/features/memory/schema_model.js"></script>
+<script src="js/features/memory/schema_editor.js"></script>
 <script src="js/features/memory/workspace.js"></script>
+<script src="js/features/memory/tag_vocabulary.js"></script>
+<script src="js/features/memory/tag_service.js"></script>
+<script src="js/features/memory/relation_service.js"></script>
+<script src="js/features/memory/merge_review_service.js"></script>
+<script src="js/features/memory/candidate_service.js"></script>
+<script src="js/features/memory/table_filter.js"></script>
+<script src="js/features/memory/governance_queue.js"></script>
+<script src="js/features/memory/governance_controller.js"></script>
+<script src="js/features/memory/row_inspector.js"></script>
+<script src="js/features/memory/row_inspector_controller.js"></script>
+<script src="js/features/memory/context_assembler.js"></script>
+<script src="js/features/memory/update_service.js"></script>
+<script src="js/features/memory/table_viewport.js"></script>
+<script src="js/features/memory/table_session.js"></script>
+<script src="js/features/memory/table_grouping.js"></script>
+<script src="js/features/memory/table_gesture.js"></script>
+<script src="js/features/memory/table_cache.js"></script>
+<script src="js/features/memory/table_persistence.js"></script>
+<script src="js/features/memory/row_command_menu.js"></script>
+<script src="js/features/memory/table_interaction.js"></script>
+<script src="js/features/memory/table_view.js"></script>
+<script src="js/features/memory/table_sort.js"></script>
+<script src="js/features/memory/table_presenter.js"></script>
+<script src="js/features/memory/table_reconciler.js"></script>
+<script src="js/features/memory/update_activity.js"></script>
+<script src="js/features/memory/table_grid.js"></script>
+<script src="js/features/memory/table_editor.js"></script>
+<script src="js/features/memory/table_edit_controller.js"></script>
+<script src="js/features/memory/table_workspace.js"></script>
+<!-- V2.12-R4: memory domain public facades and architecture contract -->
+<script src="js/features/memory/domains/platform.js"></script>
+<script src="js/features/memory/domains/foundation.js"></script>
+<script src="js/features/memory/domains/schema.js"></script>
+<script src="js/features/memory/domains/governance.js"></script>
+<script src="js/features/memory/domains/retrieval.js"></script>
+<script src="js/features/memory/domains/update.js"></script>
+<script src="js/features/memory/domains/tables.js"></script>
+<script src="js/features/memory/architecture.js"></script>
+<script src="js/features/memory/maintenance.js"></script>
 <script src="js/modules/memory_table.js"></script>
 <script src="js/features/memory/facade.js"></script>
 <script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
@@ -6748,6 +6784,7 @@
 <script src="js/modules/appearance_settings.js"></script> <!-- 外观设置：整体 UI 切换 -->
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
+<script src="js/modules/quick_dock_action_bar.js"></script> <!-- 悬浮球顶部主操作 -->
 <script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
 <script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->

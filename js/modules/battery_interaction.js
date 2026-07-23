@@ -95,6 +95,12 @@ const BatteryInteraction = {
 
         console.log('BatteryInteraction: Triggering independent check...');
 
+        const operationRuntime = window.OVOOperationRuntime || null;
+        const operation = operationRuntime?.start?.('interaction.battery', {
+            title: '生成低电量互动', source: 'battery-interaction',
+            stage: '读取角色与最近对话', scope: { chatId: chat?.id || null, threshold: this.threshold }
+        }) || null;
+
         try {
             // 1. 准备上下文
             
@@ -145,7 +151,10 @@ ${recentHistory}
 
             // 2. 调用 API
             let {url, key, model, provider} = db.apiSettings;
-            if (!url || !key || !model) return;
+            if (!url || !key || !model) {
+                operationRuntime?.skip?.(operation?.id, 'API 设置不完整，未生成低电量互动');
+                return;
+            }
 
             if (url.endsWith('/')) url = url.slice(0, -1);
 
@@ -158,7 +167,10 @@ ${recentHistory}
                 const response = window.OVOAIRequestRuntime
                     ? await window.OVOAIRequestRuntime.request({
                         task: 'battery-interaction', source: 'battery-interaction',
-                        provider, model, endpoint, headers, body
+                        provider, model, endpoint, headers, body,
+                        operationId: operation?.id || null,
+                        operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
+                        promptSources: [{ type: 'task_instruction', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
                     })
                     : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
                 const data = await response.json();
@@ -170,7 +182,10 @@ ${recentHistory}
                 const response = window.OVOAIRequestRuntime
                     ? await window.OVOAIRequestRuntime.request({
                         task: 'battery-interaction', source: 'battery-interaction',
-                        provider, model, endpoint, headers, body
+                        provider, model, endpoint, headers, body,
+                        operationId: operation?.id || null,
+                        operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
+                        promptSources: [{ type: 'task_instruction', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
                     })
                     : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
                 const data = await response.json();
@@ -184,9 +199,16 @@ ${recentHistory}
             if (responseText) {
                 // 显示思考气泡
                 this.showBatteryThoughtBubble(responseText, chat.avatar);
+                operationRuntime?.complete?.(operation?.id, {
+                    summary: '低电量互动已显示',
+                    result: { chatId: chat?.id || null, levelPercent, text: responseText }
+                });
+            } else {
+                operationRuntime?.skip?.(operation?.id, '模型没有返回可显示的低电量互动');
             }
 
         } catch (error) {
+            operationRuntime?.fail?.(operation?.id, error, { summary: '低电量互动生成失败' });
             console.error('BatteryInteraction: API Error', error);
         }
     },

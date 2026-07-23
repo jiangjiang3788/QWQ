@@ -555,7 +555,7 @@
         bar.style.display = 'flex';
         const feedbackSnapshot = window.MemoryTableFeedback ? window.MemoryTableFeedback.getLastSnapshot(chat) : null;
         const pendingFeedback = feedbackSnapshot ? (feedbackSnapshot.items || []).filter(item => item.feedback === 'pending').length : 0;
-        const feedbackChip = feedbackSnapshot ? `<button type="button" class="memory-live-feedback-chip" data-open-memory-feedback="true">本轮记忆 ${(feedbackSnapshot.items || []).length}${pendingFeedback ? ` · 待反馈 ${pendingFeedback}` : ''}</button>` : '';
+        const feedbackChip = feedbackSnapshot ? `<button type="button" class="memory-live-feedback-chip" data-open-memory-feedback="true">本轮引用 ${(feedbackSnapshot.items || []).length}${pendingFeedback ? ` · 待反馈 ${pendingFeedback}` : ''}</button>` : '';
         bar.innerHTML = `<div class="memory-live-state-main"><strong>${escapeHtml(headline || '当前状态')}</strong>${detail ? `<span>${escapeHtml(detail)}</span>` : ''}</div><div class="memory-live-state-meta">${escapeHtml(summary.validUntil ? `有效至 ${summary.validUntil}` : (summary.updatedAt || ''))}${feedbackChip}</div>`;
         bar.title = [summary.body, summary.need, summary.pressure].filter(Boolean).join('\n');
     }

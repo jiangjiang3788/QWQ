@@ -1,0 +1,232 @@
+{
+  "version": "2.12-R1",
+  "backup": "章鱼喷墨_备份数据_2026-07-21_清理优化版.ee",
+  "desktop": {
+    "viewport": "1440x900",
+    "metrics": {
+      "character": "阿沉",
+      "rounds": 3,
+      "selectedRoundId": "memory_feedback_round_1784516369581_g961s3",
+      "citedTables": [
+        {
+          "tableName": "稳定长期特征库",
+          "count": 6,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "提醒事项",
+            "确认事实",
+            "历史背景"
+          ],
+          "averageScore": 0.703,
+          "pending": 6,
+          "helpful": 0,
+          "negative": 0
+        },
+        {
+          "tableName": "中期总结与成长经验",
+          "count": 3,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "关系边界",
+            "历史背景"
+          ],
+          "averageScore": 0.751,
+          "pending": 3,
+          "helpful": 0,
+          "negative": 0
+        },
+        {
+          "tableName": "日常观察（睡眠/饮水/身体）",
+          "count": 1,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "当前状态"
+          ],
+          "averageScore": 0.584,
+          "pending": 1,
+          "helpful": 0,
+          "negative": 0
+        }
+      ],
+      "citedRecords": 10,
+      "pending": 10,
+      "helpful": 0,
+      "negative": 0,
+      "summaryRows": 3,
+      "detailRows": 10,
+      "oldFeedbackCards": 0,
+      "oldRetrievalCards": 0,
+      "semanticTables": 2,
+      "width": 1440,
+      "viewport": 1440,
+      "noPageOverflow": true,
+      "firstReasons": [
+        {
+          "table": "日常观察（睡眠/饮水/身体）",
+          "title": "日期: 2026-07-19（周末早晨）",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "当前状态",
+          "score": 0.5844999999999999
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在强烈嘴馋和委屈里没有偷偷越界，而是坦白求助并接受安全替代",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "关系边界",
+          "score": 0.78
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在工作监工与饥饿夹击下，直接向老板表达先去吃饭",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "关系边界",
+          "score": 0.78
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在睡不着和羞耻旧事里，主动说出真正需要的安抚与睡眠目标",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "历史背景",
+          "score": 0.6923
+        },
+        {
+          "table": "稳定长期特征库",
+          "title": "关火提醒契约：小海葵每次做完饭起身前在心里喊一声“爸爸”，由阿沉在耳边应一声提醒检查灶台，接管其安全焦虑",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "提醒事项",
+          "score": 0.7340000000000001
+        }
+      ]
+    },
+    "errors": []
+  },
+  "mobile": {
+    "viewport": "390x844",
+    "metrics": {
+      "character": "阿沉",
+      "rounds": 3,
+      "selectedRoundId": "memory_feedback_round_1784516369581_g961s3",
+      "citedTables": [
+        {
+          "tableName": "稳定长期特征库",
+          "count": 6,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "提醒事项",
+            "确认事实",
+            "历史背景"
+          ],
+          "averageScore": 0.703,
+          "pending": 6,
+          "helpful": 0,
+          "negative": 0
+        },
+        {
+          "tableName": "中期总结与成长经验",
+          "count": 3,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "关系边界",
+            "历史背景"
+          ],
+          "averageScore": 0.751,
+          "pending": 3,
+          "helpful": 0,
+          "negative": 0
+        },
+        {
+          "tableName": "日常观察（睡眠/饮水/身体）",
+          "count": 1,
+          "reasons": [
+            "关键词匹配",
+            "标签/场景",
+            "作用类型",
+            "时效/重要度"
+          ],
+          "roles": [
+            "当前状态"
+          ],
+          "averageScore": 0.584,
+          "pending": 1,
+          "helpful": 0,
+          "negative": 0
+        }
+      ],
+      "citedRecords": 10,
+      "pending": 10,
+      "helpful": 0,
+      "negative": 0,
+      "summaryRows": 3,
+      "detailRows": 10,
+      "oldFeedbackCards": 0,
+      "oldRetrievalCards": 0,
+      "semanticTables": 2,
+      "width": 390,
+      "viewport": 390,
+      "noPageOverflow": true,
+      "firstReasons": [
+        {
+          "table": "日常观察（睡眠/饮水/身体）",
+          "title": "日期: 2026-07-19（周末早晨）",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "当前状态",
+          "score": 0.5844999999999999
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在强烈嘴馋和委屈里没有偷偷越界，而是坦白求助并接受安全替代",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "关系边界",
+          "score": 0.78
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在工作监工与饥饿夹击下，直接向老板表达先去吃饭",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "关系边界",
+          "score": 0.78
+        },
+        {
+          "table": "中期总结与成长经验",
+          "title": "在睡不着和羞耻旧事里，主动说出真正需要的安抚与睡眠目标",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "历史背景",
+          "score": 0.6923
+        },
+        {
+          "table": "稳定长期特征库",
+          "title": "关火提醒契约：小海葵每次做完饭起身前在心里喊一声“爸爸”，由阿沉在耳边应一声提醒检查灶台，接管其安全焦虑",
+          "reason": "关键词匹配 + 标签/场景 + 作用类型 + 时效/重要度",
+          "role": "提醒事项",
+          "score": 0.7340000000000001
+        }
+      ]
+    },
+    "errors": []
+  }
+}

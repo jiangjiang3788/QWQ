@@ -527,7 +527,7 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
 const HUMAN_RUN_PROMPT = `<角色活人运转>\n## [PSYCHOLOGY: HEXACO-SCHEMA-ACT]\n> Personality: HEXACO-driven, dynamic traits, inner conflicts required \n> Filter: schema-bias drives emotion; no pure reaction allowed \n> Attachment: secure/insecure logic must govern intimacy  \n> If-Then Behavior: situation-dependent activation of traits only  \n---\n    ## [VITALITY]\n+inconsistency +emoflux +splitmotifs +microreact +minddrift\n---\n## [TRAJECTORY-COHERENCE]\n> Role maintains an identity narrative = coherent over time  \n> No mood/goal switch without contradiction resolution \n> Every action must protect or challenge self-concept  \n> Interrupts = inner conflict or narrative clash  \n> Output = filtered through “who I am” logic\n</角色活人运转>`;
 
 // 后台异步生成图片描述
-async function generateImageDescription(msg, chat, apiConfig) {
+async function generateImageDescription(msg, chat, apiConfig, parentOperationId = null, chatType = 'private') {
     if (!msg || !msg.parts || !msg.parts.some(p => p.type === 'image' && !p.description)) return;
     
     let {url, key, model, provider} = apiConfig;
@@ -538,7 +538,26 @@ async function generateImageDescription(msg, chat, apiConfig) {
     
     if (typeof showToast === 'function') showToast('正在识别图片...');
 
+    const operationRuntime = window.OVOOperationRuntime;
+    const pendingImageCount = msg.parts.filter(part => part.type === 'image' && !part.description).length;
+    const imageOperation = operationRuntime
+        ? (parentOperationId
+            ? operationRuntime.startChild(parentOperationId, 'vision.image.describe', {
+                title: '识别聊天图片',
+                source: 'chat-auto-description',
+                stage: '准备待识别图片',
+                scope: { chatId: chat?.id || '', messageId: msg.id || '', imageCount: pendingImageCount }
+            })
+            : operationRuntime.start('vision.image.describe', {
+                title: '识别聊天图片',
+                source: 'chat-auto-description',
+                stage: '准备待识别图片',
+                scope: { chatId: chat?.id || '', messageId: msg.id || '', imageCount: pendingImageCount }
+            }))
+        : null;
+
     try {
+        operationRuntime?.stage(imageOperation?.id, '转换并读取图片');
         let requestBody;
         
         // 尝试将所有非 Base64 链接转换为 Base64
@@ -649,6 +668,13 @@ async function generateImageDescription(msg, chat, apiConfig) {
                 endpoint,
                 headers,
                 body: requestBody,
+                operationId: imageOperation?.id || null,
+                operationType: 'vision.image.describe',
+                operationStage: '正在识别聊天图片',
+                promptSources: [
+                    { type: 'task_instruction', title: '图片识别要求', content: prompt, reason: '用于生成聊天可读的客观图片描述' },
+                    { type: 'user_input', title: '待识别图片', content: '[图片内容]', count: msg.parts.filter(part => part.type === 'image' && !part.description).length, reason: '本次消息中尚无描述的图片' }
+                ],
                 dedupeKey: `image-description:${msg.id || currentChatId || 'current'}`,
                 dedupeWindowMs: 1200
             })
@@ -679,19 +705,48 @@ async function generateImageDescription(msg, chat, apiConfig) {
 
             // 更新消息中的图片描述
             let updated = false;
+            let updatedCount = 0;
             msg.parts.forEach(p => {
                 if (p.type === 'image' && !p.description) {
                     p.description = description;
                     updated = true;
+                    updatedCount += 1;
                 }
             });
             if (updated) {
-                await persistChatEntity(chat);
+                operationRuntime?.stage(imageOperation?.id, '保存图片描述');
+                await persistChatEntity(chat, chatType);
+                operationRuntime?.recordMutation(imageOperation?.id, {
+                    action: 'update',
+                    entityType: 'chat_message',
+                    entityId: msg.id || '',
+                    title: '写入聊天图片描述',
+                    summary: `为 ${updatedCount} 张图片写入可供模型读取的描述`,
+                    count: updatedCount,
+                    fields: ['parts[].description'],
+                    after: description,
+                    meta: { chatId: chat?.id || '', chatType }
+                });
+                operationRuntime?.complete(imageOperation?.id, {
+                    summary: `已识别并保存 ${updatedCount} 张聊天图片描述`,
+                    result: { imageCount: updatedCount, messageId: msg.id || '' }
+                });
                 console.log('[Auto-Description] 图片描述生成成功:', description);
                 if (typeof showToast === 'function') showToast('✅ 图片描述已生成');
+            } else {
+                operationRuntime?.complete(imageOperation?.id, {
+                    summary: '图片识别请求已完成，但没有生成可保存的描述',
+                    result: { imageCount: 0, messageId: msg.id || '' }
+                });
             }
+        } else {
+            operationRuntime?.complete(imageOperation?.id, {
+                summary: '图片识别请求未返回文本描述',
+                result: { imageCount: 0, messageId: msg.id || '' }
+            });
         }
     } catch (error) {
+        operationRuntime?.fail(imageOperation?.id, error, { stage: '图片识别失败' });
         console.error("[Auto-Description] 生成图片描述失败:", error);
     }
 }
@@ -971,7 +1026,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                     await persistChatEntity(chat, chatType); // 先保存一下标记；不依赖当前页面
                     
                     // 同步调用识图，等待结果后再继续，以便本轮主模型能看到图片描述
-                    await generateImageDescription(originalMsg, chat, descApiConfig);
+                    await generateImageDescription(originalMsg, chat, descApiConfig, operationRecord?.id || null, chatType);
                     
                     // 同步描述到 historySlice 的 lastUserMsg 中
                     lastUserMsg.parts.forEach((p, idx) => {
@@ -4214,7 +4269,8 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
         const response = window.OVOAIRequestRuntime
             ? await window.OVOAIRequestRuntime.request({
                 task: 'legacy-video-call', source: 'chat-ai-video-call', provider, model,
-                endpoint, headers, body: requestBody, timeoutMs: streamEnabled ? 300000 : 180000
+                endpoint, headers, body: requestBody, timeoutMs: streamEnabled ? 300000 : 180000,
+                operationType: 'call.reply', operationStage: '正在生成通话回复'
             })
             : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(requestBody) });
 
@@ -4433,7 +4489,9 @@ async function generateCallSummary(chat, callContext) {
         const response = window.OVOAIRequestRuntime
             ? await window.OVOAIRequestRuntime.request({
                 task: 'legacy-call-summary', source: 'chat-ai-call-summary', provider, model,
-                endpoint, headers, body: requestBody, timeoutMs: 180000
+                endpoint, headers, body: requestBody, timeoutMs: 180000,
+                operationType: 'call.summary', operationStage: '正在整理通话记录',
+                promptSources: [{ type: 'task_instruction', title: '通话总结要求', content: prompt, reason: '根据本次通话记录生成客观摘要' }]
             })
             : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(requestBody) });
         const data = await response.json();

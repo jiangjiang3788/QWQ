@@ -28,7 +28,7 @@ assert(tasks.includes('function getRuntimeState()'), 'memory task runtime state 
 assert(main.includes("AI 或记忆任务仍在运行"), 'browser leave warning for active tasks missing');
 assert(dock.includes("classList.toggle('quick-dock-panel--app-fullscreen', state.open)"), 'floating ball does not open as a full-screen app');
 assert(dockCss.includes('.quick-dock-root.quick-dock--open .quick-dock-ball{visibility:hidden'), 'floating ball is not covered/hidden while open');
-assert(dock.includes('aria-label="返回页面"'), 'full-screen operation center return button missing');
+assert(dock.includes('aria-label="关闭操作中心"'), 'full-screen operation center close button missing');
 assert(feedback.includes('pendingFeedbackTtlDays: 7'), 'feedback expiry default missing');
 assert(feedback.includes("snapshot.status = 'expired'"), 'stale feedback is not expired');
 assert(feedback.includes('clearExpiredRounds'), 'expired feedback cleanup missing');

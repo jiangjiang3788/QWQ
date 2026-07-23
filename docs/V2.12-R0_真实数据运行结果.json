@@ -1,0 +1,63 @@
+{
+  "version": "2.12-R0",
+  "results": [
+    {
+      "label": "desktop_core",
+      "metrics": {
+        "groups": [
+          "核心确认"
+        ],
+        "editButtons": 0,
+        "fieldRows": 6,
+        "width": 1440,
+        "viewport": 1440,
+        "noOverflow": true
+      },
+      "errors": []
+    },
+    {
+      "label": "desktop_rows",
+      "metrics": {
+        "tagHeaders": [
+          "标签"
+        ],
+        "columnGroups": [
+          "主要信息"
+        ],
+        "editButtons": 0,
+        "rowMenuEdit": false,
+        "renderedRows": 15,
+        "totalRows": 15,
+        "width": 1440,
+        "viewport": 1440,
+        "noOverflow": true,
+        "selectedAfterClick": 1,
+        "editorsAfterClick": 0,
+        "editorsAfterLongPress": 8
+      },
+      "errors": []
+    },
+    {
+      "label": "mobile_rows",
+      "metrics": {
+        "tagHeaders": [
+          "标签"
+        ],
+        "columnGroups": [
+          "主要信息"
+        ],
+        "editButtons": 0,
+        "rowMenuEdit": false,
+        "renderedRows": 15,
+        "totalRows": 15,
+        "width": 390,
+        "viewport": 390,
+        "noOverflow": true,
+        "selectedAfterClick": 1,
+        "editorsAfterClick": 0,
+        "editorsAfterLongPress": 8
+      },
+      "errors": []
+    }
+  ]
+}

@@ -214,7 +214,7 @@
                 <div class="memory-review-batch-head">
                     <div>
                         <h3>${escapeHtml(batch.tableName || '记忆更新草案')}</h3>
-                        <div class="memory-review-batch-meta">${escapeHtml(batch.templateName || '')} · 消息 ${batch.range?.start || '?'}–${batch.range?.end || '?'} · ${batch.sourceMessageCount || 0} 条 · ${batch.apiMode === 'summary' ? '总结 API' : '主聊天 API'}${batch.apiFallback ? '（回退）' : ''}${batch.apiModel ? ` · ${escapeHtml(batch.apiModel)}` : ''}</div>
+                        <div class="memory-review-batch-meta">${escapeHtml(batch.templateName || '')} · 消息 ${batch.range?.start || '?'}–${batch.range?.end || '?'} · ${batch.sourceMessageCount || 0} 条 · ${batch.apiMode === 'summary' ? '总结 API' : '主聊天 API'}${batch.apiFallback ? '（回退）' : ''}${batch.apiModel ? ` · ${escapeHtml(batch.apiModel)}` : ''}${batch.relatedContext?.tables?.length ? ` · 相关表 ${batch.relatedContext.tables.length} 张 / ${batch.relatedContext.rowCount || 0} 行` : ''}</div>
                     </div>
                     <span class="memory-review-count">${batch.proposals?.length || 0} 项</span>
                 </div>

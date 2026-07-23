@@ -79,7 +79,8 @@
         window.buildCharBlockMemoryContext = getCharBlockMemoryContext;
     }
 
-    async function callBlockApi(systemPrompt, userContent) {
+    async function callBlockApi(systemPrompt, userContent, runtimeMeta) {
+        runtimeMeta = runtimeMeta || {};
         var apiConfig = db.apiSettings;
         if (!apiConfig || !apiConfig.url || !apiConfig.key || !apiConfig.model) {
             return { ok: false, error: '请先在 api 应用中完成设置' };
@@ -115,7 +116,13 @@
             var res = window.OVOAIRequestRuntime
                 ? await window.OVOAIRequestRuntime.request({
                     task: 'block-system', source: 'block-system', provider: provider,
-                    model: model, endpoint: endpoint, headers: headers, body: body
+                    model: model, endpoint: endpoint, headers: headers, body: body,
+                    operationType: 'safety.block.check', operationStage: '正在判断关系状态',
+                    operationId: runtimeMeta.operationId || null,
+                    promptSources: [
+                        { type: 'system_rules', title: '关系判断规则', content: systemPrompt, reason: '拉黑或好友申请的系统判断规则' },
+                        { type: 'user_input', title: '本次判断内容', content: userContent, reason: '触发本次关系判断的内容' }
+                    ]
                 })
                 : await fetch(endpoint, { method: 'POST', headers: headers, body: JSON.stringify(body) });
             var text = await res.text();
@@ -140,7 +147,8 @@
         return p || '一个友好、乐于助人的伙伴。';
     }
 
-    async function generateFriendRequestReason(char) {
+    async function generateFriendRequestReason(char, runtimeMeta) {
+        runtimeMeta = runtimeMeta || {};
         var rejectedRequests = (char.friendRequests || []).filter(function (r) { return r.status === 'rejected'; });
         var lastMessages = (char.history || [])
             .filter(function (m) { return !m.isContextDisabled; })
@@ -164,7 +172,7 @@
         prompt += '请以 JSON 格式回复，且只输出这一行，不要其他内容：\n';
         prompt += '{"reason":"你的好友申请理由（50字以内，符合你的性格，体现情绪递进，不重复之前写过的）"}\n';
 
-        var result = await callBlockApi('你是一个角色扮演助手。请严格只输出要求的 JSON，不要 markdown 代码块，不要多余文字。', prompt);
+        var result = await callBlockApi('你是一个角色扮演助手。请严格只输出要求的 JSON，不要 markdown 代码块，不要多余文字。', prompt, runtimeMeta);
         if (!result.ok) return { ok: false, error: result.error };
         try {
             var jsonStr = result.text.replace(/^[\s\S]*?\{/, '{').replace(/\}[\s\S]*$/, '}');
@@ -176,6 +184,11 @@
     }
 
     async function aiDecideAndMaybeSendRequest(char) {
+        var runtime = window.OVOOperationRuntime || null;
+        var operation = runtime && runtime.start ? runtime.start('safety.block.check', {
+            title: '判断是否再次发送好友申请', source: 'block-system-auto-decision',
+            stage: '读取拉黑状态与拒绝历史', scope: { characterId: char.id }
+        }) : null;
         var rejectedRequests = (char.friendRequests || []).filter(function (r) { return r.status === 'rejected'; });
         var lastRejectedAt = rejectedRequests.length > 0 ? Math.max.apply(null, rejectedRequests.map(function (r) { return r.respondedAt || 0; })) : char.blockedAt;
         var minutesSince = Math.floor((Date.now() - lastRejectedAt) / 60000);
@@ -186,11 +199,12 @@
         prompt += '{"shouldSendNow":true或false,"reason":"若shouldSendNow为true则写申请理由(50字内)","nextCheckMinutes":数字}\n';
         prompt += 'nextCheckMinutes 表示多少分钟后再来问你（心急角色可填1~5，慢热可填60~180）。';
 
-        var result = await callBlockApi('你是一个角色扮演助手。只输出一行 JSON，不要 markdown。', prompt);
+        var result = await callBlockApi('你是一个角色扮演助手。只输出一行 JSON，不要 markdown。', prompt, { operationId: operation && operation.id });
         if (!result.ok) {
             if (typeof showToast === 'function') showToast('好友申请生成失败：' + (result.error || 'API 错误'));
             char.blockReapply = char.blockReapply || {};
             char.blockReapply.nextCheckTime = Date.now() + 10 * 60 * 1000;
+            if (operation) runtime.fail(operation.id, new Error(result.error || 'API 错误'), { summary: '好友申请时机判断失败' });
             return;
         }
         try {
@@ -198,12 +212,33 @@
             var obj = JSON.parse(jsonStr);
             var nextMin = Math.max(1, Math.min(1440, parseInt(obj.nextCheckMinutes, 10) || 10));
             char.blockReapply = char.blockReapply || {};
+            var previousNextCheckTime = char.blockReapply.nextCheckTime || null;
             char.blockReapply.nextCheckTime = Date.now() + nextMin * 60 * 1000;
+            var createdRequest = null;
             if (obj.shouldSendNow && obj.reason) {
-                await doAddRequestAndShowModal(char, (obj.reason || '').trim() || '我想重新加回你好友。');
+                if (operation) runtime.stage(operation.id, '保存新的好友申请');
+                createdRequest = await doAddRequestAndShowModal(char, (obj.reason || '').trim() || '我想重新加回你好友。');
+            }
+            if (operation) {
+                runtime.recordMutation(operation.id, {
+                    action: 'update', entityType: 'block_schedule', entityId: char.id,
+                    title: '更新好友申请检查时间', summary: `下次检查将在 ${nextMin} 分钟后`,
+                    before: previousNextCheckTime, after: char.blockReapply.nextCheckTime,
+                    fields: ['blockReapply.nextCheckTime'], meta: { characterId: char.id, shouldSendNow: !!obj.shouldSendNow }
+                });
+                if (createdRequest) runtime.recordMutation(operation.id, {
+                    action: 'create', entityType: 'friend_request', entityId: createdRequest.id,
+                    title: '新增好友申请', summary: createdRequest.reason || '已生成好友申请',
+                    after: createdRequest, meta: { characterId: char.id, status: createdRequest.status }
+                });
+                runtime.complete(operation.id, {
+                    summary: createdRequest ? '已生成新的好友申请' : `本次不发送，${nextMin} 分钟后再检查`,
+                    result: { shouldSendNow: !!createdRequest, nextCheckMinutes: nextMin, requestId: createdRequest && createdRequest.id }
+                });
             }
         } catch (e) {
             char.blockReapply.nextCheckTime = Date.now() + 10 * 60 * 1000;
+            if (operation) runtime.fail(operation.id, e, { summary: '好友申请判断结果解析失败' });
         }
         if (typeof saveData === 'function') saveData();
     }
@@ -226,17 +261,36 @@
         currentPendingRequestCharId = char.id;
         currentPendingRequestId = requestId;
         showFriendRequestModal(char, requestId);
+        return char.friendRequests[char.friendRequests.length - 1] || null;
     }
 
     async function generateAndShowFriendRequest(char) {
         if (char.blockReapply && char.blockReapply.pendingRequestId) return;
+        var runtime = window.OVOOperationRuntime || null;
+        var operation = runtime && runtime.start ? runtime.start('safety.block.check', {
+            title: '生成好友申请', source: 'block-system-friend-request',
+            stage: '读取拉黑历史与最近对话', scope: { characterId: char.id }
+        }) : null;
         if (typeof showToast === 'function') showToast('正在生成好友申请…');
-        var result = await generateFriendRequestReason(char);
+        var result = await generateFriendRequestReason(char, { operationId: operation && operation.id });
         if (!result.ok) {
+            if (operation) runtime.fail(operation.id, new Error(result.error || '生成失败'), { summary: '好友申请生成失败' });
             if (typeof showToast === 'function') showToast(result.error || '生成失败');
             return;
         }
-        await doAddRequestAndShowModal(char, result.reason);
+        if (operation) runtime.stage(operation.id, '保存好友申请');
+        var request = await doAddRequestAndShowModal(char, result.reason);
+        if (operation) {
+            if (request) runtime.recordMutation(operation.id, {
+                action: 'create', entityType: 'friend_request', entityId: request.id,
+                title: '新增好友申请', summary: request.reason || '已生成好友申请',
+                after: request, meta: { characterId: char.id, status: request.status }
+            });
+            runtime.complete(operation.id, {
+                summary: '好友申请已生成并等待用户处理',
+                result: { requestId: request && request.id, characterId: char.id }
+            });
+        }
     }
 
     function showFriendRequestModal(char, requestId) {
@@ -407,7 +461,7 @@
         prompt += '请以 JSON 格式回复，且只输出这一行，不要其他内容：\n';
         prompt += '{"accept":true或false,"rejectReason":"若accept为false则写拒绝理由(30字内)"}\n';
 
-        var result = await callBlockApi('你是一个角色扮演助手。请严格只输出要求的 JSON，不要 markdown 代码块，不要多余文字。', prompt);
+        var result = await callBlockApi('你是一个角色扮演助手。请严格只输出要求的 JSON，不要 markdown 代码块，不要多余文字。', prompt, runtimeMeta);
         if (!result.ok) {
             if (typeof showToast === 'function') showToast('好友申请失败：' + (result.error || 'API 错误'));
             return result;

@@ -1,6 +1,8 @@
 // --- 消息操作模块 (编辑、撤回、多选、截图、历史记录管理) ---
 
 let currentMultiSelectMode = 'delete'; // 'delete' or 'capture'
+let selectionRangeAnchorId = null;
+let selectionRangeTargetId = null;
 
 function handleMessageLongPress(messageWrapper, x, y) {
     if (isInMultiSelectMode) return;
@@ -655,6 +657,70 @@ function cancelMessageEdit() {
     }
 }
 
+
+function getSelectableMessageOrder() {
+    const wrappers = Array.from(messageArea?.querySelectorAll?.('.message-wrapper[data-id]') || []);
+    return wrappers.map(item => item.dataset.id).filter(Boolean);
+}
+
+function syncRangeSelectionControls() {
+    const group = document.getElementById('chat-range-select-actions');
+    const firstBtn = document.getElementById('select-first-message-btn');
+    const toBtn = document.getElementById('select-to-message-btn');
+    const visible = ['delete', 'favorite'].includes(currentMultiSelectMode);
+    if (group) group.style.display = visible ? 'flex' : 'none';
+    if (firstBtn) firstBtn.disabled = !visible || getSelectableMessageOrder().length === 0;
+    if (toBtn) toBtn.disabled = !visible || !selectionRangeAnchorId || !selectionRangeTargetId || selectionRangeAnchorId === selectionRangeTargetId;
+}
+
+function updateSelectedMessageVisuals() {
+    Array.from(messageArea?.querySelectorAll?.('.message-wrapper[data-id]') || []).forEach(element => {
+        element.classList.toggle('multi-select-selected', selectedMessageIds.has(element.dataset.id));
+    });
+}
+
+function updateMultiSelectCountAndButtons() {
+    if (currentMultiSelectMode === 'capture') {
+        const count = document.getElementById('capture-select-count');
+        if (count) count.textContent = `已选择 ${selectedMessageIds.size} 项`;
+    } else {
+        if (selectCount) selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
+    }
+    const delBtn = document.getElementById('delete-selected-btn');
+    const favBtn = document.getElementById('favorite-selected-btn');
+    const mergeBtn = document.getElementById('favorite-merge-btn');
+    const fwdBtn = document.getElementById('forward-selected-btn');
+    if (delBtn) delBtn.disabled = selectedMessageIds.size === 0;
+    if (favBtn) favBtn.disabled = selectedMessageIds.size === 0;
+    if (mergeBtn) mergeBtn.disabled = selectedMessageIds.size === 0;
+    if (fwdBtn) fwdBtn.disabled = selectedMessageIds.size === 0;
+    syncRangeSelectionControls();
+}
+
+function selectFirstMessageForRange() {
+    const order = getSelectableMessageOrder();
+    if (!order.length) return showToast('当前没有可选择的消息');
+    selectionRangeAnchorId = order[0];
+    selectionRangeTargetId = order[0];
+    selectedMessageIds.add(order[0]);
+    updateSelectedMessageVisuals();
+    updateMultiSelectCountAndButtons();
+    showToast('已选择第一条，再点选结束消息后点击“选择到这里”');
+}
+
+function selectMessagesToHere() {
+    const order = getSelectableMessageOrder();
+    const start = order.indexOf(selectionRangeAnchorId);
+    const end = order.indexOf(selectionRangeTargetId);
+    if (start < 0 || end < 0) return showToast('请先选择第一条和结束消息');
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
+    order.slice(from, to + 1).forEach(id => selectedMessageIds.add(id));
+    updateSelectedMessageVisuals();
+    updateMultiSelectCountAndButtons();
+    showToast(`已连续选择 ${to - from + 1} 条消息`);
+}
+
 function enterMultiSelectMode(initialMessageId, mode = 'delete') {
     isInMultiSelectMode = true;
     currentMultiSelectMode = mode;
@@ -696,9 +762,12 @@ function enterMultiSelectMode(initialMessageId, mode = 'delete') {
     
     chatRoomScreen.classList.add('multi-select-active');
     selectedMessageIds.clear();
+    selectionRangeAnchorId = initialMessageId || null;
+    selectionRangeTargetId = initialMessageId || null;
     if (initialMessageId) {
         toggleMessageSelection(initialMessageId);
     }
+    updateMultiSelectCountAndButtons();
 }
 
 function exitMultiSelectMode() {
@@ -724,7 +793,10 @@ function exitMultiSelectMode() {
         if (el) el.classList.remove('multi-select-selected');
     });
     selectedMessageIds.clear();
+    selectionRangeAnchorId = null;
+    selectionRangeTargetId = null;
     currentMultiSelectMode = 'delete';
+    syncRangeSelectionControls();
 }
 
 function toggleMessageSelection(messageId) {
@@ -736,24 +808,10 @@ function toggleMessageSelection(messageId) {
     } else {
         selectedMessageIds.add(messageId);
         el.classList.add('multi-select-selected');
+        if (!selectionRangeAnchorId && ['delete', 'favorite'].includes(currentMultiSelectMode)) selectionRangeAnchorId = messageId;
     }
-    
-    if (currentMultiSelectMode === 'delete') {
-        selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
-        deleteSelectedBtn.disabled = selectedMessageIds.size === 0;
-    } else if (currentMultiSelectMode === 'capture') {
-        document.getElementById('capture-select-count').textContent = `已选择 ${selectedMessageIds.size} 项`;
-    } else if (currentMultiSelectMode === 'favorite') {
-        selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
-        const favBtn = document.getElementById('favorite-selected-btn');
-        const mergeBtn = document.getElementById('favorite-merge-btn');
-        if (favBtn) favBtn.disabled = selectedMessageIds.size === 0;
-        if (mergeBtn) mergeBtn.disabled = selectedMessageIds.size === 0;
-    } else if (currentMultiSelectMode === 'forward') {
-        selectCount.textContent = `已选择 ${selectedMessageIds.size} 项`;
-        const fwdBtn = document.getElementById('forward-selected-btn');
-        if (fwdBtn) fwdBtn.disabled = selectedMessageIds.size === 0;
-    }
+    selectionRangeTargetId = messageId;
+    updateMultiSelectCountAndButtons();
 }
 
 async function generateCapture() {

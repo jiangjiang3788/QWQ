@@ -1,0 +1,72 @@
+{
+  "version": "2.11-R5",
+  "character": {
+    "id": "char_1769490095778",
+    "name": "阿沉",
+    "messages": 19133
+  },
+  "template": {
+    "id": "memory_tpl_1784414846228_08yhkm",
+    "name": "分层可检索角色记忆 V2（含原数据）",
+    "tables": 8
+  },
+  "rows": {
+    "核心确认档案": 12,
+    "当前状态（3-7天）": 17,
+    "待办、承诺与未完成事项": 15,
+    "近期经历、想法与重要事件": 2,
+    "日常观察（睡眠/饮水/身体）": 1,
+    "中期总结与成长经验": 12,
+    "长期候选审核队列": 0,
+    "稳定长期特征库": 179
+  },
+  "virtualization": {
+    "threshold": 80,
+    "rowHeight": 88,
+    "overscan": 5,
+    "longTableRows": 179,
+    "desktopRenderedRows": 18,
+    "mobileRenderedRows": 17,
+    "r4RenderedRows": 179,
+    "desktopDomNodes": 499,
+    "r4DomNodes": 5913,
+    "domReductionPercent": 91.6
+  },
+  "lazyRowCommands": {
+    "r4Controls": 179,
+    "r4Options": 1790,
+    "r5DesktopButtons": 18,
+    "r5EmbeddedOptions": 0,
+    "sharedMenuCountWhenClosed": 0,
+    "sharedMenuCountWhenOpen": 1,
+    "sharedMenuButtonsWhenOpen": 9
+  },
+  "scrollEdit": {
+    "targetRowId": "memory_row_1784414847603_cbbm2p",
+    "scrollTopBeforeEdit": 8096,
+    "scrollTopAfterEdit": 7394,
+    "targetStillRendered": true,
+    "editingRows": 1,
+    "editingControls": 0,
+    "renderedRowsDuringEdit": 18,
+    "rowCommandOptionsDuringEdit": 0,
+    "editingRowsAfterFinish": 0,
+    "scrollTopAfterFinish": 7394
+  },
+  "code": {
+    "memoryTableLines": 4393,
+    "productionJsFiles": 101,
+    "nodeTestGroups": 40
+  },
+  "layout": {
+    "desktopDocumentWidth": 1440,
+    "desktopViewportWidth": 1440,
+    "mobileDocumentWidth": 390,
+    "mobileViewportWidth": 390
+  },
+  "boundaries": [
+    "JSON 完整结构模式不启用虚拟化。",
+    "审核层表格不启用固定行高虚拟化。",
+    "80 行以下小表继续使用完整渲染。"
+  ]
+}

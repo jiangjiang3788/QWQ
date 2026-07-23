@@ -1,4 +1,4 @@
-// OVO AI Request Runtime - V2.10-R2 operation bridge
+// OVO AI Request Runtime - V2.10-R4 capability coverage bridge
 // 统一 AI 请求传输、并发/取消/超时控制与只读诊断；不修改 Prompt、响应解析或 API 页面。
 (function () {
     'use strict';
@@ -44,14 +44,16 @@
         return 'network';
     }
     function operationRuntime() { return window.OVOOperationRuntime || null; }
-    function operationTitle(task, source) {
-        const value = String(task || source || 'AI 功能');
-        const labels = {
-            'private-chat': '生成角色回复', 'background-chat': '生成后台回复', summary: '生成对话总结',
-            'theater-generation': '生成小剧场', 'memory-table-summary': '更新结构化档案',
-            'journal-summary': '生成日记总结', 'journal-generation': '生成回忆日记'
+    function capabilityFor(meta = {}) {
+        return window.OVOAICapabilityCatalog?.resolve?.(meta) || {
+            type: meta.operationType || 'ai.request',
+            title: `执行 ${String(meta.task || meta.source || 'AI 功能')}`,
+            category: '其他',
+            icon: '✨'
         };
-        return labels[value] || `执行 ${value}`;
+    }
+    function operationTitle(task, source, operationType) {
+        return capabilityFor({ task, source, operationType }).title;
     }
     function syncOperationRequest(record) {
         const runtime = operationRuntime();
@@ -87,7 +89,7 @@
         const runtime = operationRuntime();
         if (runtime && record.operationId && record.implicitOperation) {
             if (record.ok) runtime.complete(record.operationId, {
-                summary: `${operationTitle(record.task, record.source)}已完成`,
+                summary: `${operationTitle(record.task, record.source, record.capabilityType)}已完成`,
                 result: { requestId: record.id, model: record.model, provider: record.provider, durationMs: record.durationMs }
             });
             else if (record.phase === 'cancelled') runtime.cancel(record.operationId, record.errorMessage || '请求已取消');
@@ -208,14 +210,18 @@
 
         const requestId = `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const runtime = operationRuntime();
-        let operationId = opts.operationId || runtime?.resolveOperationId?.({ task: opts.task, source: opts.source }) || null;
+        const capability = capabilityFor({ task: opts.task, source: opts.source, operationType: opts.operationType });
+        let operationId = opts.operationId || runtime?.resolveOperationId?.({ task: opts.task, source: opts.source, operationType: capability.type }) || null;
         let implicitOperation = false;
         if (!operationId && runtime) {
-            const operation = runtime.start('ai.request', {
-                title: operationTitle(opts.task, opts.source),
+            const operation = runtime.start(capability.type || 'ai.request', {
+                title: opts.operationTitle || capability.title,
+                category: capability.category,
+                icon: capability.icon,
+                stage: opts.operationStage || '正在准备模型请求',
                 source: opts.source || 'ai-request-runtime',
                 implicit: true,
-                scope: { task: opts.task || 'chat' }
+                scope: { task: opts.task || 'chat', capabilityType: capability.type || 'ai.request' }
             });
             operationId = operation.id;
             implicitOperation = true;
@@ -225,7 +231,7 @@
             id: requestId,
             operationId,
             implicitOperation,
-            task: opts.task || 'chat', source: opts.source || '',
+            task: opts.task || 'chat', source: opts.source || '', capabilityType: capability.type || 'ai.request',
             capturedAt: startedAt.toISOString(), provider: opts.provider || 'openai-compatible',
             model: opts.model || body.model || '', stream: !!body.stream,
             endpointType: opts.endpointType || (opts.provider === 'gemini' ? 'gemini' : 'openai-compatible'),
@@ -319,8 +325,24 @@
         return count;
     }
 
+    function getCapabilityCoverage() {
+        const diagnostics = getRecentDiagnostics();
+        const byType = {};
+        diagnostics.forEach(item => {
+            const capability = capabilityFor(item || {});
+            const type = item.capabilityType || capability.type || 'ai.request';
+            if (!byType[type]) byType[type] = { type, title: capability.title, count: 0, success: 0, failed: 0, lastAt: '' };
+            const row = byType[type];
+            row.count += 1;
+            if (item.ok) row.success += 1;
+            else if (['failed', 'cancelled'].includes(item.phase)) row.failed += 1;
+            if (!row.lastAt || String(item.capturedAt || '') > row.lastAt) row.lastAt = item.capturedAt || '';
+        });
+        return Object.values(byType).sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
+    }
+
     window.OVOAIRequestRuntime = {
-        request, getLastDiagnostic, getRecentDiagnostics, clearDiagnostics,
-        getActiveRequests, getQueueState, cancelRequest, cancelAll
+        VERSION: '2.10-R4', request, getLastDiagnostic, getRecentDiagnostics, clearDiagnostics,
+        getActiveRequests, getQueueState, cancelRequest, cancelAll, getCapabilityCoverage
     };
 })();

@@ -78,6 +78,7 @@ function setupMagicRoomApp() {
 
     loadPromentPolicy();
     renderPromentOverview();
+    setTimeout(() => { renderFocusedPromptSource(); }, 0);
     document.getElementById('proment-open-worldbook')?.addEventListener('click', () => {
         if (typeof renderWorldBookList === 'function') renderWorldBookList();
         if (typeof switchScreen === 'function') switchScreen('world-book-screen');
@@ -171,6 +172,57 @@ function setupMagicRoomApp() {
             if (request) return { operation, request, trace: request.promptTrace };
         }
         return null;
+    }
+
+    function readPromentFocus() {
+        try {
+            const raw = sessionStorage.getItem('ovo_proment_focus_v1');
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) { return null; }
+    }
+
+    function getFocusedPromptSource() {
+        const focus = readPromentFocus();
+        if (!focus?.operationId) return null;
+        const operation = window.OVOOperationRuntime?.get?.(focus.operationId);
+        if (!operation) return null;
+        const request = (operation.requests || []).find(item => item.id === focus.requestId) || (operation.requests || [])[0] || null;
+        const source = (request?.promptTrace?.sections || []).find(item => item.id === focus.sourceId) || null;
+        return source ? { focus, operation, request, source } : null;
+    }
+
+    function renderFocusedPromptSource() {
+        const box = document.getElementById('proment-preview-box');
+        const pre = document.getElementById('proment-preview-content');
+        const focused = getFocusedPromptSource();
+        if (!box || !pre || !focused) return false;
+        const { operation, request, source } = focused;
+        const stateLabels = { sent: '实际发送', verified: '已核对', contributed: '参与组装', excluded: '未发送' };
+        const navigation = source.navigation || {};
+        const itemText = (source.items || []).map(item => `### ${item.title || '来源条目'}
+状态：${stateLabels[item.state] || item.state || '未知'}
+${item.reason ? `说明：${item.reason}
+` : ''}${item.content || '[未保留正文]'}`).join('\n\n');
+        pre.textContent = `# 操作来源定位
+操作：${operation.title || operation.type || '未命名操作'}
+请求：${request.task || request.model || '未命名请求'}
+来源：${source.title || source.type || '未命名来源'}
+状态：${stateLabels[source.state] || source.state || '未知'}
+证据：${source.evidence || source.traceMode || '未记录'}
+字符：${source.chars || 0}
+指纹：${source.fingerprint || '未记录'}
+业务入口：${navigation.label || 'Proment'}
+角色范围：${navigation.characterId || operation.scope?.characterId || operation.scope?.chatId || '未记录'}
+
+## 来源说明
+${source.reason || '[无]'}
+
+## 实际内容
+${source.content || itemText || '[未保留正文]'}
+
+说明：这是从 AI 操作中心定位的同一次真实请求来源。内容指纹用于辨认快照，不参与 Prompt 生成。`;
+        box.hidden = false;
+        return true;
     }
 
     function getLastPromptSnapshot() {
@@ -437,6 +489,15 @@ ${recentLines.length ? recentLines.join('\n') : '无'}
         catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
         showToast('注入预览已复制');
     });
+
+    window.OvoPromentRuntime = {
+        VERSION: '2.10-R5',
+        renderFocusedPromptSource,
+        focus(operationId, requestId, sourceId) {
+            try { sessionStorage.setItem('ovo_proment_focus_v1', JSON.stringify({ version: 'proment-focus.v1', operationId, requestId, sourceId, capturedAt: new Date().toISOString() })); } catch (_) {}
+            return renderFocusedPromptSource();
+        }
+    };
 
     // 默认底层提示词模板
     const defaultTemplate = `你正在一个名为“404”的线上聊天软件中扮演一个角色。请严格遵守以下规则：

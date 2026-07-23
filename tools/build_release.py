@@ -14,7 +14,7 @@ ROOT_FILES = {
     '章鱼机_V2.9-R11_项目理解深度报告.md',
     '章鱼机_V2.9-R11_自动检查结果.txt',
 }
-ROOT_DIRS = {'css', 'js', 'vendor', 'memory_templates', 'tests', 'tools', 'docs'}
+ROOT_DIRS = {'css', 'js', 'vendor', 'memory_templates', 'tests', 'tools', 'docs', 'architecture'}
 
 
 def build(source: Path, output: Path) -> None:

@@ -477,7 +477,10 @@ function setupMemoryJournalScreen() {
             const endpoint = `${url}/v1/chat/completions`;
             const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
 
-            const rawContent = await fetchAiResponse({ ...db.apiSettings, runtimeTask: 'journal-summary', runtimeSource: 'journal' }, requestBody, headers, endpoint);
+            const rawContent = await fetchAiResponse({
+                ...db.apiSettings, runtimeTask: 'journal-summary', runtimeSource: 'journal',
+                runtimePromptSources: [{ type: 'task_instruction', title: '日记合并要求', content: summaryPrompt, reason: '合并所选日记的最终提示词' }]
+            }, requestBody, headers, endpoint);
 
             const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);
             const contentMatch = rawContent.match(/<content>([\s\S]*?)<\/content>/i);
@@ -867,6 +870,18 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
     isGenerating = true; 
     generatingChatId = currentChatId;
 
+    const operationRuntime = window.OVOOperationRuntime || null;
+    let journalOperationId = options.operationId || options.parentOperationId || null;
+    const journalOperation = (!journalOperationId && operationRuntime && !options.isAutoJournal)
+        ? operationRuntime.start('journal.generate', {
+            title: nodeInfo?.isNodeSummary ? '生成节点总结日记' : '生成回忆日记',
+            source: 'journal-manual-generation',
+            stage: '准备日记上下文',
+            scope: { chatId: currentChatId, chatType: currentChatType, start, end }
+        })
+        : null;
+    if (journalOperation) journalOperationId = journalOperation.id;
+
     try {
         const chat = (currentChatType === 'private') ? db.characters.find(c => c.id === currentChatId) : db.groups.find(g => g.id === currentChatId);
         if (!chat) {
@@ -1117,7 +1132,17 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         const endpoint = `${url}/v1/chat/completions`;
         const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
 
-        const rawContent = await fetchAiResponse({ ...apiConfig, runtimeTask: 'journal-generation', runtimeSource: 'journal' }, requestBody, headers, endpoint);
+        operationRuntime?.stage?.(journalOperation?.id, '发送日记生成请求', { detail: `消息 ${start}-${end}` });
+        const rawContent = await fetchAiResponse({
+            ...apiConfig,
+            runtimeTask: 'journal-generation',
+            runtimeSource: 'journal',
+            runtimeOperationId: journalOperationId,
+            runtimePromptSources: [{
+                type: 'task_instruction', title: '日记生成要求', content: summaryPrompt,
+                reason: '包含角色、用户、世界书、过往日记和本次消息范围'
+            }]
+        }, requestBody, headers, endpoint);
 
         const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);
         const contentMatch = rawContent.match(/<content>([\s\S]*?)<\/content>/i);
@@ -1180,6 +1205,21 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
 
         await saveData();
         refreshAutoJournalButton(chat, currentChatType);
+        if (journalOperation) {
+            operationRuntime.recordMutation?.(journalOperation.id, {
+                action: nodeInfo?.isResummarize ? 'update' : 'create',
+                entityType: 'journal', entityId: newJournal.id,
+                title: newJournal.title || '回忆日记',
+                summary: `已保存消息 ${start}-${end} 的日记`,
+                after: newJournal.content || '',
+                fields: ['title', 'content', 'range'],
+                meta: { chatId: chat.id, chatType: currentChatType, range: newJournal.range || null }
+            });
+            operationRuntime.complete?.(journalOperation.id, {
+                summary: `日记已生成并保存：${newJournal.title || '无标题日记'}`,
+                result: { journalId: newJournal.id, range: newJournal.range || null }
+            });
+        }
 
         renderJournalList();
         
@@ -1196,6 +1236,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
         return newJournal;
 
     } catch (error) {
+        if (journalOperation) operationRuntime?.fail?.(journalOperation.id, error, { summary: '回忆日记生成失败' });
         // 移除生成卡片
         const card = document.getElementById('journal-generating-card');
         if(card) card.remove();
@@ -1687,7 +1728,8 @@ async function processAutoJournal(chat, options = {}) {
                 {
                     isAutoJournal: true,
                     propagateError: true,
-                    suppressSuccessToast: true
+                    suppressSuccessToast: true,
+                    parentOperationId: options.parentOperationId || null
                 }
             );
 
@@ -1876,7 +1918,8 @@ async function summarizeUntilLatest(chat, options = {}) {
                     {
                         isAutoJournal: true,
                         propagateError: true,
-                        suppressSuccessToast: true
+                        suppressSuccessToast: true,
+                        parentOperationId: options.parentOperationId || null
                     }
                 );
 
@@ -1896,7 +1939,8 @@ async function summarizeUntilLatest(chat, options = {}) {
                 {
                     isAutoJournal: true,
                     propagateError: true,
-                    suppressSuccessToast: true
+                    suppressSuccessToast: true,
+                    parentOperationId: options.parentOperationId || null
                 }
             );
 
@@ -1970,7 +2014,8 @@ async function checkAndTriggerAutoJournal(chat, options = {}) {
     const result = await processAutoJournal(chat, {
         force: false,
         processAllAvailable: true,
-        showNoPendingToast: true
+        showNoPendingToast: true,
+        parentOperationId: operation?.id || options.parentOperationId || null
     });
 
     if (operation) {

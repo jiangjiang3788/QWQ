@@ -34,21 +34,68 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
 
 [
   'js/modules/memory_table_policy.js',
+  'js/modules/memory_table_schedule.js',
   'js/modules/memory_table_lifecycle.js',
   'js/modules/memory_table_effects.js',
   'js/modules/memory_table_feedback.js',
   'js/modules/memory_table_review.js',
   'js/modules/memory_table_retrieval.js',
+  'js/features/memory/retrieval_audit.js',
   'js/modules/memory_table_sidecar.js',
   'js/modules/memory_table_tasks.js',
   'js/modules/memory_table_quality.js',
   'js/features/memory/api_adapter.js',
   'js/features/memory/domain.js',
-  'js/features/memory/workspace.js'
+  'js/features/memory/schema_model.js',
+  'js/features/memory/schema_editor.js',
+  'js/features/memory/workspace.js',
+  'js/features/memory/tag_vocabulary.js',
+  'js/features/memory/tag_service.js',
+  'js/features/memory/relation_service.js',
+  'js/features/memory/merge_review_service.js',
+  'js/features/memory/candidate_service.js',
+  'js/features/memory/table_filter.js',
+  'js/features/memory/governance_queue.js',
+  'js/features/memory/governance_controller.js',
+  'js/features/memory/row_inspector.js',
+  'js/features/memory/row_inspector_controller.js',
+  'js/features/memory/context_assembler.js',
+  'js/features/memory/update_service.js',
+  'js/features/memory/table_viewport.js',
+  'js/features/memory/table_session.js',
+  'js/features/memory/table_grouping.js',
+  'js/features/memory/table_gesture.js',
+  'js/features/memory/table_cache.js',
+  'js/features/memory/table_persistence.js',
+  'js/features/memory/row_command_menu.js',
+  'js/features/memory/table_interaction.js',
+  'js/features/memory/table_view.js',
+  'js/features/memory/table_sort.js',
+  'js/features/memory/table_presenter.js',
+  'js/features/memory/table_reconciler.js',
+  'js/features/memory/table_grid.js',
+  'js/features/memory/table_editor.js',
+  'js/features/memory/table_edit_controller.js',
+  'js/features/memory/update_activity.js',
+  'js/features/memory/table_workspace.js'
 ].forEach(load);
 
-const expected = ['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'sidecar', 'tasks', 'quality', 'api', 'domain', 'workspace'];
+[
+  'js/features/memory/domains/platform.js',
+  'js/features/memory/domains/foundation.js',
+  'js/features/memory/domains/schema.js',
+  'js/features/memory/domains/governance.js',
+  'js/features/memory/domains/retrieval.js',
+  'js/features/memory/domains/update.js',
+  'js/features/memory/domains/tables.js',
+  'js/features/memory/architecture.js',
+  'js/features/memory/maintenance.js'
+].forEach(load);
+
+const expected = ['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'retrievalAudit', 'sidecar', 'tasks', 'quality', 'api', 'domain', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'tableEditor', 'tableEditController', 'updateActivity', 'tableWorkspace'];
 expected.forEach(name => assert(OvoMemoryKernel.has(name), `module not registered: ${name}`));
+['memoryPlatformDomain', 'memoryFoundationDomain', 'memorySchemaDomain', 'memoryGovernanceDomain', 'memoryRetrievalDomain', 'memoryUpdateDomain', 'memoryTablesDomain', 'memoryArchitecture', 'memoryMaintenance']
+  .forEach(name => assert(OvoMemoryKernel.has(name), `domain facade not registered: ${name}`));
 assert(MemoryTablePolicy === OvoMemoryKernel.get('policy'), 'legacy policy bridge mismatch');
 assert(MemoryTableTasks === OvoMemoryKernel.get('tasks'), 'legacy task bridge mismatch');
 

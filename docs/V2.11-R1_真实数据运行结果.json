@@ -1,0 +1,309 @@
+{
+  "version": "2.11-R1",
+  "character": {
+    "id": "char_1769490095778",
+    "name": "阿沉",
+    "messageCount": 19133
+  },
+  "template": {
+    "id": "memory_tpl_1784414846228_08yhkm",
+    "name": "分层可检索角色记忆 V2（含原数据）",
+    "tableCount": 8
+  },
+  "queryChars": 739,
+  "tables": [
+    {
+      "tableId": "memory_table_1784414846228_6a5bpb",
+      "tableName": "核心确认档案",
+      "mode": "keyValue",
+      "role": "core",
+      "rowCount": 0,
+      "taggedRows": 0,
+      "relatedTableCount": 2,
+      "relatedRowCount": 3,
+      "relatedChars": 2758,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_wojbpz",
+          "tableName": "当前状态（3-7天）",
+          "role": "current",
+          "reason": "核对当前状态与即时需求",
+          "rowCount": 0
+        },
+        {
+          "tableId": "memory_table_1784414846228_3wlskf",
+          "tableName": "稳定长期特征库",
+          "role": "long",
+          "reason": "检查稳定长期特征、重复和冲突",
+          "rowCount": 3
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_wojbpz",
+      "tableName": "当前状态（3-7天）",
+      "mode": "keyValue",
+      "role": "current",
+      "rowCount": 0,
+      "taggedRows": 0,
+      "relatedTableCount": 4,
+      "relatedRowCount": 6,
+      "relatedChars": 5844,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_6a5bpb",
+          "tableName": "核心确认档案",
+          "role": "core",
+          "reason": "核对固定事实与边界",
+          "rowCount": 0
+        },
+        {
+          "tableId": "memory_table_1784414846228_8eq0q5",
+          "tableName": "日常观察（睡眠/饮水/身体）",
+          "role": "observation",
+          "reason": "核对近期日常观察和身体状态",
+          "rowCount": 1
+        },
+        {
+          "tableId": "memory_table_1784414846228_73dkfv",
+          "tableName": "近期经历、想法与重要事件",
+          "role": "event",
+          "reason": "核对近期经历与事件脉络",
+          "rowCount": 2
+        },
+        {
+          "tableId": "memory_table_1784414846228_4ueq9q",
+          "tableName": "待办、承诺与未完成事项",
+          "role": "todo",
+          "reason": "核对承诺、待办和未完成事项",
+          "rowCount": 3
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_4ueq9q",
+      "tableName": "待办、承诺与未完成事项",
+      "mode": "rows",
+      "role": "todo",
+      "rowCount": 15,
+      "taggedRows": 15,
+      "relatedTableCount": 3,
+      "relatedRowCount": 5,
+      "relatedChars": 5663,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_wojbpz",
+          "tableName": "当前状态（3-7天）",
+          "role": "current",
+          "reason": "核对当前状态与即时需求",
+          "rowCount": 0
+        },
+        {
+          "tableId": "memory_table_1784414846228_73dkfv",
+          "tableName": "近期经历、想法与重要事件",
+          "role": "event",
+          "reason": "核对近期经历与事件脉络",
+          "rowCount": 2
+        },
+        {
+          "tableId": "memory_table_1784414846228_4i21nd",
+          "tableName": "中期总结与成长经验",
+          "role": "medium",
+          "reason": "检查已有成长经验、重复和阶段变化",
+          "rowCount": 3
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_73dkfv",
+      "tableName": "近期经历、想法与重要事件",
+      "mode": "rows",
+      "role": "event",
+      "rowCount": 2,
+      "taggedRows": 2,
+      "relatedTableCount": 4,
+      "relatedRowCount": 7,
+      "relatedChars": 6320,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_wojbpz",
+          "tableName": "当前状态（3-7天）",
+          "role": "current",
+          "reason": "核对当前状态与即时需求",
+          "rowCount": 0
+        },
+        {
+          "tableId": "memory_table_1784414846228_8eq0q5",
+          "tableName": "日常观察（睡眠/饮水/身体）",
+          "role": "observation",
+          "reason": "核对近期日常观察和身体状态",
+          "rowCount": 1
+        },
+        {
+          "tableId": "memory_table_1784414846228_4ueq9q",
+          "tableName": "待办、承诺与未完成事项",
+          "role": "todo",
+          "reason": "核对承诺、待办和未完成事项",
+          "rowCount": 3
+        },
+        {
+          "tableId": "memory_table_1784414846228_4i21nd",
+          "tableName": "中期总结与成长经验",
+          "role": "medium",
+          "reason": "检查已有成长经验、重复和阶段变化",
+          "rowCount": 3
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_8eq0q5",
+      "tableName": "日常观察（睡眠/饮水/身体）",
+      "mode": "rows",
+      "role": "observation",
+      "rowCount": 1,
+      "taggedRows": 1,
+      "relatedTableCount": 2,
+      "relatedRowCount": 2,
+      "relatedChars": 3079,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_wojbpz",
+          "tableName": "当前状态（3-7天）",
+          "role": "current",
+          "reason": "核对当前状态与即时需求",
+          "rowCount": 0
+        },
+        {
+          "tableId": "memory_table_1784414846228_73dkfv",
+          "tableName": "近期经历、想法与重要事件",
+          "role": "event",
+          "reason": "核对近期经历与事件脉络",
+          "rowCount": 2
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_4i21nd",
+      "tableName": "中期总结与成长经验",
+      "mode": "rows",
+      "role": "medium",
+      "rowCount": 12,
+      "taggedRows": 12,
+      "relatedTableCount": 4,
+      "relatedRowCount": 9,
+      "relatedChars": 6656,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_73dkfv",
+          "tableName": "近期经历、想法与重要事件",
+          "role": "event",
+          "reason": "核对近期经历与事件脉络",
+          "rowCount": 2
+        },
+        {
+          "tableId": "memory_table_1784414846228_4ueq9q",
+          "tableName": "待办、承诺与未完成事项",
+          "role": "todo",
+          "reason": "核对承诺、待办和未完成事项",
+          "rowCount": 3
+        },
+        {
+          "tableId": "memory_table_1784414846228_3wlskf",
+          "tableName": "稳定长期特征库",
+          "role": "long",
+          "reason": "检查稳定长期特征、重复和冲突",
+          "rowCount": 3
+        },
+        {
+          "tableId": "memory_table_1784414846228_8eq0q5",
+          "tableName": "日常观察（睡眠/饮水/身体）",
+          "role": "observation",
+          "reason": "核对近期日常观察和身体状态",
+          "rowCount": 1
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_km3y66",
+      "tableName": "长期候选审核队列",
+      "mode": "rows",
+      "role": "candidate",
+      "rowCount": 0,
+      "taggedRows": 0,
+      "relatedTableCount": 2,
+      "relatedRowCount": 6,
+      "relatedChars": 4430,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_4i21nd",
+          "tableName": "中期总结与成长经验",
+          "role": "medium",
+          "reason": "检查已有成长经验、重复和阶段变化",
+          "rowCount": 3
+        },
+        {
+          "tableId": "memory_table_1784414846228_3wlskf",
+          "tableName": "稳定长期特征库",
+          "role": "long",
+          "reason": "检查稳定长期特征、重复和冲突",
+          "rowCount": 3
+        }
+      ]
+    },
+    {
+      "tableId": "memory_table_1784414846228_3wlskf",
+      "tableName": "稳定长期特征库",
+      "mode": "rows",
+      "role": "long",
+      "rowCount": 179,
+      "taggedRows": 179,
+      "relatedTableCount": 2,
+      "relatedRowCount": 3,
+      "relatedChars": 3612,
+      "relatedTables": [
+        {
+          "tableId": "memory_table_1784414846228_4i21nd",
+          "tableName": "中期总结与成长经验",
+          "role": "medium",
+          "reason": "检查已有成长经验、重复和阶段变化",
+          "rowCount": 3
+        },
+        {
+          "tableId": "memory_table_1784414846228_6a5bpb",
+          "tableName": "核心确认档案",
+          "role": "core",
+          "reason": "核对固定事实与边界",
+          "rowCount": 0
+        }
+      ]
+    }
+  ],
+  "promptSmoke": {
+    "targetTable": "中期总结与成长经验",
+    "historyMessages": 21,
+    "promptChars": 26249,
+    "relatedTableCount": 4,
+    "relatedRowCount": 9,
+    "relatedChars": 6512,
+    "containsReadOnlyRelatedBlock": true,
+    "containsTagContract": true
+  },
+  "tagSmoke": {
+    "sourceRowId": "memory_row_1784414847598_hmzv87",
+    "changed": true,
+    "result": {
+      "topic": [
+        "关系经验",
+        "主动表达"
+      ],
+      "scene": [
+        "日常聊天"
+      ],
+      "entity": [
+        "小海葵"
+      ],
+      "effect": "historical_context"
+    },
+    "storedInExistingTagBundle": true
+  }
+}

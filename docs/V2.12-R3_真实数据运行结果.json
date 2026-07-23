@@ -1,0 +1,50 @@
+{
+  "version": "2.12-R3",
+  "source": "章鱼喷墨_备份数据_2026-07-21_清理优化版.ee / memoryTableTemplates",
+  "results": [
+    {
+      "view": "fields_desktop",
+      "metrics": {
+        "tabs": 3,
+        "tables": 8,
+        "fields": 94,
+        "groups": 31,
+        "activeFieldGroups": [
+          "角色设定迁移区",
+          "核心确认"
+        ],
+        "oldSeparateModals": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "noPageOverflow": true
+      },
+      "errors": []
+    },
+    {
+      "view": "tables_desktop",
+      "metrics": {
+        "tableRows": 8,
+        "fieldEntryButtons": 8,
+        "activeTabs": 1,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "noPageOverflow": true
+      },
+      "errors": []
+    },
+    {
+      "view": "json_mobile",
+      "metrics": {
+        "jsonPathRows": 1352,
+        "jsonSections": 103,
+        "rawJsonEditors": 1,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "noPageOverflow": true,
+        "structuredFieldValue": "user_人格底色_结构核验",
+        "rawJsonAppliedName": "分层可检索角色记忆 V2（结构 JSON 已同步）"
+      },
+      "errors": []
+    }
+  ]
+}

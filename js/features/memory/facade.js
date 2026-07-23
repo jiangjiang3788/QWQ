@@ -16,7 +16,7 @@
         autoUpdate: Object.freeze({ check: controller.checkAutoUpdate }),
         module(name) { return Kernel.get(name); },
         health() {
-            return Kernel.health(['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'sidecar', 'tasks', 'quality', 'api', 'domain', 'workspace', 'controller']);
+            return Kernel.health(['memoryPlatformDomain', 'memoryFoundationDomain', 'memorySchemaDomain', 'memoryGovernanceDomain', 'memoryRetrievalDomain', 'memoryUpdateDomain', 'memoryTablesDomain', 'memoryArchitecture', 'memoryMaintenance', 'controller']);
         }
     });
 

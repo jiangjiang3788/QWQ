@@ -1,0 +1,22 @@
+{
+  "desktop": {
+    "nodes": 870,
+    "visible": 577,
+    "framed": 39,
+    "maxFrameDepth": 3,
+    "buttons": 51,
+    "controls": 44,
+    "tableRows": 15,
+    "activeEditors": 0
+  },
+  "mobile": {
+    "nodes": 870,
+    "visible": 558,
+    "framed": 37,
+    "maxFrameDepth": 3,
+    "buttons": 51,
+    "controls": 44,
+    "tableRows": 15,
+    "activeEditors": 0
+  }
+}

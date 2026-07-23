@@ -1,0 +1,283 @@
+{
+  "version": "2.12-R4",
+  "results": [
+    {
+      "name": "V2.12-R4_架构与维护门禁_desktop.png",
+      "metrics": {
+        "health": "架构与 UI 预算：通过",
+        "pageWidth": 1440,
+        "viewport": 1440,
+        "noOverflow": true,
+        "architecture": {
+          "version": "2.12-R4",
+          "healthy": true,
+          "missing": [],
+          "domains": {
+            "platform": {
+              "modules": [
+                "memoryPlatformDomain"
+              ],
+              "loaded": true
+            },
+            "foundation": {
+              "modules": [
+                "memoryFoundationDomain"
+              ],
+              "loaded": true
+            },
+            "tables": {
+              "modules": [
+                "memoryTablesDomain"
+              ],
+              "loaded": true
+            },
+            "governance": {
+              "modules": [
+                "memoryGovernanceDomain"
+              ],
+              "loaded": true
+            },
+            "retrieval": {
+              "modules": [
+                "memoryRetrievalDomain"
+              ],
+              "loaded": true
+            },
+            "schema": {
+              "modules": [
+                "memorySchemaDomain"
+              ],
+              "loaded": true
+            },
+            "update": {
+              "modules": [
+                "memoryUpdateDomain"
+              ],
+              "loaded": true
+            }
+          },
+          "loadedModuleCount": 52
+        },
+        "maintenance": {
+          "version": "2.12-R4",
+          "ok": true,
+          "metrics": {
+            "visibleDataRows": 18,
+            "activeEditors": 0,
+            "openSharedMenus": 0,
+            "persistentRowEditButtons": 0,
+            "overflowPixels": 0
+          },
+          "checks": {
+            "visibleDataRows": true,
+            "activeEditors": true,
+            "openSharedMenus": true,
+            "persistentRowEditButtons": true,
+            "overflowPixels": true
+          },
+          "budgets": {
+            "maxVisibleDataRows": 30,
+            "maxActiveEditors": 1,
+            "maxOpenSharedMenus": 1,
+            "maxPersistentRowEditButtons": 0,
+            "maxPageOverflowPixels": 1
+          }
+        },
+        "realData": {
+          "character": "阿沉",
+          "messages": 19133,
+          "tables": [
+            {
+              "name": "核心确认档案",
+              "mode": "keyValue",
+              "fields": 12,
+              "rows": 0
+            },
+            {
+              "name": "当前状态（3-7天）",
+              "mode": "keyValue",
+              "fields": 17,
+              "rows": 0
+            },
+            {
+              "name": "待办、承诺与未完成事项",
+              "mode": "rows",
+              "fields": 14,
+              "rows": 15
+            },
+            {
+              "name": "近期经历、想法与重要事件",
+              "mode": "rows",
+              "fields": 14,
+              "rows": 2
+            },
+            {
+              "name": "日常观察（睡眠/饮水/身体）",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 1
+            },
+            {
+              "name": "中期总结与成长经验",
+              "mode": "rows",
+              "fields": 13,
+              "rows": 12
+            },
+            {
+              "name": "长期候选审核队列",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 0
+            },
+            {
+              "name": "稳定长期特征库",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 179
+            }
+          ]
+        }
+      },
+      "errors": []
+    },
+    {
+      "name": "V2.12-R4_架构与维护门禁_mobile.png",
+      "metrics": {
+        "health": "架构与 UI 预算：通过",
+        "pageWidth": 390,
+        "viewport": 390,
+        "noOverflow": true,
+        "architecture": {
+          "version": "2.12-R4",
+          "healthy": true,
+          "missing": [],
+          "domains": {
+            "platform": {
+              "modules": [
+                "memoryPlatformDomain"
+              ],
+              "loaded": true
+            },
+            "foundation": {
+              "modules": [
+                "memoryFoundationDomain"
+              ],
+              "loaded": true
+            },
+            "tables": {
+              "modules": [
+                "memoryTablesDomain"
+              ],
+              "loaded": true
+            },
+            "governance": {
+              "modules": [
+                "memoryGovernanceDomain"
+              ],
+              "loaded": true
+            },
+            "retrieval": {
+              "modules": [
+                "memoryRetrievalDomain"
+              ],
+              "loaded": true
+            },
+            "schema": {
+              "modules": [
+                "memorySchemaDomain"
+              ],
+              "loaded": true
+            },
+            "update": {
+              "modules": [
+                "memoryUpdateDomain"
+              ],
+              "loaded": true
+            }
+          },
+          "loadedModuleCount": 52
+        },
+        "maintenance": {
+          "version": "2.12-R4",
+          "ok": true,
+          "metrics": {
+            "visibleDataRows": 18,
+            "activeEditors": 0,
+            "openSharedMenus": 0,
+            "persistentRowEditButtons": 0,
+            "overflowPixels": 0
+          },
+          "checks": {
+            "visibleDataRows": true,
+            "activeEditors": true,
+            "openSharedMenus": true,
+            "persistentRowEditButtons": true,
+            "overflowPixels": true
+          },
+          "budgets": {
+            "maxVisibleDataRows": 30,
+            "maxActiveEditors": 1,
+            "maxOpenSharedMenus": 1,
+            "maxPersistentRowEditButtons": 0,
+            "maxPageOverflowPixels": 1
+          }
+        },
+        "realData": {
+          "character": "阿沉",
+          "messages": 19133,
+          "tables": [
+            {
+              "name": "核心确认档案",
+              "mode": "keyValue",
+              "fields": 12,
+              "rows": 0
+            },
+            {
+              "name": "当前状态（3-7天）",
+              "mode": "keyValue",
+              "fields": 17,
+              "rows": 0
+            },
+            {
+              "name": "待办、承诺与未完成事项",
+              "mode": "rows",
+              "fields": 14,
+              "rows": 15
+            },
+            {
+              "name": "近期经历、想法与重要事件",
+              "mode": "rows",
+              "fields": 14,
+              "rows": 2
+            },
+            {
+              "name": "日常观察（睡眠/饮水/身体）",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 1
+            },
+            {
+              "name": "中期总结与成长经验",
+              "mode": "rows",
+              "fields": 13,
+              "rows": 12
+            },
+            {
+              "name": "长期候选审核队列",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 0
+            },
+            {
+              "name": "稳定长期特征库",
+              "mode": "rows",
+              "fields": 8,
+              "rows": 179
+            }
+          ]
+        }
+      },
+      "errors": []
+    }
+  ]
+}

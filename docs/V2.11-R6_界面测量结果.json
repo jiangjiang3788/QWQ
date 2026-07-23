@@ -1,0 +1,59 @@
+{
+  "desktop": {
+    "version": "2.11-R6",
+    "totalRows": 179,
+    "renderedRows": 18,
+    "fullScreenNodeStable": true,
+    "sidebarNodeStable": true,
+    "gridRevision": 1,
+    "savedIndicatorVisible": true,
+    "activeEditors": 0,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "gridMetrics": {
+      "tableRefreshes": 1,
+      "virtualPatches": 3,
+      "fieldCommits": 1,
+      "cachedModels": 1,
+      "reconciler": {
+        "replacements": 1,
+        "savedSignals": 1,
+        "restoredFocus": 1
+      }
+    },
+    "status": "大表优化 · 66-83 / 179 · DOM 18 行"
+  },
+  "mobile": {
+    "version": "2.11-R6",
+    "totalRows": 179,
+    "renderedRows": 18,
+    "fullScreenNodeStable": true,
+    "sidebarNodeStable": true,
+    "gridRevision": 1,
+    "savedIndicatorVisible": true,
+    "activeEditors": 0,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "gridMetrics": {
+      "tableRefreshes": 1,
+      "virtualPatches": 3,
+      "fieldCommits": 1,
+      "cachedModels": 1,
+      "reconciler": {
+        "replacements": 1,
+        "savedSignals": 1,
+        "restoredFocus": 1
+      }
+    },
+    "status": "大表优化 · 66-83 / 179 · DOM 18 行"
+  },
+  "assertions": {
+    "desktopNoPageOverflow": true,
+    "mobileNoPageOverflow": true,
+    "fullScreenNodeStable": true,
+    "sidebarNodeStable": true,
+    "singleGridRefresh": true,
+    "fieldCommitWithoutScreenRender": true,
+    "virtualRowsUnder25": true
+  }
+}

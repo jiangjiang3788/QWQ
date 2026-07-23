@@ -1666,7 +1666,9 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
     const response = window.OVOAIRequestRuntime
         ? await window.OVOAIRequestRuntime.request({
             task: 'gpt-image-generation', source: 'generateGptImage', provider: 'openai-compatible',
-            model, endpoint, headers: imageHeaders, body: imageRequestBody, signal, timeoutMs: 180000
+            model, endpoint, headers: imageHeaders, body: imageRequestBody, signal, timeoutMs: 180000,
+            operationType: 'image.generate.gpt', operationStage: '正在生成图片',
+            promptSources: [{ type: 'user_input', title: '最终生图提示词', content: finalPrompt, reason: '系统提示、角色画师提示和本次输入合并后的最终提示词' }]
         })
         : await fetch(endpoint, { method: 'POST', headers: imageHeaders, body: JSON.stringify(imageRequestBody), signal });
 
@@ -1857,7 +1859,12 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
     const response = window.OVOAIRequestRuntime
         ? await window.OVOAIRequestRuntime.request({
             task: 'novelai-image-generation', source: 'generateNovelAIImage', provider: 'novelai',
-            model, endpoint: apiUrl, headers: novelHeaders, body: requestBody, signal, timeoutMs: 180000
+            model, endpoint: apiUrl, headers: novelHeaders, body: requestBody, signal, timeoutMs: 180000,
+            operationType: 'image.generate.novelai', operationStage: '正在使用 NovelAI 生成图片',
+            promptSources: [
+                { type: 'user_input', title: '最终生图提示词', content: fullPrompt, reason: '系统提示、画师串和本次输入合并后的最终提示词' },
+                { type: 'output_rules', title: '负面提示词', content: negativePrompt || '（未设置）', reason: '用于排除不希望生成的内容' }
+            ]
         })
         : await fetch(apiUrl, { method: 'POST', headers: novelHeaders, body: JSON.stringify(requestBody), signal });
 

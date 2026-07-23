@@ -1,0 +1,85 @@
+{
+  "version": "2.11-R6",
+  "sourceBackup": "章鱼喷墨_备份数据_2026-07-21_清理优化版.ee",
+  "character": "阿沉",
+  "historyMessages": 19133,
+  "memoryTables": 8,
+  "targetTable": "稳定长期特征库",
+  "targetRows": 179,
+  "controllerLines": {
+    "R5": 4393,
+    "R6": 4331,
+    "reduced": 62
+  },
+  "newModules": [
+    "table_session.js",
+    "table_presenter.js",
+    "table_reconciler.js",
+    "table_workspace.js"
+  ],
+  "runtime": {
+    "desktop": {
+      "metrics": {
+        "version": "2.11-R6",
+        "totalRows": 179,
+        "renderedRows": 18,
+        "fullScreenNodeStable": true,
+        "sidebarNodeStable": true,
+        "gridRevision": 1,
+        "savedIndicatorVisible": true,
+        "activeEditors": 0,
+        "documentWidth": 1440,
+        "viewportWidth": 1440,
+        "gridMetrics": {
+          "tableRefreshes": 1,
+          "virtualPatches": 3,
+          "fieldCommits": 1,
+          "cachedModels": 1,
+          "reconciler": {
+            "replacements": 1,
+            "savedSignals": 1,
+            "restoredFocus": 1
+          }
+        },
+        "status": "大表优化 · 66-83 / 179 · DOM 18 行"
+      },
+      "errors": []
+    },
+    "mobile": {
+      "metrics": {
+        "version": "2.11-R6",
+        "totalRows": 179,
+        "renderedRows": 18,
+        "fullScreenNodeStable": true,
+        "sidebarNodeStable": true,
+        "gridRevision": 1,
+        "savedIndicatorVisible": true,
+        "activeEditors": 0,
+        "documentWidth": 390,
+        "viewportWidth": 390,
+        "gridMetrics": {
+          "tableRefreshes": 1,
+          "virtualPatches": 3,
+          "fieldCommits": 1,
+          "cachedModels": 1,
+          "reconciler": {
+            "replacements": 1,
+            "savedSignals": 1,
+            "restoredFocus": 1
+          }
+        },
+        "status": "大表优化 · 66-83 / 179 · DOM 18 行"
+      },
+      "errors": []
+    }
+  },
+  "verified": [
+    "字段保存不调用整页 renderMemoryTableScreen",
+    "筛选、搜索、编辑状态仅局部刷新 data-memory-table-grid",
+    "左侧表清单节点在局部刷新后保持不变",
+    "虚拟滚动窗口保持 18 行 DOM",
+    "保存反馈使用 aria-live 状态，不增加常驻卡片",
+    "390px 手机页面无页面级横向溢出"
+  ],
+  "boundary": "未使用用户的真实外部模型密钥；本版不改变模型整理、标签、关系、审核或备份协议。"
+}

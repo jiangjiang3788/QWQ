@@ -1,0 +1,138 @@
+{
+  "desktop": {
+    "version": "2.11-R7",
+    "historyMessages": 19133,
+    "totalRows": 179,
+    "renderedRows": 17,
+    "activeEditors": 0,
+    "physicalWrites": 2,
+    "saveRequests": 4,
+    "coalescedWrites": 2,
+    "cacheHits": 3,
+    "cacheMisses": 4,
+    "cacheEntries": 2,
+    "undoAvailable": true,
+    "scrollBefore": 4680,
+    "scrollAfter": 4680,
+    "scrollPreserved": true,
+    "headerNodeStable": true,
+    "sidebarNodeStable": true,
+    "gridNodeStable": true,
+    "documentWidth": 1440,
+    "viewportWidth": 1440,
+    "noPageOverflow": true,
+    "gridMetrics": {
+      "tableRefreshes": 4,
+      "virtualPatches": 7,
+      "fieldCommits": 3,
+      "cachedModels": 1,
+      "reconciler": {
+        "replacements": 4,
+        "savedSignals": 4,
+        "restoredFocus": 1
+      }
+    },
+    "editorMetrics": {
+      "fieldCommits": 3,
+      "noops": 0,
+      "structuralMutations": 0,
+      "undos": 1,
+      "undoCharacters": 1,
+      "persistence": {
+        "requests": 4,
+        "writes": 2,
+        "coalesced": 2,
+        "failures": 0,
+        "flushes": 1,
+        "maxWaiters": 3,
+        "activeCharacters": 1
+      },
+      "cache": {
+        "hits": 3,
+        "misses": 4,
+        "invalidations": 4,
+        "evictions": 0,
+        "stamps": 6,
+        "entries": 2,
+        "scopes": 1
+      }
+    },
+    "pageErrors": [],
+    "bodyClientWidth": 1440,
+    "documentClientWidth": 1440,
+    "workspaceWidth": 1416,
+    "gridWrapWidth": 1196,
+    "tableScrollWidth": 1196,
+    "tableClientWidth": 1196,
+    "bodyOverflowX": "hidden",
+    "htmlOverflowX": "visible"
+  },
+  "mobile": {
+    "version": "2.11-R7",
+    "historyMessages": 19133,
+    "totalRows": 179,
+    "renderedRows": 17,
+    "activeEditors": 0,
+    "physicalWrites": 2,
+    "saveRequests": 4,
+    "coalescedWrites": 2,
+    "cacheHits": 3,
+    "cacheMisses": 4,
+    "cacheEntries": 2,
+    "undoAvailable": true,
+    "scrollBefore": 4680,
+    "scrollAfter": 4680,
+    "scrollPreserved": true,
+    "headerNodeStable": true,
+    "sidebarNodeStable": true,
+    "gridNodeStable": true,
+    "documentWidth": 390,
+    "viewportWidth": 390,
+    "noPageOverflow": true,
+    "gridMetrics": {
+      "tableRefreshes": 4,
+      "virtualPatches": 7,
+      "fieldCommits": 3,
+      "cachedModels": 1,
+      "reconciler": {
+        "replacements": 4,
+        "savedSignals": 4,
+        "restoredFocus": 1
+      }
+    },
+    "editorMetrics": {
+      "fieldCommits": 3,
+      "noops": 0,
+      "structuralMutations": 0,
+      "undos": 1,
+      "undoCharacters": 1,
+      "persistence": {
+        "requests": 4,
+        "writes": 2,
+        "coalesced": 2,
+        "failures": 0,
+        "flushes": 1,
+        "maxWaiters": 3,
+        "activeCharacters": 1
+      },
+      "cache": {
+        "hits": 3,
+        "misses": 4,
+        "invalidations": 4,
+        "evictions": 0,
+        "stamps": 6,
+        "entries": 2,
+        "scopes": 1
+      }
+    },
+    "pageErrors": [],
+    "bodyClientWidth": 390,
+    "documentClientWidth": 390,
+    "workspaceWidth": 390,
+    "gridWrapWidth": 390,
+    "tableScrollWidth": 825,
+    "tableClientWidth": 390,
+    "bodyOverflowX": "hidden",
+    "htmlOverflowX": "visible"
+  }
+}

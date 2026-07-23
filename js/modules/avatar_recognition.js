@@ -47,7 +47,13 @@
             ? await window.OVOAIRequestRuntime.request({
                 task: 'avatar-recognition', source: 'avatar-recognition',
                 provider: db.apiSettings.provider || 'openai-compatible', model,
-                endpoint, headers, body
+                endpoint, headers, body,
+                operationType: 'vision.avatar.recognize',
+                operationStage: '正在识别头像内容',
+                promptSources: [
+                    { type: 'task_instruction', title: '头像识别要求', content: promptText, reason: '用户配置的头像识别详细程度' },
+                    { type: 'user_input', title: '待识别头像', content: '[图片内容]', reason: '本次请求携带的头像图片' }
+                ]
             })
             : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
 

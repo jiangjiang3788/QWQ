@@ -1,16 +1,19 @@
-// OVO Prompt Trace - V2.10-R2.1 hotfix
+// OVO Prompt Trace - V2.10-R5 unified source protocol
 // 把模型最终请求整理成用户可理解的来源视图；只做只读追踪，不参与 Prompt 决策。
 (function (global) {
     'use strict';
 
     const CONTENT_LIMIT = 60000;
     const ITEM_LIMIT = 80;
+    const SOURCE_PROTOCOL = 'ovo.prompt-source.v2';
+    const TRACE_PROTOCOL = 'ovo.prompt-trace.v2';
     const TYPE_META = Object.freeze({
         system_rules: { title: '系统规则', icon: '⚙️', order: 10 },
         character_profile: { title: '角色档案', icon: '🎭', order: 20 },
         user_profile: { title: '用户档案', icon: '👤', order: 30 },
         worldbook: { title: '世界书', icon: '🌍', order: 40 },
         structured_memory: { title: '结构化记忆', icon: '🗂️', order: 50 },
+        character_memory: { title: '角色档案记忆', icon: '🧩', order: 50 },
         journal_memory: { title: '日记记忆', icon: '📔', order: 51 },
         vector_memory: { title: '向量记忆', icon: '🧭', order: 52 },
         chat_history: { title: '聊天历史', icon: '💬', order: 60 },
@@ -29,6 +32,68 @@
         const text = String(value == null ? '' : value);
         if (text.length <= limit) return { text, chars: text.length, clipped: false };
         return { text: `${text.slice(0, limit)}\n…（内容过长，已截断）`, chars: text.length, clipped: true };
+    }
+
+    function hashText(value) {
+        const text = String(value == null ? '' : value);
+        let hash = 2166136261;
+        for (let index = 0; index < text.length; index += 1) {
+            hash ^= text.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+    }
+
+    function sourceState(sent, traceMode, explicitState) {
+        if (explicitState) return explicitState;
+        if (sent === false) return 'excluded';
+        if (['request_exact', 'inferred_exact', 'source_exact'].includes(traceMode)) return 'sent';
+        if (traceMode === 'source_verified') return 'verified';
+        return 'contributed';
+    }
+
+    function evidenceLabel(traceMode) {
+        const labels = {
+            request_exact: '最终请求精确提取',
+            inferred_exact: '最终请求精确推导',
+            source_exact: '业务组装源精确上报',
+            source_verified: '业务来源与最终请求核对',
+            source: '业务模块参与组装'
+        };
+        return labels[traceMode] || labels.source;
+    }
+
+    function normalizeNavigation(navigation) {
+        if (!navigation || typeof navigation !== 'object') return null;
+        return {
+            kind: navigation.kind || 'proment',
+            label: navigation.label || '在 Proment 核对',
+            screen: navigation.screen || 'magic-room-screen',
+            characterId: navigation.characterId || '',
+            sourceIds: Array.isArray(navigation.sourceIds) ? [...new Set(navigation.sourceIds.filter(Boolean).map(String))].slice(0, 40) : [],
+            templateId: navigation.templateId || '',
+            tableId: navigation.tableId || ''
+        };
+    }
+
+    function defaultNavigation(type, source = {}, context = {}) {
+        const scope = context.scope && typeof context.scope === 'object' ? context.scope : {};
+        const sourceIds = [source.sourceId, ...(Array.isArray(source.items) ? source.items.map(item => item?.sourceId || item?.id) : [])]
+            .filter(Boolean).map(String);
+        const characterTypes = new Set(['character_profile', 'character_memory', 'structured_memory', 'journal_memory', 'vector_memory']);
+        const characterId = source?.metadata?.characterId
+            || scope.characterId
+            || scope.chatId
+            || (characterTypes.has(type) ? source.sourceId : '')
+            || '';
+        if (type === 'worldbook') return normalizeNavigation({ kind: 'worldbook', label: '打开世界书', screen: 'world-book-screen', characterId, sourceIds });
+        if (type === 'structured_memory' || type === 'character_memory') return normalizeNavigation({
+            kind: 'structured-memory', label: '打开结构化档案', screen: 'memory-table-screen', characterId, sourceIds,
+            templateId: source?.metadata?.templateId || scope.templateId || '', tableId: source?.metadata?.tableId || scope.tableId || ''
+        });
+        if (type === 'journal_memory') return normalizeNavigation({ kind: 'journal-memory', label: '打开回忆日记', screen: 'memory-journal-screen', characterId, sourceIds });
+        if (type === 'vector_memory') return normalizeNavigation({ kind: 'vector-memory', label: '打开向量记忆', screen: 'vector-memory-screen', characterId, sourceIds });
+        return normalizeNavigation({ kind: 'proment', label: '在 Proment 核对', screen: 'magic-room-screen', characterId, sourceIds });
     }
 
     function contentToText(content) {
@@ -53,57 +118,82 @@
         return String(content);
     }
 
-    function normalizeItem(item, parentType) {
+    function normalizeItem(item, parentType, context = {}) {
         const type = item?.type || parentType || 'other';
         const meta = TYPE_META[type] || TYPE_META.other;
         const clipped = clipText(item?.content || '');
+        const traceMode = item?.traceMode || context.traceMode || 'source';
+        const sent = item?.sent !== false;
+        const navigation = normalizeNavigation(item?.navigation) || defaultNavigation(type, item || {}, context);
+        const content = clipped.text;
         return {
+            protocol: SOURCE_PROTOCOL,
             id: item?.id || makeId('item'),
             type,
             title: item?.title || meta.title,
             summary: item?.summary || '',
-            content: clipped.text,
+            content,
             chars: Number.isFinite(item?.chars) ? Math.max(0, item.chars) : clipped.chars,
             count: Number.isFinite(item?.count) ? Math.max(0, item.count) : 1,
-            sent: item?.sent !== false,
+            sent,
+            state: sourceState(sent, traceMode, item?.state),
+            evidence: item?.evidence || evidenceLabel(traceMode),
             reason: item?.reason || '',
             clipped: !!item?.clipped || clipped.clipped,
+            traceMode,
             sourceId: item?.sourceId || '',
+            fingerprint: item?.fingerprint || hashText(`${type}
+${item?.sourceId || ''}
+${content}`),
+            navigation,
             metadata: item?.metadata && typeof item.metadata === 'object' ? { ...item.metadata } : {}
         };
     }
 
-    function normalizeSource(source) {
+    function normalizeSource(source, context = {}) {
         const type = source?.type || 'other';
         const meta = TYPE_META[type] || TYPE_META.other;
         const clipped = clipText(source?.content || '');
+        const traceMode = source?.traceMode || 'source';
+        const sent = source?.sent !== false;
+        const navigation = normalizeNavigation(source?.navigation) || defaultNavigation(type, source || {}, context);
+        const itemContext = { ...context, traceMode, scope: context.scope || {} };
         const items = Array.isArray(source?.items)
-            ? source.items.slice(0, ITEM_LIMIT).map(item => normalizeItem(item, type))
+            ? source.items.slice(0, ITEM_LIMIT).map(item => normalizeItem(item, type, itemContext))
             : [];
         const itemChars = items.reduce((sum, item) => sum + (Number(item.chars) || 0), 0);
+        const content = clipped.text;
         return {
+            protocol: SOURCE_PROTOCOL,
             id: source?.id || makeId('source'),
             type,
             title: source?.title || meta.title,
             icon: source?.icon || meta.icon,
             summary: source?.summary || '',
-            content: clipped.text,
+            content,
             chars: Number.isFinite(source?.chars) ? Math.max(0, source.chars) : (clipped.chars || itemChars),
-            count: Number.isFinite(source?.count) ? Math.max(0, source.count) : (items.length || (clipped.text ? 1 : 0)),
-            sent: source?.sent !== false,
+            count: Number.isFinite(source?.count) ? Math.max(0, source.count) : (items.length || (content ? 1 : 0)),
+            sent,
+            state: sourceState(sent, traceMode, source?.state),
+            evidence: source?.evidence || evidenceLabel(traceMode),
             reason: source?.reason || '',
             clipped: !!source?.clipped || clipped.clipped,
-            traceMode: source?.traceMode || 'source',
+            traceMode,
             sourceId: source?.sourceId || '',
+            fingerprint: source?.fingerprint || hashText(`${type}
+${source?.sourceId || ''}
+${content}
+${items.map(item => item.fingerprint).join('|')}`),
+            navigation,
             items,
             metadata: source?.metadata && typeof source.metadata === 'object' ? { ...source.metadata } : {}
         };
     }
 
-    function normalizeSources(sources) {
+    function normalizeSources(sources, context = {}) {
         return (Array.isArray(sources) ? sources : [])
             .filter(Boolean)
-            .map(normalizeSource)
+            .map(source => normalizeSource(source, context))
             .filter(source => source.content || source.items.length || source.count > 0)
             .sort((a, b) => ((TYPE_META[a.type] || TYPE_META.other).order - (TYPE_META[b.type] || TYPE_META.other).order));
     }
@@ -148,7 +238,7 @@
             || /^<thinking>[\s\S]*<\/thinking>/i.test(value);
     }
 
-    function splitMemoryUpdatePrompt(text) {
+    function splitMemoryUpdatePrompt(text, meta = {}) {
         const value = String(text || '');
         if (!/结构化记忆表/.test(value) || !/模板定义如下[:：]/.test(value) || !/最近聊天记录如下[:：]/.test(value)) return [];
         const roleMarker = value.search(/角色信息[:：]/);
@@ -169,7 +259,7 @@
             userLines.length && { type: 'user_profile', content: userLines.join('\n'), reason: '来自本次档案更新 Prompt 中的用户信息', traceMode: 'inferred_exact' },
             template && { type: 'structured_memory', title: '目标档案与现有数据', content: template, reason: '包含目标模板、字段规则、当前值和候选行', traceMode: 'inferred_exact' },
             history && { type: 'chat_history', title: '用于提取的聊天范围', content: history, count: history.split('\n').filter(Boolean).length, reason: '这是本次档案更新实际读取的聊天文本', traceMode: 'inferred_exact' }
-        ].filter(Boolean));
+        ].filter(Boolean), meta);
     }
 
     function inferSources(body, meta = {}) {
@@ -178,7 +268,7 @@
         const systemTexts = messages.filter(item => item.role === 'system').map(item => item.text).filter(Boolean);
         const conversation = messages.filter(item => item.role !== 'system' && item.text);
         const singleUser = conversation.length === 1 && conversation[0].role === 'user' ? conversation[0].text : '';
-        const memorySections = splitMemoryUpdatePrompt(singleUser);
+        const memorySections = splitMemoryUpdatePrompt(singleUser, meta);
         if (memorySections.length) return memorySections;
 
         if (systemTexts.length) {
@@ -251,12 +341,12 @@
             try { content = JSON.stringify(config, null, 2); } catch (_) { content = String(config); }
             sources.push({ type: 'tool_config', content, reason: '最终请求中的模型生成参数与工具配置', traceMode: 'request_exact' });
         }
-        return normalizeSources(sources);
+        return normalizeSources(sources, meta);
     }
 
-    function mergeSources(explicitSources, inferredSources) {
-        const explicit = normalizeSources(explicitSources);
-        const inferred = normalizeSources(inferredSources);
+    function mergeSources(explicitSources, inferredSources, meta = {}) {
+        const explicit = normalizeSources(explicitSources, meta);
+        const inferred = normalizeSources(inferredSources, meta);
         const result = [...explicit];
         const exactTypes = new Set(explicit.map(source => source.type));
         inferred.forEach(source => {
@@ -277,20 +367,28 @@
             byType[section.type].chars += Number(section.chars) || 0;
             byType[section.type].sections += 1;
         });
+        const byState = {};
+        countableSections.forEach(section => { byState[section.state || 'contributed'] = (byState[section.state || 'contributed'] || 0) + 1; });
         return {
             sectionCount: countableSections.length,
             verificationSectionCount: sections.length - countableSections.length,
             sentSectionCount: countableSections.filter(section => section.sent !== false).length,
+            linkedSectionCount: countableSections.filter(section => section.navigation?.screen).length,
             sourceChars: countableSections.reduce((sum, section) => sum + (Number(section.chars) || 0), 0),
+            byState,
             byType: Object.values(byType).sort((a, b) => ((TYPE_META[a.type] || TYPE_META.other).order - (TYPE_META[b.type] || TYPE_META.other).order))
         };
     }
 
     function build(body, explicitSources, meta = {}) {
-        const sections = mergeSources(explicitSources, inferSources(body, meta));
+        const sections = mergeSources(explicitSources, inferSources(body, meta), meta);
         return {
-            version: 'prompt-trace.v1',
+            protocol: TRACE_PROTOCOL,
+            version: 'prompt-trace.v2',
             capturedAt: new Date().toISOString(),
+            operationId: meta.operationId || '',
+            operationType: meta.operationType || '',
+            scope: meta.scope && typeof meta.scope === 'object' ? { ...meta.scope } : {},
             task: meta.task || '',
             source: meta.source || '',
             provider: meta.provider || '',
@@ -305,12 +403,16 @@
     }
 
     global.OVOPromptTrace = {
-        VERSION: '2.10-R1',
+        VERSION: '2.10-R5',
+        SOURCE_PROTOCOL,
+        TRACE_PROTOCOL,
         TYPE_META,
         build,
         source,
         normalizeSources,
         extractMessages,
-        contentToText
+        contentToText,
+        hashText,
+        defaultNavigation
     };
 })(window);

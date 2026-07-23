@@ -62,8 +62,8 @@ const workspace = {
         return { workspace: id, view: view || defaults[id] };
     },
     getWorkspaceForView(view) {
-        if (['review', 'sidecar', 'reliability', 'feedback', 'tasks'].includes(view)) return 'inbox';
-        if (['templates', 'retrieval', 'quality', 'history'].includes(view)) return 'manage';
+        if (['review', 'sidecar', 'reliability', 'tasks'].includes(view)) return 'inbox';
+        if (['templates', 'retrieval', 'feedback', 'usage_audit', 'quality', 'history'].includes(view)) return 'manage';
         return 'memory';
     },
     getCounts: () => ({ inbox: 0 }),
@@ -90,9 +90,58 @@ const kernel = {
     core,
     get(name) { return name === 'policy' ? policy : null; },
     require(name) {
+        if (name === 'memoryPlatformDomain') return { policy, review: null, retrieval: null, effects: null, lifecycle: null, tasks: null, feedback: null, quality: null, sidecar: null, schedule: {} };
+        if (name === 'memoryFoundationDomain') return { api, domain, workspace };
+        if (name === 'memorySchemaDomain') return {
+            model: { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, summarize: () => ({ tableCount: 0, fieldCount: 0, groupCount: 0 }), groupedFields: () => [], listScalarRows: () => [], getPath: () => undefined, setPath: () => false, updatePath: () => false, addTable: () => null, removeTable: () => false, moveTable: () => false, addField: () => null, removeField: () => false, moveField: () => false, applyRawJson: () => ({ tables: [] }) },
+            editor: { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, render: () => '', updateRole: () => false, updatePath: () => false, mutate: () => false, applyRawJson: () => ({ tables: [] }) }
+        };
+        if (name === 'memoryGovernanceDomain') return {
+            vocabulary: {}, relation: { findById: () => null, analyze: () => ({ target: null, items: [], counts: {} }) }, mergeReview: {},
+            candidate: { approve: () => ({ changed: false }), setStatus: () => ({ changed: false }), isPending: () => false, statusText: () => '' },
+            filter: { apply: rows => rows || [], renderToolbar: () => '', normalizeTagQuery: value => String(value || '') },
+            queue: { setFilter: noop, setQuery: noop, toggleSelection: noop }, controller: { handle: async () => false },
+            inspector: { render: () => '' }, inspectorController: { handles: () => false, handleAction: async () => false, handleSubmit: async () => false }
+        };
+        if (name === 'memoryRetrievalDomain') return { audit: { render: () => '', setSelectedRound: () => true } };
+        if (name === 'memoryUpdateDomain') return {
+            tags: { parseRowNode: () => null, equals: () => true, applyToRow: () => ({ changed: false }), buildPromptInstructions: () => '', normalize: () => ({ topic: [], scene: [], entity: [], effect: 'historical_context' }), isLocked: () => false, setLocked: () => false },
+            context: { assemble: () => ({ text: '', tables: [], rowCount: 0, chars: 0 }) },
+            update: { collectMessages: () => [], buildTemplateDefinition: () => '', buildHistoryText: () => '', buildUpdatePrompt: () => ({ prompt: '', historyText: '', templateText: '', related: { text: '', tables: [], rowCount: 0, chars: 0 } }) }
+        };
+        if (name === 'memoryTablesDomain') return {
+            viewport: {}, session: { ensure: state => state, selectTable: noop, setFilter: noop, setTagFilter: noop, setSearch: noop, setEditingRow: noop }, grouping: {}, gesture: {},
+            cache: { touchChat: noop }, persistence: {}, commandMenu: { open: () => null, close: () => {} },
+            interaction: { handleAction: () => false, handleFilterClick: () => false, handleFilterChange: () => false },
+            view: { renderValue: value => String(value ?? ''), renderMeta: () => '', renderRowCommand: () => '' }, presenter: {}, reconciler: {},
+            grid: { render: () => '', bind: () => {}, refresh: () => true, commitInput: () => {} }, editor: {},
+            editController: { handleAction: async () => false, handleFieldInput: async () => false }, workspace: { render: () => '', getGridConfig: () => null }
+        };
+        if (name === 'memoryArchitecture') return { assertHealthy: () => ({ healthy: true }) };
         if (name === 'api') return api;
         if (name === 'domain') return domain;
         if (name === 'workspace') return workspace;
+        if (name === 'tagService') return { parseRowNode: () => null, equals: () => true, applyToRow: () => ({ changed: false }), buildPromptInstructions: () => '', normalize: () => ({ topic: [], scene: [], entity: [], effect: 'historical_context' }), isLocked: () => false, setLocked: () => false };
+        if (name === 'candidateService') return { approve: () => ({ changed: false }), setStatus: () => ({ changed: false }), isPending: () => false, statusText: () => '' };
+        if (name === 'tableFilter') return { apply: rows => rows || [], renderToolbar: () => '', normalizeTagQuery: value => String(value || '') };
+        if (name === 'governanceQueue') return { setFilter: noop, setQuery: noop, toggleSelection: noop };
+        if (name === 'governanceController') return { handle: async () => false };
+        if (name === 'relationService') return { findById: () => null, analyze: () => ({ target: null, items: [], counts: {} }) };
+        if (name === 'rowInspector') return { render: () => '' };
+        if (name === 'rowInspectorController') return { handles: () => false, handleAction: async () => false, handleSubmit: async () => false };
+        if (name === 'contextAssembler') return { assemble: () => ({ text: '', tables: [], rowCount: 0, chars: 0 }) };
+        if (name === 'updateService') return { collectMessages: () => [], buildTemplateDefinition: () => '', buildHistoryText: () => '', buildUpdatePrompt: () => ({ prompt: '', historyText: '', templateText: '', related: { text: '', tables: [], rowCount: 0, chars: 0 } }) };
+        if (name === 'retrievalAudit') return { render: () => '', setSelectedRound: () => true };
+        if (name === 'tableView') return { renderValue: value => String(value ?? ''), renderMeta: () => '', renderRowCommand: () => '' };
+        if (name === 'tableGrid') return { render: () => '', bind: () => {}, refresh: () => true, commitInput: () => {} };
+        if (name === 'tableCache') return { touchChat: noop };
+        if (name === 'tableEditController') return { handleAction: async () => false, handleFieldInput: async () => false };
+        if (name === 'tableSession') return { ensure: state => state, selectTable: noop, setFilter: noop, setTagFilter: noop, setSearch: noop, setEditingRow: noop };
+        if (name === 'tableWorkspace') return { render: () => '', getGridConfig: () => null };
+        if (name === 'rowCommandMenu') return { open: () => null, close: () => {} };
+        if (name === 'tableInteraction') return { handleAction: () => false, handleFilterClick: () => false, handleFilterChange: () => false };
+        if (name === 'schemaModel') return { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, summarize: () => ({ tableCount: 0, fieldCount: 0, groupCount: 0 }), groupedFields: () => [], listScalarRows: () => [], getPath: () => undefined, setPath: () => false, updatePath: () => false, addTable: () => null, removeTable: () => false, moveTable: () => false, addField: () => null, removeField: () => false, moveField: () => false, applyRawJson: () => ({ tables: [] }) };
+        if (name === 'schemaEditor') return { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, render: () => '', updateRole: () => false, updatePath: () => false, mutate: () => false, applyRawJson: () => ({ tables: [] }) };
         if (name === 'schedule') return {};
         throw new Error(`unexpected required module: ${name}`);
     },
@@ -132,8 +181,8 @@ assert(currentChat.memoryTables.workspace === 'manage', 'manage transition was o
 assert(currentChat.memoryTables.workspaceView === 'manage_home', 'manage default view was not committed');
 
 controller.openFeedback();
-assert(currentChat.memoryTables.workspace === 'inbox', 'feedback route did not enter inbox workspace');
-assert(currentChat.memoryTables.workspaceView === 'feedback', 'feedback route bypassed the centralized workspace state transition');
+assert(currentChat.memoryTables.workspace === 'manage', 'feedback route did not converge into manage workspace');
+assert(currentChat.memoryTables.workspaceView === 'usage_audit', 'feedback route did not converge into usage_audit');
 
 currentChat = {
     id: 'char-2', history: [], memoryJournals: [], memoryMode: 'table',

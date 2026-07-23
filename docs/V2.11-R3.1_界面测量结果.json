@@ -1,0 +1,45 @@
+{
+  "relation_desktop": {
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "bodyWidth": 1440,
+    "drawer": {
+      "left": 892.8125,
+      "right": 1440,
+      "width": 547.1875
+    },
+    "reviewActions": null
+  },
+  "review_desktop": {
+    "viewportWidth": 1440,
+    "documentWidth": 1440,
+    "bodyWidth": 1440,
+    "drawer": {
+      "left": 680,
+      "right": 1440,
+      "width": 760
+    },
+    "reviewActions": {
+      "left": 680,
+      "right": 1440,
+      "width": 760,
+      "buttons": 4
+    }
+  },
+  "review_mobile": {
+    "viewportWidth": 390,
+    "documentWidth": 390,
+    "bodyWidth": 390,
+    "drawer": {
+      "left": 0,
+      "right": 390,
+      "width": 390
+    },
+    "reviewActions": {
+      "left": 0,
+      "right": 390,
+      "width": 390,
+      "buttons": 4
+    }
+  }
+}

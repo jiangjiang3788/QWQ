@@ -3099,3 +3099,16 @@
 }
 
 .favorite-source-highlight { outline: 3px solid rgba(255, 180, 0, .85) !important; box-shadow: 0 0 0 8px rgba(255, 200, 0, .18) !important; transition: outline .2s, box-shadow .2s; }
+
+/* V2.12-R5: range selection for chat delete/favorite. */
+#multi-select-bar{gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.96)}
+#multi-select-bar #select-count{flex:1 1 auto;min-width:88px}
+.chat-range-select-actions{display:flex;gap:6px;align-items:center}
+.chat-range-select-actions .btn{width:auto!important;padding:6px 9px!important;font-size:11px!important;white-space:nowrap}
+@media(max-width:600px){
+  #multi-select-bar{padding:8px 10px;justify-content:flex-start}
+  #multi-select-bar #select-count{flex-basis:100%}
+  .chat-range-select-actions{flex:1 1 auto}
+  .chat-range-select-actions .btn{flex:1}
+  #multi-select-bar>#delete-selected-btn,#multi-select-bar>#favorite-selected-btn,#multi-select-bar>#favorite-merge-btn,#multi-select-bar>#forward-selected-btn{flex:1 1 auto;margin:0!important;padding:7px 9px!important;font-size:11px!important}
+}

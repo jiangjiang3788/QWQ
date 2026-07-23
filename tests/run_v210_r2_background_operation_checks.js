@@ -23,7 +23,7 @@ const context = vm.createContext({ window: windowMock, sessionStorage: windowMoc
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 const runtime = windowMock.OVOOperationRuntime;
 assert(runtime, 'operation runtime missing');
-assert(/^2\.10-R(?:[23](?:\.[123])?)$/.test(runtime.VERSION));
+assert(/^2\.(?:10-R(?:[23456](?:\.[123])?)|11-R(?:[0124567]|3(?:\.1)?)|12-R[0-5])$/.test(runtime.VERSION));
 
 const parent = runtime.start('chat.reply', { title: '生成阿墨的回复' });
 runtime.complete(parent.id, { summary: '回复已完成' });
@@ -59,5 +59,5 @@ assert(theater.includes('本次未命中'));
 assert(theater.includes('operationId: operation?.id'));
 assert(dock.includes('后台工作'));
 assert(dock.includes('renderChildOperationList'));
-assert(dock.includes('V2.10-R2') || dock.includes('V2.10-R3'));
+assert(dock.includes('V2.10-R2') || dock.includes('V2.10-R3') || dock.includes('V2.10-R4') || dock.includes('V2.10-R5') || dock.includes('V2.10-R6') || dock.includes('V2.11-R0') || dock.includes('V2.11-R1') || dock.includes('V2.11-R2') || dock.includes('V2.11-R3.1') || dock.includes('V2.11-R4') || dock.includes('V2.11-R5') || dock.includes('V2.11-R6') || dock.includes('V2.11-R7') || dock.includes('V2.12-R0') || dock.includes('V2.12-R1') || dock.includes('V2.12-R2'));
 console.log('V2.10-R2 BACKGROUND OPERATION CHECKS: PASS');

@@ -1,4 +1,4 @@
-// OVO Operation Runtime - V2.10-R3.3 stability and payload audit
+// OVO Operation Runtime - V2.12-R2 productized operation history
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
@@ -9,6 +9,9 @@
     const BODY_PREVIEW_LIMIT = 120000;
     const MUTATION_LIMIT = 80;
     const MUTATION_TEXT_LIMIT = 4000;
+    const STORAGE_BUDGET_CHARS = 900000;
+    const REPORT_OPERATION_LIMIT = 100;
+    let lastPersistStats = { chars: 0, budget: STORAGE_BUDGET_CHARS, records: 0, detailRecords: 0, compacted: false, dropped: 0 };
     const registry = new Map();
     const records = new Map();
     let orderedIds = [];
@@ -22,6 +25,7 @@
         { type: 'memory.sidecar', title: '应用回复内档案更新', category: '记忆', icon: '🧩' },
         { type: 'memory.table.update', title: '更新结构化档案', category: '记忆', icon: '🗂️' },
         { type: 'memory.review.apply', title: '保存结构化档案审核结果', category: '记忆', icon: '✅' },
+        { type: 'memory.merge.review', title: '审核并合并档案记忆', category: '记忆', icon: '🔀' },
         { type: 'memory.table.auto', title: '检查结构化档案更新', category: '后台工作', icon: '🗂️' },
         { type: 'journal.auto', title: '检查自动日记总结', category: '后台工作', icon: '📔' },
         { type: 'memory.vector.auto', title: '检查向量记忆总结', category: '后台工作', icon: '🧠' },
@@ -36,12 +40,26 @@
         return /(^|_)(api_?)?key$|token|authorization|secret|password/i.test(String(key || ''));
     }
 
+    function redactSensitiveText(value) {
+        return String(value == null ? '' : value)
+            .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;\"']+/gi, '$1***')
+            .replace(/([?&](?:api_?key|key|token|access_token|secret|password)=)[^&#\s]+/gi, '$1***')
+            .replace(/(\b(?:api_?key|token|access_token|secret|password)\s*[:=]\s*)[^\s,;\"']+/gi, '$1***')
+            .replace(/(\"(?:api_?key|key|token|access_token|authorization|secret|password)\"\s*:\s*\")[^\"]*(\")/gi, '$1***$2')
+            .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, 'sk-***')
+            .replace(/\bAIza[A-Za-z0-9_-]{20,}\b/g, 'AIza***');
+    }
+
     function safeClone(value, depth = 0) {
         if (depth > 10) return '[已省略：层级过深]';
         if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
-        if (typeof value === 'string') return value.length > 80000 ? `${value.slice(0, 80000)}\n…（内容超过 8 万字符，已截断）` : value;
+        if (typeof value === 'string') {
+            const redacted = redactSensitiveText(value);
+            return redacted.length > 80000 ? `${redacted.slice(0, 80000)}
+…（内容超过 8 万字符，已截断）` : redacted;
+        }
         if (typeof value === 'function') return '[函数]';
-        if (value instanceof Error) return { name: value.name, message: value.message, stack: String(value.stack || '').slice(0, 3000) };
+        if (value instanceof Error) return { name: value.name, message: redactSensitiveText(value.message), stack: redactSensitiveText(String(value.stack || '')).slice(0, 3000) };
         if (Array.isArray(value)) return value.slice(0, 120).map(item => safeClone(item, depth + 1));
         if (typeof value === 'object') {
             const output = {};
@@ -50,12 +68,12 @@
             });
             return output;
         }
-        return String(value);
+        return redactSensitiveText(String(value));
     }
 
     function mutationText(value) {
         if (value == null) return '';
-        let text = typeof value === 'string' ? value : (() => { try { return JSON.stringify(safeClone(value), null, 2); } catch (_) { return String(value); } })();
+        let text = typeof value === 'string' ? redactSensitiveText(value) : (() => { try { return JSON.stringify(safeClone(value), null, 2); } catch (_) { return redactSensitiveText(String(value)); } })();
         return text.length > MUTATION_TEXT_LIMIT ? `${text.slice(0, MUTATION_TEXT_LIMIT)}
 …（变化内容超过 4000 字符，已截断）` : text;
     }
@@ -103,30 +121,85 @@
         } catch (_) {}
     }
 
+    function stripPromptTraceContent(trace, keepMetadata = true) {
+        if (!trace || typeof trace !== 'object') return null;
+        const copy = safeClone(trace);
+        copy.sections = (copy.sections || []).map(section => ({
+            ...(keepMetadata ? section : { id: section.id, type: section.type, title: section.title, state: section.state, sent: section.sent, chars: section.chars, count: section.count, fingerprint: section.fingerprint }),
+            content: '',
+            items: (section.items || []).map(entry => ({
+                ...(keepMetadata ? entry : { id: entry.id, type: entry.type, title: entry.title, state: entry.state, sent: entry.sent, chars: entry.chars, fingerprint: entry.fingerprint }),
+                content: ''
+            }))
+        }));
+        return copy;
+    }
+
+    function compactRecordForStorage(record, index, level = 0) {
+        const item = safeClone(record);
+        const stripDetail = index >= DETAIL_LIMIT || level >= 1;
+        if (stripDetail && Array.isArray(item?.mutations)) {
+            item.mutations = item.mutations.map(mutation => ({ ...mutation, before: '', after: '', fields: [], meta: {} }));
+        }
+        if (stripDetail && Array.isArray(item?.requests)) {
+            item.requests = item.requests.map(request => ({
+                ...request,
+                bodyPreview: '',
+                promptTrace: stripPromptTraceContent(request.promptTrace, level < 2)
+            }));
+        }
+        if (level >= 2) {
+            item.result = null;
+            item.steps = (item.steps || []).map(step => ({ ...step, detail: '' }));
+            item.scope = {};
+        }
+        if (level >= 3) {
+            item.requests = (item.requests || []).map(request => ({
+                id: request.id, task: request.task, source: request.source, provider: request.provider, model: request.model,
+                phase: request.phase, status: request.status, ok: request.ok, requestChars: request.requestChars,
+                messageCount: request.messageCount, createdAt: request.createdAt, completedAt: request.completedAt,
+                durationMs: request.durationMs, errorType: request.errorType, errorMessage: request.errorMessage
+            }));
+            item.mutations = [];
+            item.steps = [];
+        }
+        return item;
+    }
+
+    function buildPersistPayload() {
+        const ids = orderedIds.slice(0, HISTORY_LIMIT);
+        let level = 0;
+        let list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, level)).filter(Boolean);
+        let text = JSON.stringify(list);
+        while (text.length > STORAGE_BUDGET_CHARS && level < 3) {
+            level += 1;
+            list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, level)).filter(Boolean);
+            text = JSON.stringify(list);
+        }
+        let dropped = 0;
+        while (text.length > STORAGE_BUDGET_CHARS && list.length > 1) {
+            const last = list[list.length - 1];
+            if (last && ['running', 'queued'].includes(last.status)) break;
+            list.pop();
+            dropped += 1;
+            text = JSON.stringify(list);
+        }
+        lastPersistStats = {
+            chars: text.length,
+            budget: STORAGE_BUDGET_CHARS,
+            records: list.length,
+            detailRecords: Math.min(DETAIL_LIMIT, list.length),
+            compacted: ids.length > DETAIL_LIMIT || level > 0 || dropped > 0,
+            compactLevel: level,
+            dropped
+        };
+        return { list, text };
+    }
+
     function persist() {
         try {
-            const list = orderedIds.slice(0, HISTORY_LIMIT).map((id, index) => {
-                const item = safeClone(records.get(id));
-                if (index >= DETAIL_LIMIT && Array.isArray(item?.mutations)) {
-                    item.mutations = item.mutations.map(mutation => ({ ...mutation, before: '', after: '', fields: [], meta: {} }));
-                }
-                if (index >= DETAIL_LIMIT && Array.isArray(item?.requests)) {
-                    item.requests = item.requests.map(request => ({
-                        ...request,
-                        bodyPreview: '',
-                        promptTrace: request.promptTrace ? {
-                            ...request.promptTrace,
-                            sections: (request.promptTrace.sections || []).map(section => ({
-                                ...section,
-                                content: '',
-                                items: (section.items || []).map(entry => ({ ...entry, content: '' }))
-                            }))
-                        } : null
-                    }));
-                }
-                return item;
-            }).filter(Boolean);
-            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+            const payload = buildPersistPayload();
+            sessionStorage.setItem(STORAGE_KEY, payload.text);
         } catch (error) {
             console.warn('[OperationRuntime] 保存操作历史失败：', error);
         }
@@ -150,6 +223,8 @@
                 orderedIds.push(item.id);
             });
             orderedIds.forEach(id => recalculateParent(id, false));
+            const persistedText = sessionStorage.getItem(STORAGE_KEY) || '[]';
+            lastPersistStats = { chars: persistedText.length, budget: STORAGE_BUDGET_CHARS, records: orderedIds.length, detailRecords: Math.min(DETAIL_LIMIT, orderedIds.length), compacted: orderedIds.length > DETAIL_LIMIT, compactLevel: 0, dropped: 0 };
         } catch (_) {}
     }
 
@@ -242,7 +317,7 @@
         const initialStatus = options.status || 'running';
         const record = {
             id: options.id || makeId('op'),
-            schemaVersion: 3,
+            schemaVersion: 4,
             type: type || 'ai.request',
             title: options.title || definition.title || '执行操作',
             category: options.category || definition.category || '其他',
@@ -327,7 +402,10 @@
                 task: request.task || '',
                 source: request.source || '',
                 provider: request.provider || '',
-                model: request.model || ''
+                model: request.model || '',
+                operationId: record.id,
+                operationType: record.type || '',
+                scope: record.scope || {}
             })
             : null;
         const entry = {
@@ -336,7 +414,7 @@
             source: request.source || '',
             provider: request.provider || '',
             model: request.model || '',
-            endpoint: request.endpoint || '',
+            endpoint: redactSensitiveText(request.endpoint || ''),
             method: request.method || 'POST',
             phase: request.phase || 'created',
             status: request.status || 0,
@@ -498,15 +576,59 @@
         return output;
     }
 
+    function normalizedFilterSet(value) {
+        if (Array.isArray(value)) return new Set(value.map(item => String(item || '').trim()).filter(Boolean));
+        const text = String(value || '').trim();
+        return new Set(text ? text.split(',').map(item => item.trim()).filter(Boolean) : []);
+    }
+
+    function operationSearchText(item) {
+        return [item?.title, item?.category, item?.type, item?.stage, item?.summary, item?.source,
+            item?.scope?.characterName, item?.scope?.chatName,
+            ...(item?.requests || []).flatMap(request => [request.task, request.source, request.provider, request.model, request.errorMessage])
+        ].filter(Boolean).join(' ').toLowerCase();
+    }
+
     function list(options = {}) {
         const limit = Math.max(1, Math.min(Number(options.limit) || HISTORY_LIMIT, HISTORY_LIMIT));
-        const status = options.status || '';
+        const statuses = normalizedFilterSet(options.status || options.statuses);
+        const types = normalizedFilterSet(options.type || options.types);
+        const categories = normalizedFilterSet(options.category || options.categories);
         const rootsOnly = !!options.rootsOnly;
+        const query = String(options.query || '').trim().toLowerCase();
+        const from = options.from ? new Date(options.from).getTime() : 0;
+        const to = options.to ? new Date(options.to).getTime() : 0;
         return orderedIds
             .map(id => records.get(id))
-            .filter(item => item && (!status || item.status === status) && (!rootsOnly || !item.parentId))
+            .filter(item => {
+                if (!item || (rootsOnly && item.parentId)) return false;
+                if (statuses.size && !statuses.has(String(item.status || ''))) return false;
+                if (types.size && !types.has(String(item.type || ''))) return false;
+                if (categories.size && !categories.has(String(item.category || ''))) return false;
+                const at = new Date(item.createdAt || 0).getTime();
+                if (from && (!Number.isFinite(at) || at < from)) return false;
+                if (to && (!Number.isFinite(at) || at > to)) return false;
+                if (query && !operationSearchText(item).includes(query)) return false;
+                return true;
+            })
             .slice(0, limit)
             .map(item => safeClone(item));
+    }
+
+    function getFacets(options = {}) {
+        const items = list({ ...options, limit: HISTORY_LIMIT });
+        const countBy = key => items.reduce((map, item) => {
+            const value = String(item?.[key] || '未分类');
+            map[value] = (map[value] || 0) + 1;
+            return map;
+        }, {});
+        return { total: items.length, statuses: countBy('status'), categories: countBy('category'), types: countBy('type') };
+    }
+
+    function getStorageStats() {
+        let chars = lastPersistStats.chars || 0;
+        try { chars = (sessionStorage.getItem(STORAGE_KEY) || '').length; } catch (_) {}
+        return safeClone({ ...lastPersistStats, chars, usageRatio: STORAGE_BUDGET_CHARS ? chars / STORAGE_BUDGET_CHARS : 0, inMemoryRecords: orderedIds.length });
     }
 
     function getActive() {
@@ -524,11 +646,21 @@
         if (!active.length) return null;
         const source = String(meta.source || '').toLowerCase();
         const task = String(meta.task || '').toLowerCase();
+        const capability = global.OVOAICapabilityCatalog?.resolve?.(meta) || null;
+        const exact = capability?.type && capability.type !== 'ai.request'
+            ? active.find(item => item.type === capability.type)
+            : null;
+        if (exact) return exact.id;
         const match = active.find(item => {
-            if (source.includes('memory') || task.includes('memory')) return item.type.startsWith('memory.');
+            if (source.includes('memory') || task.includes('memory') || task.includes('embedding') || task.includes('vector')) return item.type.startsWith('memory.');
             if (source.includes('journal') || task.includes('journal')) return item.type.startsWith('journal.');
             if (source.includes('theater') || task.includes('theater')) return item.type.startsWith('theater.');
-            if (source.includes('chat') || task.includes('chat') || task.includes('summary')) return item.type.startsWith('chat.');
+            if (source.includes('video-call') || source.includes('call-summary') || task.includes('call')) return item.type.startsWith('call.');
+            if (source.includes('avatar') || source.includes('sticker') || task.includes('recognition') || task.includes('description')) return item.type.startsWith('vision.');
+            if (task.includes('image-generation') || source.includes('generate') && source.includes('image')) return item.type.startsWith('image.generate.');
+            if (source.includes('battery') || task.includes('battery')) return item.type.startsWith('interaction.');
+            if (source.includes('block') || task.includes('block')) return item.type.startsWith('safety.');
+            if (source.includes('chat') || task.includes('chat') || task === 'summary') return item.type.startsWith('chat.');
             return false;
         });
         return match?.id || null;
@@ -552,6 +684,111 @@
 
     async function runChild(parentId, type, options = {}, executor) {
         return run(type, { ...options, parentId }, executor);
+    }
+
+    function reportSource(section, mode) {
+        const base = {
+            id: section?.id || '', type: section?.type || 'other', title: section?.title || '', state: section?.state || '',
+            sent: section?.sent !== false, evidence: section?.evidence || '', chars: Number(section?.chars) || 0,
+            count: Number(section?.count) || 0, reason: section?.reason || '', fingerprint: section?.fingerprint || ''
+        };
+        if (mode === 'detailed' || mode === 'advanced') {
+            base.content = section?.content || '';
+            base.items = (section?.items || []).map(item => reportSource(item, mode));
+        }
+        if (mode === 'advanced') base.metadata = safeClone(section?.metadata || {});
+        return safeClone(base);
+    }
+
+    function reportRequest(request, mode) {
+        const output = {
+            id: request?.id || '', task: request?.task || '', source: request?.source || '', provider: request?.provider || '',
+            model: request?.model || '', phase: request?.phase || '', ok: !!request?.ok, status: Number(request?.status) || 0,
+            requestChars: Number(request?.requestChars || request?.bodyChars) || 0, messageCount: Number(request?.messageCount) || 0,
+            durationMs: Number(request?.durationMs) || 0, errorType: request?.errorType || '', errorMessage: request?.errorMessage || '',
+            promptSummary: safeClone(request?.promptTrace?.summary || null),
+            sources: (request?.promptTrace?.sections || []).filter(section => !section?.metadata?.verificationView).map(section => reportSource(section, mode))
+        };
+        if (mode === 'advanced') {
+            output.endpoint = request?.endpoint || '';
+            output.method = request?.method || 'POST';
+            output.bodyPreview = request?.bodyPreview || '';
+            output.bodyTruncated = !!request?.bodyTruncated;
+        }
+        return safeClone(output);
+    }
+
+    function buildOperationReport(id, options = {}) {
+        const mode = ['simple', 'detailed', 'advanced'].includes(options.mode) ? options.mode : 'simple';
+        const record = records.get(id);
+        if (!record) return null;
+        const output = {
+            reportProtocol: 'ovo.operation-report.v1', generatedAt: new Date().toISOString(), mode,
+            operation: {
+                id: record.id, type: record.type, title: record.title, category: record.category, status: record.status,
+                stage: record.stage, summary: record.summary, source: record.source, parentId: record.parentId,
+                createdAt: record.createdAt, updatedAt: record.updatedAt, completedAt: record.completedAt,
+                scope: safeClone(record.scope || {}), background: safeClone(record.background || {}),
+                mutationSummary: safeClone(record.mutationSummary || emptyMutationSummary()),
+                steps: safeClone((record.steps || []).map(step => mode === 'simple' ? { title: step.title, status: step.status, at: step.at } : step)),
+                mutations: safeClone((record.mutations || []).map(mutation => mode === 'simple'
+                    ? { action: mutation.action, entityType: mutation.entityType, entityId: mutation.entityId, title: mutation.title, summary: mutation.summary, status: mutation.status, count: mutation.count, at: mutation.at }
+                    : mutation)),
+                requests: (record.requests || []).map(request => reportRequest(request, mode))
+            }
+        };
+        if (mode === 'advanced') {
+            output.operation.result = safeClone(record.result);
+            output.operation.error = safeClone(record.error);
+        } else if (record.error) {
+            output.operation.error = { name: record.error.name || 'Error', message: redactSensitiveText(record.error.message || '') };
+        }
+        if (options.includeChildren !== false) {
+            output.children = childRecords(id).map(child => buildOperationReport(child.id, { ...options, includeChildren: true })).filter(Boolean);
+        }
+        return safeClone(output);
+    }
+
+    function reportMarkdown(report, depth = 0) {
+        if (!report?.operation) return '';
+        const op = report.operation;
+        const prefix = '#'.repeat(Math.min(6, depth + 1));
+        const lines = [
+            `${prefix} ${op.title || 'AI 操作报告'}`, '',
+            `- 状态：${op.status || 'unknown'}`, `- 类型：${op.type || 'unknown'}`, `- 分类：${op.category || '其他'}`,
+            `- 开始：${op.createdAt || ''}`, `- 完成：${op.completedAt || '未完成'}`, `- 摘要：${op.summary || op.stage || '无'}`,
+            `- 模型请求：${(op.requests || []).length} 次`, `- 数据变化：${op.mutationSummary?.total || 0} 项`, ''
+        ];
+        if (op.steps?.length) lines.push(`${prefix}# 执行阶段`, '', ...op.steps.map(step => `- ${step.status || ''} · ${step.title || ''}`), '');
+        if (op.mutations?.length) lines.push(`${prefix}# 数据变化`, '', ...op.mutations.map(item => `- ${item.title || item.entityType || '变化'}：${item.summary || item.action || ''}`), '');
+        (op.requests || []).forEach((request, index) => {
+            lines.push(`${prefix}# 请求 ${index + 1}：${request.model || request.task || 'AI 请求'}`, '',
+                `- Provider：${request.provider || ''}`, `- 来源：${request.source || ''}`, `- 字符数：${request.requestChars || 0}`,
+                `- 耗时：${request.durationMs || 0}ms`, `- 结果：${request.ok ? '成功' : (request.errorMessage || '未完成')}`, '');
+            if (request.sources?.length) lines.push('来源：', ...request.sources.map(source => `- ${source.title || source.type} · ${source.state || ''} · ${source.chars || 0} 字符`), '');
+            if (request.bodyPreview) lines.push('```json', request.bodyPreview, '```', '');
+        });
+        (report.children || []).forEach(child => lines.push(reportMarkdown(child, depth + 1)));
+        return lines.join('\n');
+    }
+
+    function exportReport(id, options = {}) {
+        const report = buildOperationReport(id, options);
+        if (!report) return '';
+        return options.format === 'json' ? JSON.stringify(report, null, 2) : reportMarkdown(report);
+    }
+
+    function exportHistory(options = {}) {
+        const mode = ['simple', 'detailed', 'advanced'].includes(options.mode) ? options.mode : 'simple';
+        const items = list({ ...options, limit: Math.min(Number(options.limit) || REPORT_OPERATION_LIMIT, REPORT_OPERATION_LIMIT) });
+        const bundle = {
+            reportProtocol: 'ovo.operation-history-report.v1', generatedAt: new Date().toISOString(), mode,
+            filters: safeClone({ query: options.query || '', status: options.status || '', category: options.category || '', type: options.type || '', rootsOnly: !!options.rootsOnly }),
+            storage: getStorageStats(),
+            operations: items.map(item => buildOperationReport(item.id, { mode, includeChildren: options.includeChildren !== false })).filter(Boolean)
+        };
+        if (options.format === 'json') return JSON.stringify(bundle, null, 2);
+        return [`# AI 操作历史报告`, '', `生成时间：${bundle.generatedAt}`, `操作数量：${bundle.operations.length}`, '', ...bundle.operations.map(report => reportMarkdown(report))].join('\n');
     }
 
     function clear(options = {}) {
@@ -580,6 +817,7 @@
     }
 
     DEFAULT_OPERATIONS.forEach(register);
+    global.OVOAICapabilityCatalog?.list?.().forEach(register);
     load();
 
     global.OVOOperationRegistry = {
@@ -588,9 +826,10 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.10-R3.3',
+        VERSION: '2.12-R2',
         start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
-        complete, skip, fail, cancel, get, getChildren, list, getActive, getCurrent,
+        complete, skip, fail, cancel, get, getChildren, list, getFacets, getStorageStats, getActive, getCurrent,
+        buildOperationReport, exportReport, exportHistory, redactSensitiveText,
         resolveOperationId, recalculateParent, clear, subscribe
     };
 })(window);

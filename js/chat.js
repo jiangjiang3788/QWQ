@@ -586,6 +586,10 @@ function setupChatRoom() {
 
     document.getElementById('cancel-multi-select-btn').addEventListener('click', exitMultiSelectMode);
     document.getElementById('delete-selected-btn').addEventListener('click', deleteSelectedMessages);
+    const selectFirstMessageBtn = document.getElementById('select-first-message-btn');
+    if (selectFirstMessageBtn) selectFirstMessageBtn.addEventListener('click', selectFirstMessageForRange);
+    const selectToMessageBtn = document.getElementById('select-to-message-btn');
+    if (selectToMessageBtn) selectToMessageBtn.addEventListener('click', selectMessagesToHere);
     const favoriteSelectedBtn = document.getElementById('favorite-selected-btn');
     if (favoriteSelectedBtn) favoriteSelectedBtn.addEventListener('click', () => { if (typeof addFavoritesFromSelection === 'function') addFavoritesFromSelection(); });
     const favoriteMergeBtn = document.getElementById('favorite-merge-btn');

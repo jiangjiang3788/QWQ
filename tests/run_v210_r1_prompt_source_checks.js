@@ -34,8 +34,8 @@ vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/prompt_trace.js'), '
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context);
 
 assert(windowMock.OVOPromptTrace, 'prompt trace runtime missing');
-assert.strictEqual(windowMock.OVOPromptTrace.VERSION, '2.10-R1');
-assert(/^2\.10-R(?:[123](?:\.[123])?)$/.test(windowMock.OVOOperationRuntime.VERSION));
+assert(['2.10-R1', '2.10-R5'].includes(windowMock.OVOPromptTrace.VERSION));
+assert(/^2\.(?:10-R(?:[123456](?:\.[123])?)|11-R(?:[0124567]|3(?:\.1)?)|12-R[0-5])$/.test(windowMock.OVOOperationRuntime.VERSION));
 
 const runtime = windowMock.OVOOperationRuntime;
 const operation = runtime.start('chat.reply', { scope: { characterId: 'char-1' } });

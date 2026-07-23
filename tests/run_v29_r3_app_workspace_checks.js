@@ -21,7 +21,7 @@ assert(ui.includes("return 'settings-hub-screen'"), 'legacy More route does not 
 assert(html.includes('js/features/apps/settings_hub.js'), 'settings hub script not loaded');
 assert(html.includes('js/features/apps/api_workspace.js'), 'API workspace script not loaded');
 assert(html.includes('css/modules/app_workspace.css'), 'app workspace stylesheet not loaded');
-assert(/VERSION = '2\.10-R[123]'/.test(settings), 'settings hub compatibility version mismatch');
+assert(/VERSION = '2\.(?:10-R[123456]|11-R(?:[0124567]|3(?:\.1)?)|12-R[0-5])'/.test(settings), 'settings hub compatibility version mismatch');
 for (const title of ['个人与角色', '模型与能力', '外观与桌面', '数据与系统']) {
   assert(settings.includes(title), `missing Settings section ${title}`);
 }
@@ -31,7 +31,7 @@ for (const id of ['chat', 'memory', 'automation', 'perception']) {
 assert(api.includes("section.dataset.apiGroup = classify(section)"), 'API sections are not grouped');
 assert(css.includes('.settings-hub-list'), 'settings list style missing');
 assert(css.includes('.api-workspace-tabs'), 'API workspace tabs style missing');
-assert(/^V?2\.10-R(?:1|2(?:\.1)?|3(?:\.[123])?)$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
+assert(/^V?2\.(?:10-R(?:1|2(?:\.1)?|3(?:\.[123])?|4|5|6)|11-R(?:[0124567]|3(?:\.1)?)|12-R(?:[0-4]|5(?:\.[12])?))$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
