@@ -219,7 +219,7 @@ body.night-mode-active .memory-row-inspector,body.night-mode-active .memory-row-
     }
 }
 
-/* V2.12-R0 · 字段分组、正式标签列与跨端统一长按编辑 */
+/* V2.12-R0/R5.3 · 字段分组、正式标签列与跨端双击/双点编辑 */
 .memory-table-interaction-hint{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px;color:#7a8492;font-size:10px}
 .memory-table-interaction-hint span{display:inline-flex;align-items:center;min-height:21px;padding:2px 6px;border:1px solid #e3e7ed;border-radius:5px;background:#fafbfc}
 .memory-field-group-section+.memory-field-group-section .memory-field-group-heading th{border-top:8px solid #fff}
@@ -235,10 +235,7 @@ body.night-mode-active .memory-row-inspector,body.night-mode-active .memory-row-
 .memory-v2-data-row[data-memory-edit-target]{cursor:default;outline:0}
 #memory-table-screen .memory-v2-data-row.memory-flat-selected-row>td{background:#f3f7ff}
 #memory-table-screen .memory-v2-data-row.memory-flat-selected-row>td:first-child{background:#edf3ff}
-#memory-table-screen [data-memory-edit-target].is-memory-longpress-pending>th,
-#memory-table-screen [data-memory-edit-target].is-memory-longpress-pending>td{box-shadow:inset 0 0 0 2px rgba(49,95,210,.24);user-select:none}
-#memory-table-screen [data-memory-edit-target].is-memory-longpress-fired>th,
-#memory-table-screen [data-memory-edit-target].is-memory-longpress-fired>td{animation:memory-edit-pulse .28s ease}
+
 @keyframes memory-edit-pulse{0%{background:#e9f0ff}100%{background:inherit}}
 .memory-flat-field-action,.memory-flat-field-group{display:none!important}
 #memory-table-screen .memory-v2-rows th.memory-table-column-group{min-width:0;padding:5px 8px;background:#e9f0ea;color:#526174;text-align:center;font-size:9px;font-weight:700;letter-spacing:.03em}
@@ -337,4 +334,15 @@ body.night-mode-active #memory-table-screen td.memory-cell-updated::after{
 }
 @media(max-width:600px){
   #memory-table-screen td.memory-cell-updated::after{top:4px;right:4px;width:6px;height:6px}
+}
+
+
+/* V2.12-R5.3 · KV 字段名列按当前表最长名称自适应；手机保留正文空间 */
+#memory-table-screen .memory-v2-kv .memory-kv-label-col{width:var(--memory-kv-label-width,82px)}
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th{width:var(--memory-kv-label-width,82px);min-width:var(--memory-kv-label-width,82px);max-width:var(--memory-kv-label-width,82px);overflow-wrap:anywhere;word-break:break-word}
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>td{width:auto}
+#memory-table-screen .memory-v2-kv tr[data-memory-edit-target]{cursor:default}
+@media(max-width:600px){
+  #memory-table-screen .memory-v2-kv .memory-kv-label-col{width:var(--memory-kv-label-width-mobile,56px)}
+  #memory-table-screen .memory-v2-kv tr[data-memory-edit-target]>th{width:var(--memory-kv-label-width-mobile,56px);min-width:var(--memory-kv-label-width-mobile,56px);max-width:var(--memory-kv-label-width-mobile,56px);padding-left:6px;padding-right:5px;font-size:11px;line-height:1.35}
 }

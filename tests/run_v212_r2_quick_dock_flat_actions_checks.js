@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const dock = read('js/modules/floating_ball.js');
 const barSource = read('js/modules/quick_dock_action_bar.js');
 const css = read('css/modules/quick_dock.css');

@@ -12,6 +12,7 @@
     const TablePresenter = Kernel.require('tablePresenter');
     const TableReconciler = Kernel.require('tableReconciler');
     const TableGrouping = Kernel.require('tableGrouping');
+    const FieldWidth = Kernel.require('fieldWidth');
     const TableGesture = Kernel.require('tableGesture');
     const UpdateActivity = Kernel.get('updateActivity') || Object.freeze({ isCellUpdated: () => false, cellAttributes: () => '' });
 
@@ -35,7 +36,7 @@
         const classes = [editing ? 'memory-flat-editing-row' : '', focused ? 'memory-flat-selected-row' : ''].filter(Boolean).join(' ');
         const updated = UpdateActivity.isCellUpdated(chat, template.id, table.id, field.id);
         const valueCellClass = [editing ? 'memory-flat-cell-editing' : '', updated ? 'memory-cell-updated' : ''].filter(Boolean).join(' ');
-        return `<tr data-memory-important="${field.important !== false}" class="${classes}" data-memory-edit-target data-memory-edit-kind="field" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-field-id="${Core.escapeAttribute(field.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`${field.key}，单击选中，长按编辑`)}">
+        return `<tr data-memory-important="${field.important !== false}" class="${classes}" data-memory-edit-target data-memory-edit-kind="field" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-field-id="${Core.escapeAttribute(field.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`${field.key}，双击编辑`)}">
             <th><div class="memory-flat-field-label"><span>${Core.escapeHtml(field.key)}</span></div>
             <div class="memory-v2-json-meta memory-v2-json-only">id=${Core.escapeHtml(field.id)} · type=${Core.escapeHtml(field.type)} · important=${field.important !== false}<br>${Core.escapeHtml(field.aiHint || '')}</div></th>
             <td class="${valueCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, field.id)}>${editing ? `<div class="memory-v2-inline-editor">${helpers.renderFieldEditor(template.id, table.id, field, value, locked)}</div>` : TableView.renderValue(field, value, { unclamped: true })}</td>
@@ -53,7 +54,10 @@
     function renderKeyValueSheet(config) {
         const model = TablePresenter.keyValueModel(config);
         const groupsHtml = model.groups.map(group => renderKeyValueGroup(model, group)).join('');
-        return `<table class="memory-v2-kv">${groupsHtml || '<tbody><tr><td class="memory-v2-empty">当前模式下没有匹配字段。</td></tr></tbody>'}</table>`;
+        const visibleFields = model.groups.flatMap(group => group.fields || []);
+        const labelWidth = FieldWidth.keyValueLabels(model.table, visibleFields);
+        const widthStyle = `--memory-kv-label-width:${labelWidth.desktop}px;--memory-kv-label-width-mobile:${labelWidth.mobile}px`;
+        return `<table class="memory-v2-kv" style="${widthStyle}" data-memory-kv-label-width-desktop="${labelWidth.desktop}" data-memory-kv-label-width-mobile="${labelWidth.mobile}" data-memory-kv-label-max-units="${labelWidth.longestUnits}"><colgroup><col class="memory-kv-label-col"><col class="memory-kv-value-col"></colgroup>${groupsHtml || '<tbody><tr><td colspan="2" class="memory-v2-empty">当前模式下没有匹配字段。</td></tr></tbody>'}</table>`;
     }
 
     function renderReviewActions(model, row) {
@@ -79,7 +83,7 @@
         const classes = ['memory-v2-data-row', editing ? 'memory-flat-editing-row' : '', focused ? 'memory-flat-selected-row' : ''].filter(Boolean).join(' ');
         const tagsUpdated = UpdateActivity.isCellUpdated(chat, template.id, table.id, '__tags__', row.id);
         const tagCellClass = ['memory-flat-tags-cell', tagsUpdated ? 'memory-cell-updated' : ''].filter(Boolean).join(' ');
-        return `<tr class="${classes}" data-memory-row-id="${Core.escapeAttribute(row.id)}" data-memory-edit-target data-memory-edit-kind="row" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-row-id="${Core.escapeAttribute(row.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`第 ${rowIndex + 1} 条记录，单击选中，长按编辑`)}"><td><div class="memory-flat-row-index"><span>${rowIndex + 1}</span>${TableView.renderRowCommand({ templateId: template.id, tableId: table.id, rowId: row.id })}</div>${TableView.renderStatusMeta(row)}${renderReviewActions(model, row)}<div class="memory-v2-json-meta memory-v2-json-only">${Core.escapeHtml(row.id)}</div></td><td class="${tagCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, '__tags__', row.id)}>${editing ? TableView.renderTagEditor(row) : TableView.renderTagField(row)}</td>${cells}</tr>`;
+        return `<tr class="${classes}" data-memory-row-id="${Core.escapeAttribute(row.id)}" data-memory-edit-target data-memory-edit-kind="row" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-row-id="${Core.escapeAttribute(row.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`第 ${rowIndex + 1} 条记录，双击编辑`)}"><td><div class="memory-flat-row-index"><span>${rowIndex + 1}</span>${TableView.renderRowCommand({ templateId: template.id, tableId: table.id, rowId: row.id })}</div>${TableView.renderStatusMeta(row)}${renderReviewActions(model, row)}<div class="memory-v2-json-meta memory-v2-json-only">${Core.escapeHtml(row.id)}</div></td><td class="${tagCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, '__tags__', row.id)}>${editing ? TableView.renderTagEditor(row) : TableView.renderTagField(row)}</td>${cells}</tr>`;
     }
 
     function renderSpacer(height, colspan, position) {

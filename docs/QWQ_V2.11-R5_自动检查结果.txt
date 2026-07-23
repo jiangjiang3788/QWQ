@@ -1,0 +1,123 @@
+QWQ V2.11-R5 自动检查结果
+日期：2026-07-22
+
+VERSION.txt: 2.11-R5
+
+STATIC CHECKS: PASS
+生产 JavaScript 语法检查: PASS (101/101)
+
+--- run_backup_encoding_checks
+BACKUP ENCODING CHECKS: PASS
+--- run_backup_service_checks
+BACKUP CHECKS: PASS (9)
+--- run_v210_r0_operation_center_checks
+V2.10-R0 OPERATION CENTER CHECKS: PASS
+--- run_v210_r1_prompt_source_checks
+V2.10-R1 PROMPT SOURCE CHECKS: PASS
+--- run_v210_r21_hotfix_checks
+V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS
+--- run_v210_r2_background_operation_checks
+V2.10-R2 BACKGROUND OPERATION CHECKS: PASS
+--- run_v210_r31_quick_hotfix_checks
+V2.10-R3.1 QUICK HOTFIX CHECKS: PASS
+--- run_v210_r32_archive_injection_checks
+V2.10-R3.2 ARCHIVE INJECTION CHECKS: PASS
+--- run_v210_r33_stability_memory_checks
+V2.10-R3.3 STABILITY + MEMORY PAYLOAD CHECKS: PASS
+--- run_v210_r3_mutation_receipt_checks
+V2.10-R3 MUTATION RECEIPT CHECKS: PASS
+--- run_v210_r4_ai_capability_coverage_checks
+V2.10-R4 AI CAPABILITY COVERAGE CHECKS: PASS
+--- run_v210_r5_prompt_protocol_checks
+V2.10-R5 PROMPT PROTOCOL + WORKBENCH CHECKS: PASS
+--- run_v210_r6_operation_productization_checks
+V2.10-R6 OPERATION CENTER PRODUCTIZATION CHECKS: PASS
+--- run_v211_r0_memory_flat_table_checks
+V2.11-R0 MEMORY FLAT TABLE CHECKS: PASS
+--- run_v211_r1_memory_tag_context_checks
+V2.11-R1 MEMORY TAG + RELATED CONTEXT CHECKS: PASS
+--- run_v211_r2_memory_relation_tag_checks
+V2.11-R2 MEMORY RELATION + TAG MANAGEMENT CHECKS: PASS
+--- run_v211_r31_memory_inspector_rework_checks
+V2.11-R3.1 MEMORY INSPECTOR REWORK CHECKS: PASS
+--- run_v211_r3_memory_merge_vocabulary_checks
+V2.11-R3.1 MEMORY MERGE REVIEW + TAG VOCABULARY CHECKS: PASS
+--- run_v211_r4_memory_governance_checks
+V2.11-R4 MEMORY GOVERNANCE + TABLE FILTER CHECKS: PASS
+--- run_v211_r5_memory_virtualization_checks
+V2.11-R5 MEMORY VIRTUALIZATION + LAZY ROW COMMAND CHECKS: PASS
+--- run_v21_review_checks
+V2.1 REVIEW CHECKS: PASS
+--- run_v22_retrieval_checks
+V2.2 RETRIEVAL CHECKS: PASS
+--- run_v23_sidecar_checks
+V2.3 SIDECAR CHECKS: PASS
+--- run_v24_effects_checks
+V2.4 EFFECT ROUTING CHECKS: PASS
+--- run_v25_lifecycle_checks
+V2.5 LIFECYCLE CHECKS: PASS
+--- run_v26_task_checks
+V2.6 TASK QUEUE CHECKS: PASS
+--- run_v27_feedback_checks
+V2.7 FEEDBACK CHECKS: PASS
+--- run_v28_quality_checks
+V2.8 QUALITY CHECKS: PASS
+--- run_v29_r0_app_registry_checks
+V2.9-R0 APP REGISTRY CHECKS: PASS
+--- run_v29_r10_memory_search_checks
+V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+--- run_v29_r11_memory_workspace_state_checks
+V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+--- run_v29_r1_memory_kernel_checks
+V2.9-R1 MEMORY KERNEL CHECKS: PASS
+--- run_v29_r2_memory_workspace_checks
+V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+--- run_v29_r3_app_workspace_checks
+V2.9-R3 APP WORKSPACE CHECKS: PASS
+--- run_v29_r4_settings_components_checks
+V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+--- run_v29_r5_character_settings_checks
+V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+--- run_v29_r6_experience_memory_checks
+V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+--- run_v29_r7_startup_checks
+V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+--- run_v29_r8_startup_contract_checks
+V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+--- run_v29_r9_navigation_launcher_checks
+V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS
+NODE_GROUPS=40
+
+Node 测试组: PASS (40/40)
+memory_table.js 行数: 4393（R4 为 4416，减少 23 行）
+新增独立模块: table_viewport / row_command_menu / table_interaction
+大表启用阈值: 80 行
+固定阅读行高: 88px
+缓冲行: 上下各 5 行
+
+真实数据核验: PASS
+- 角色: 阿沉
+- 聊天消息: 19133
+- 记忆模板: 8 张表
+- 稳定长期特征: 179 行
+- R4 当前 DOM 数据行: 179
+- R5 桌面当前 DOM 数据行: 18
+- R5 手机当前 DOM 数据行: 17
+- R4 常驻行操作 option: 1790
+- R5 常驻行操作 option: 0
+- R4 页面 DOM 节点: 5913
+- R5 桌面页面 DOM 节点: 499
+- DOM 降幅: 91.6%
+- 滚动后目标编辑行仍可见: 是
+- 编辑时窗口数据行: 18
+
+界面核验: PASS
+- 桌面 documentWidth / viewportWidth: 1440 / 1440
+- 手机 documentWidth / viewportWidth: 390 / 390
+- 手机页面级横向溢出: 否
+- 手机操作菜单: 1 个共享菜单 / 9 个按需按钮
+
+明确边界:
+- JSON 完整结构模式不启用虚拟化。
+- 审核层表格不启用固定行高虚拟化。
+- 80 行以下小表继续完整渲染。

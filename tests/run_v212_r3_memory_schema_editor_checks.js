@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
 const workspace = read('js/features/memory/table_workspace.js');
@@ -63,13 +63,14 @@ const core = {
 const Kernel = { core, get: name => name === 'policy' ? policy : registry.get(name), require: name => { if (name === 'domain') return domain; if (name === 'policy') return policy; const value = registry.get(name); if (!value) throw new Error(`missing ${name}`); return value; }, register: (name, value) => registry.set(name, value) };
 const context = { window: { OvoMemoryKernel: Kernel }, console, JSON, Math, Number, String, Array, Object, Map, Set };
 vm.createContext(context);
+vm.runInContext(read('js/features/memory/field_width.js'), context);
 vm.runInContext(read('js/features/memory/schema_model.js'), context);
 vm.runInContext(read('js/features/memory/schema_editor.js'), context);
 const model = registry.get('schemaModel');
 const editor = registry.get('schemaEditor');
 assert(model && editor);
 assert.strictEqual(model.VERSION, '2.12-R3');
-assert.strictEqual(editor.VERSION, '2.12-R3');
+assert(['2.12-R3', '2.12-R5.3'].includes(editor.VERSION));
 const draft = model.prepare(domain.createStarterTemplate());
 assert.strictEqual(JSON.stringify(model.summarize(draft)), JSON.stringify({ tableCount: 1, fieldCount: 2, groupCount: 1 }));
 assert.strictEqual(model.fieldGroups(draft.tables[0])[0].name, '核心关系');

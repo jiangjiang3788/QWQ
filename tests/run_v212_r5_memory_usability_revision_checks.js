@@ -5,8 +5,9 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
+const fieldWidth = read('js/features/memory/field_width.js');
 const schema = read('js/features/memory/schema_editor.js');
 const schemaCss = read('css/modules/memory_schema_editor.css');
 const tableView = read('js/features/memory/table_view.js');
@@ -33,8 +34,8 @@ assert(schemaCss.includes('.schema-col-name'));
 assert(schemaCss.includes('var(--schema-field-name-width,88px)'));
 assert(schemaCss.includes('var(--schema-field-name-width-mobile,64px)'));
 assert(schema.includes('fieldNameColumnWidth(table)'));
-assert(schema.includes('Math.min(112'));
-assert(schema.includes('Math.min(74'));
+assert(fieldWidth.includes('max: 112'));
+assert(fieldWidth.includes('max: 74'));
 assert(schemaCss.includes('table-layout:fixed'));
 
 // Tags are editable in the same row editing flow.

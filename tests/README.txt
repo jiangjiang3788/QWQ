@@ -99,7 +99,7 @@ V2.11-R7 表格缓存、合并持久化与撤销：
 
 V2.12-R0 记忆表格交互统一：
 - node tests/run_v212_r0_memory_interaction_unification_checks.js
-- 检查字段一级分组、标签正式列、长按/Enter 编辑、无常驻编辑按钮与行菜单收敛。
+- 检查字段一级分组、标签正式列、双击/双点编辑、无常驻编辑按钮与行菜单收敛。
 
 V2.12-R1 记忆引用与作用：
 - node tests/run_v212_r1_memory_retrieval_audit_checks.js
@@ -126,3 +126,8 @@ V2.12-R5.2 字段名称列自适应：
 - node tests/run_v212_r52_adaptive_schema_field_width_checks.js
 - 按当前表最长字段名称估算显示宽度；桌面 68–112px，手机 54–74px。
 - 修改字段名称时实时重算；超长名称通过输入框 title 与省略显示保留完整内容。
+
+V2.12-R5.3
+- 检查 KV 字段名列按最长显示名称动态计算；桌面/手机使用紧凑上限。
+- 检查所有记忆表使用双击或手机双点进入编辑，不再以单击选中和 Enter 作为主交互。
+- 检查 Git 快速恢复使用 raw 下载、候选逐个校验，并跳过 404/旧格式/损坏备份。

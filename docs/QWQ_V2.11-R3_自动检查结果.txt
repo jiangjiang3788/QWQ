@@ -1,0 +1,93 @@
+QWQ V2.11-R3 自动检查结果
+
+VERSION.txt: 2.11-R3
+
+生产 JavaScript 语法检查: PASS (93)
+STATIC CHECKS: PASS
+--- run_backup_encoding_checks.js ---
+BACKUP ENCODING CHECKS: PASS
+--- run_backup_service_checks.js ---
+BACKUP CHECKS: PASS (9)
+--- run_v210_r0_operation_center_checks.js ---
+V2.10-R0 OPERATION CENTER CHECKS: PASS
+--- run_v210_r1_prompt_source_checks.js ---
+V2.10-R1 PROMPT SOURCE CHECKS: PASS
+--- run_v210_r21_hotfix_checks.js ---
+V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS
+--- run_v210_r2_background_operation_checks.js ---
+V2.10-R2 BACKGROUND OPERATION CHECKS: PASS
+--- run_v210_r31_quick_hotfix_checks.js ---
+V2.10-R3.1 QUICK HOTFIX CHECKS: PASS
+--- run_v210_r32_archive_injection_checks.js ---
+V2.10-R3.2 ARCHIVE INJECTION CHECKS: PASS
+--- run_v210_r33_stability_memory_checks.js ---
+V2.10-R3.3 STABILITY + MEMORY PAYLOAD CHECKS: PASS
+--- run_v210_r3_mutation_receipt_checks.js ---
+V2.10-R3 MUTATION RECEIPT CHECKS: PASS
+--- run_v210_r4_ai_capability_coverage_checks.js ---
+V2.10-R4 AI CAPABILITY COVERAGE CHECKS: PASS
+--- run_v210_r5_prompt_protocol_checks.js ---
+V2.10-R5 PROMPT PROTOCOL + WORKBENCH CHECKS: PASS
+--- run_v210_r6_operation_productization_checks.js ---
+V2.10-R6 OPERATION CENTER PRODUCTIZATION CHECKS: PASS
+--- run_v211_r0_memory_flat_table_checks.js ---
+V2.11-R0 MEMORY FLAT TABLE CHECKS: PASS
+--- run_v211_r1_memory_tag_context_checks.js ---
+V2.11-R1 MEMORY TAG + RELATED CONTEXT CHECKS: PASS
+--- run_v211_r2_memory_relation_tag_checks.js ---
+V2.11-R2 MEMORY RELATION + TAG MANAGEMENT CHECKS: PASS
+--- run_v211_r3_memory_merge_vocabulary_checks.js ---
+V2.11-R3 MEMORY MERGE REVIEW + TAG VOCABULARY CHECKS: PASS
+--- run_v21_review_checks.js ---
+V2.1 REVIEW CHECKS: PASS
+--- run_v22_retrieval_checks.js ---
+V2.2 RETRIEVAL CHECKS: PASS
+--- run_v23_sidecar_checks.js ---
+V2.3 SIDECAR CHECKS: PASS
+--- run_v24_effects_checks.js ---
+V2.4 EFFECT ROUTING CHECKS: PASS
+--- run_v25_lifecycle_checks.js ---
+V2.5 LIFECYCLE CHECKS: PASS
+--- run_v26_task_checks.js ---
+V2.6 TASK QUEUE CHECKS: PASS
+--- run_v27_feedback_checks.js ---
+V2.7 FEEDBACK CHECKS: PASS
+--- run_v28_quality_checks.js ---
+V2.8 QUALITY CHECKS: PASS
+--- run_v29_r0_app_registry_checks.js ---
+V2.9-R0 APP REGISTRY CHECKS: PASS
+--- run_v29_r10_memory_search_checks.js ---
+V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+--- run_v29_r11_memory_workspace_state_checks.js ---
+V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+--- run_v29_r1_memory_kernel_checks.js ---
+V2.9-R1 MEMORY KERNEL CHECKS: PASS
+--- run_v29_r2_memory_workspace_checks.js ---
+V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+--- run_v29_r3_app_workspace_checks.js ---
+V2.9-R3 APP WORKSPACE CHECKS: PASS
+--- run_v29_r4_settings_components_checks.js ---
+V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+--- run_v29_r5_character_settings_checks.js ---
+V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+--- run_v29_r6_experience_memory_checks.js ---
+V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+--- run_v29_r7_startup_checks.js ---
+V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+--- run_v29_r8_startup_contract_checks.js ---
+V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+--- run_v29_r9_navigation_launcher_checks.js ---
+V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS
+
+Node 测试组: PASS (37/37)
+memory_table.js 行数: 4518
+操作中心 memory.merge.review 登记: 1
+真实数据核验: PASS
+- 角色: 阿沉
+- 聊天消息: 19133
+- 行式记忆: 209
+- 最高相关样本: 63.8%，进入需要核对
+- 技术字段未进入合并差异
+- 合并不覆盖非空正文
+- 被合并记录状态: superseded
+- 合并审计不保存完整正文

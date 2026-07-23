@@ -46,6 +46,7 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/modules/memory_table_quality.js',
   'js/features/memory/api_adapter.js',
   'js/features/memory/domain.js',
+  'js/features/memory/field_width.js',
   'js/features/memory/schema_model.js',
   'js/features/memory/schema_editor.js',
   'js/features/memory/workspace.js',
@@ -92,7 +93,7 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/features/memory/maintenance.js'
 ].forEach(load);
 
-const expected = ['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'retrievalAudit', 'sidecar', 'tasks', 'quality', 'api', 'domain', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'tableEditor', 'tableEditController', 'updateActivity', 'tableWorkspace'];
+const expected = ['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'retrievalAudit', 'sidecar', 'tasks', 'quality', 'api', 'domain', 'fieldWidth', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'tableEditor', 'tableEditController', 'updateActivity', 'tableWorkspace'];
 expected.forEach(name => assert(OvoMemoryKernel.has(name), `module not registered: ${name}`));
 ['memoryPlatformDomain', 'memoryFoundationDomain', 'memorySchemaDomain', 'memoryGovernanceDomain', 'memoryRetrievalDomain', 'memoryUpdateDomain', 'memoryTablesDomain', 'memoryArchitecture', 'memoryMaintenance']
   .forEach(name => assert(OvoMemoryKernel.has(name), `domain facade not registered: ${name}`));

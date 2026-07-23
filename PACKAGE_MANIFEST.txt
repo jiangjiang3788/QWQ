@@ -1,5 +1,6 @@
 NETLIFY_DEPLOY.txt
-QWQ_V2.12-R5.2_自动检查结果.txt
+QWQ_V2.12-R5.3_发布包复验结果.txt
+QWQ_V2.12-R5.3_自动检查结果.txt
 VERSION.txt
 _headers
 _redirects
@@ -172,6 +173,10 @@ docs/v212_r52/V2.12-R5.2_字段名称列自适应_mobile.png
 docs/v212_r52/V2.12-R5.2_字段名称列自适应_自包含.html
 docs/v212_r52/V2.12-R5.2_界面测量结果.json
 docs/v212_r52/章鱼机_V2.12-R5.2_字段名称列自适应快速修复说明.md
+docs/v212_r53/QWQ_V2.12-R5.3_发布包复验结果.txt
+docs/v212_r53/QWQ_V2.12-R5.3_浏览器交互复验结果.json
+docs/v212_r53/QWQ_V2.12-R5.3_自动检查结果.txt
+docs/v212_r53/章鱼机_V2.12-R5.3_KV列与双击编辑快速修复说明.md
 docs/章鱼机_V2.10-R0_AI操作中心MVP实施说明.md
 docs/章鱼机_V2.10-R1_AI操作来源视图实施说明.md
 docs/章鱼机_V2.10-R2.1_紧急修复说明.md
@@ -220,6 +225,7 @@ js/features/memory/domains/schema.js
 js/features/memory/domains/tables.js
 js/features/memory/domains/update.js
 js/features/memory/facade.js
+js/features/memory/field_width.js
 js/features/memory/governance_controller.js
 js/features/memory/governance_queue.js
 js/features/memory/kernel.js
@@ -360,6 +366,8 @@ tests/run_v212_r3_memory_schema_editor_checks.js
 tests/run_v212_r4_architecture_maintenance_checks.js
 tests/run_v212_r51_cell_update_highlight_checks.js
 tests/run_v212_r52_adaptive_schema_field_width_checks.js
+tests/run_v212_r53_git_restore_runtime_checks.js
+tests/run_v212_r53_kv_double_edit_restore_checks.js
 tests/run_v212_r5_memory_usability_revision_checks.js
 tests/run_v21_review_checks.js
 tests/run_v22_retrieval_checks.js
@@ -393,4 +401,4 @@ vendor/html2canvas.min.js
 vendor/jszip.min.js
 vendor/mammoth.browser.min.js
 vendor/purify.min.js
-章鱼机_V2.12-R5.2_字段名称列自适应快速修复说明.md
+章鱼机_V2.12-R5.3_KV列与双击编辑快速修复说明.md

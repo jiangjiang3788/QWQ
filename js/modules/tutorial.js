@@ -2421,7 +2421,7 @@ const GitHubMgr = {
     _CHUNKS_DIR: 'backup_chunks',
 
     _uploadOneFile: async (repoPath, base64ContentForApi, message, existingSha) => {
-        const url = `https://api.github.com/repos/${GitHubMgr.config.repo}/contents/${encodeURIComponent(repoPath)}`;
+        const url = `https://api.github.com/repos/${GitHubMgr.config.repo}/contents/${GitHubMgr._encodeRepoPath(repoPath)}`;
         const body = { message: message || 'Backup', content: base64ContentForApi };
         if (existingSha) body.sha = existingSha;
         const res = await fetch(url, {
@@ -2493,7 +2493,7 @@ const GitHubMgr = {
                 path = customName.trim();
                 if (!path.endsWith('.ee')) path += '.ee';
                 try {
-                    const checkUrl = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}`;
+                    const checkUrl = `https://api.github.com/repos/${repo}/contents/${GitHubMgr._encodeRepoPath(path)}`;
                     const checkRes = await fetch(checkUrl, {
                         headers: { 'Authorization': `token ${token}` }
                     });
@@ -2563,36 +2563,109 @@ const GitHubMgr = {
         } catch(e) { alert('网络错误: ' + e.message); }
     },
     
-    quickRestoreLatest: async () => {
-        if(!GitHubMgr.config.token || !GitHubMgr.config.repo) throw new Error('请先配置 Token 和仓库路径');
-        const token = GitHubMgr.config.token;
-        const repo = GitHubMgr.config.repo;
-        const baseUrl = `https://api.github.com/repos/${repo}/contents`;
-        const auth = { 'Authorization': `token ${token}` };
-        showToast('正在连接 GitHub…');
-        let targetSingle = null, targetManifest = null, restoreChunked = false;
-        const customName = GitHubMgr.config.fileName;
-        if (customName && customName.trim()) {
-            let path=customName.trim(); if(!path.endsWith('.ee')) path+='.ee'; targetSingle={name:path,ts:0};
-        } else {
-            const rootRes=await fetch(`${baseUrl}/`,{headers:auth}); if(!rootRes.ok) throw new Error('获取备份列表失败: '+rootRes.status);
-            const files=await rootRes.json(); const singles=files.filter(f=>f.name.startsWith('AutoBackup_')&&f.name.endsWith('.ee'));
-            singles.sort((a,b)=>(parseInt(b.name.match(/_(\d+)\.ee$/)?.[1]||0)-parseInt(a.name.match(/_(\d+)\.ee$/)?.[1]||0)));
-            if(singles[0]) targetSingle={name:singles[0].name,ts:parseInt(singles[0].name.match(/_(\d+)\.ee$/)?.[1]||0)};
-            const cr=await fetch(`${baseUrl}/${encodeURIComponent(GitHubMgr._CHUNKS_DIR)}`,{headers:auth});
-            if(cr.ok){const cf=await cr.json(); const ms=cf.filter(f=>f.name.startsWith('BackupChunk_')&&f.name.endsWith('_manifest.json')).sort((a,b)=>(parseInt(b.name.match(/BackupChunk_(\d+)_/)?.[1]||0)-parseInt(a.name.match(/BackupChunk_(\d+)_/)?.[1]||0))); if(ms[0]) targetManifest={name:ms[0].name,ts:parseInt(ms[0].name.match(/BackupChunk_(\d+)_/)?.[1]||0)};}
-            restoreChunked=!!targetManifest && (!targetSingle || targetManifest.ts>targetSingle.ts);
+    _encodeRepoPath: path => String(path || '').split('/').filter(Boolean).map(encodeURIComponent).join('/'),
+
+    _fetchGitRaw: async (baseUrl, path, auth) => {
+        const encoded = GitHubMgr._encodeRepoPath(path);
+        const response = await fetch(`${baseUrl}/${encoded}`, {
+            headers: { ...auth, 'Accept': 'application/vnd.github.v3.raw' }
+        });
+        if (!response.ok) {
+            const error = new Error(`下载 ${path} 失败 (${response.status})`);
+            error.status = response.status;
+            throw error;
         }
-        let compressedBlob;
-        if(restoreChunked){
-            const mr=await fetch(`${baseUrl}/${encodeURIComponent(GitHubMgr._CHUNKS_DIR+'/'+targetManifest.name)}`,{headers:auth}); if(!mr.ok) throw new Error('下载分片清单失败');
-            const md=await mr.json(); const manifest=JSON.parse(atob(md.content.replace(/\s/g,''))); let base64='';
-            for(let i=0;i<manifest.chunkPaths.length;i++){showToast(`下载分片 ${i+1}/${manifest.chunkPaths.length}`); const cp=`${GitHubMgr._CHUNKS_DIR}/${manifest.chunkPaths[i]}`; const rr=await fetch(`${baseUrl}/${encodeURIComponent(cp)}`,{headers:auth}); if(!rr.ok) throw new Error('下载分片失败'); const rd=await rr.json(); base64+=atob(rd.content.replace(/\s/g,''));}
-            const bin=atob(base64); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); compressedBlob=new Blob([bytes]);
-        } else if(targetSingle){
-            const rr=await fetch(`${baseUrl}/${encodeURIComponent(targetSingle.name)}`,{headers:auth}); if(!rr.ok) throw new Error('下载备份失败'); const rd=await rr.json(); const bin=atob(rd.content.replace(/\s/g,'')); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); compressedBlob=new Blob([bytes]);
-        } else throw new Error('仓库中没有可恢复的备份');
-        const result = await BackupService.restoreBackupBlob(compressedBlob); showToast('GitHub 恢复成功，正在刷新…'); setTimeout(()=>location.reload(),1200); return result;
+        return response;
+    },
+
+    _downloadRestoreCandidate: async (candidate, baseUrl, auth) => {
+        if (candidate.kind === 'single') {
+            showToast('正在下载: ' + candidate.path);
+            const response = await GitHubMgr._fetchGitRaw(baseUrl, candidate.path, auth);
+            return response.blob();
+        }
+        showToast('正在下载分片清单…');
+        const manifestResponse = await GitHubMgr._fetchGitRaw(baseUrl, candidate.path, auth);
+        const manifest = JSON.parse(await manifestResponse.text());
+        const paths = Array.isArray(manifest.chunkPaths) ? manifest.chunkPaths : [];
+        if (!paths.length) throw new Error('分片清单没有可用分片');
+        const chunks = [];
+        for (let index = 0; index < paths.length; index++) {
+            showToast(`正在下载分片 ${index + 1}/${paths.length}…`);
+            const chunkPath = `${GitHubMgr._CHUNKS_DIR}/${paths[index]}`;
+            const response = await GitHubMgr._fetchGitRaw(baseUrl, chunkPath, auth);
+            chunks.push((await response.text()).trim());
+        }
+        const base64 = chunks.join('');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+        return new Blob([bytes], { type: 'application/octet-stream' });
+    },
+
+    _listRestoreCandidates: async (baseUrl, auth) => {
+        const customName = String(GitHubMgr.config.fileName || '').trim();
+        if (customName) {
+            const path = customName.endsWith('.ee') ? customName : `${customName}.ee`;
+            return [{ kind: 'single', path, timestamp: Number.MAX_SAFE_INTEGER, label: path }];
+        }
+        const rootResponse = await fetch(`${baseUrl}/`, { headers: auth });
+        if (!rootResponse.ok) {
+            if (rootResponse.status === 404) throw new Error('仓库不存在、路径错误或 Token 无权访问 (404)');
+            if (rootResponse.status === 401) throw new Error('Token 无效或无权限 (401)');
+            throw new Error(`获取备份列表失败 (${rootResponse.status})`);
+        }
+        const rootFiles = await rootResponse.json();
+        const candidates = (Array.isArray(rootFiles) ? rootFiles : [])
+            .filter(file => file?.type !== 'dir' && /^AutoBackup_.*\.ee$/i.test(file?.name || ''))
+            .map(file => ({
+                kind: 'single',
+                path: file.path || file.name,
+                timestamp: Number(file.name.match(/_(\d+)\.ee$/)?.[1] || 0),
+                label: file.name
+            }));
+        const chunksResponse = await fetch(`${baseUrl}/${GitHubMgr._encodeRepoPath(GitHubMgr._CHUNKS_DIR)}`, { headers: auth });
+        if (chunksResponse.ok) {
+            const chunkFiles = await chunksResponse.json();
+            (Array.isArray(chunkFiles) ? chunkFiles : [])
+                .filter(file => /^BackupChunk_\d+_manifest\.json$/i.test(file?.name || ''))
+                .forEach(file => candidates.push({
+                    kind: 'chunked',
+                    path: file.path || `${GitHubMgr._CHUNKS_DIR}/${file.name}`,
+                    timestamp: Number(file.name.match(/BackupChunk_(\d+)_/)?.[1] || 0),
+                    label: file.name
+                }));
+        } else if (chunksResponse.status !== 404) {
+            console.warn('[GitHub Restore] 无法读取分片目录:', chunksResponse.status);
+        }
+        return candidates.sort((a, b) => b.timestamp - a.timestamp);
+    },
+
+    quickRestoreLatest: async () => {
+        if (!GitHubMgr.config.token || !GitHubMgr.config.repo) throw new Error('请先配置 Token 和仓库路径');
+        const baseUrl = `https://api.github.com/repos/${GitHubMgr.config.repo}/contents`;
+        const auth = { 'Authorization': `token ${GitHubMgr.config.token}` };
+        showToast('正在连接 GitHub…');
+        const candidates = await GitHubMgr._listRestoreCandidates(baseUrl, auth);
+        if (!candidates.length) throw new Error('仓库中没有可恢复的当前版完整备份');
+
+        const skipped = [];
+        for (const candidate of candidates) {
+            try {
+                const blob = await GitHubMgr._downloadRestoreCandidate(candidate, baseUrl, auth);
+                showToast(`正在校验 ${candidate.label}…`);
+                await BackupService.parseAndValidate(blob);
+                const result = await BackupService.restoreBackupBlob(blob);
+                showToast('GitHub 恢复成功，正在刷新…');
+                setTimeout(() => location.reload(), 1200);
+                return result;
+            } catch (error) {
+                skipped.push(`${candidate.label}: ${error.message || error}`);
+                console.warn('[GitHub Restore] 跳过无效候选', candidate.label, error);
+            }
+        }
+        const summary = skipped.slice(0, 3).join('；');
+        throw new Error(`没有找到可恢复的当前版完整备份。已跳过 ${skipped.length} 个无效或缺失候选${summary ? `：${summary}` : ''}`);
     },
 
     restoreLatest: async () => {
@@ -2638,7 +2711,7 @@ const GitHubMgr = {
                 });
                 if (singleBackups.length > 0) targetSingle = { name: singleBackups[0].name, ts: singleBackups[0].name.match(/_(\d+)\.ee$/)?.[1] || 0 };
 
-                const chunksDirRes = await fetch(`${baseUrl}/${encodeURIComponent(GitHubMgr._CHUNKS_DIR)}`, { headers: auth });
+                const chunksDirRes = await fetch(`${baseUrl}/${GitHubMgr._encodeRepoPath(GitHubMgr._CHUNKS_DIR)}`, { headers: auth });
                 if (chunksDirRes.ok) {
                     const chunkFiles = await chunksDirRes.json();
                     const manifests = chunkFiles.filter(f => f.name.endsWith('_manifest.json') && f.name.startsWith('BackupChunk_'));
@@ -2667,7 +2740,7 @@ const GitHubMgr = {
             if (restoreChunked && targetManifest) {
                 showToast('正在下载分片清单...');
                 const manifestPath = `${GitHubMgr._CHUNKS_DIR}/${targetManifest.name}`;
-                const manifestRes = await fetch(`${baseUrl}/${encodeURIComponent(manifestPath)}`, {
+                const manifestRes = await fetch(`${baseUrl}/${GitHubMgr._encodeRepoPath(manifestPath)}`, {
                     headers: { ...auth, 'Accept': 'application/vnd.github.v3.raw' }
                 });
                 if (!manifestRes.ok) throw new Error('下载清单失败: ' + manifestRes.status);
@@ -2679,7 +2752,7 @@ const GitHubMgr = {
                     showToast(`正在下载分片 ${i + 1}/${manifest.totalChunks}...`);
                     const chunkFileName = manifest.chunkPaths[i];
                     const chunkPath = `${GitHubMgr._CHUNKS_DIR}/${chunkFileName}`;
-                    const chunkRes = await fetch(`${baseUrl}/${encodeURIComponent(chunkPath)}`, {
+                    const chunkRes = await fetch(`${baseUrl}/${GitHubMgr._encodeRepoPath(chunkPath)}`, {
                         headers: { ...auth, 'Accept': 'application/vnd.github.v3.raw' }
                     });
                     if (!chunkRes.ok) throw new Error('下载分片失败: ' + chunkRes.status);
@@ -2696,7 +2769,7 @@ const GitHubMgr = {
             } else {
                 if (!targetSingle) throw new Error('未找到可恢复的备份文件');
                 showToast('正在下载: ' + targetSingle.name);
-                const dlRes = await fetch(`${baseUrl}/${encodeURIComponent(targetSingle.name)}`, {
+                const dlRes = await fetch(`${baseUrl}/${GitHubMgr._encodeRepoPath(targetSingle.name)}`, {
                     headers: { ...auth, 'Accept': 'application/vnd.github.v3.raw' }
                 });
                 if (!dlRes.ok) throw new Error('下载文件失败: ' + dlRes.status);

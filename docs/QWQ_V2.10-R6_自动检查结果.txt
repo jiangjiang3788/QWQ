@@ -1,0 +1,45 @@
+章鱼机 V2.10-R6 自动检查结果
+
+版本：2.10-R6
+基线：V2.10-R5
+
+一、核心结果
+- 静态架构检查：PASS
+- 生产 JavaScript 语法：PASS（84 个文件）
+- Node 自动回归：PASS（33/33）
+- R6 操作中心产品化专项：PASS
+
+二、R6 专项断言
+- 关键词筛选：PASS
+- 状态筛选：PASS
+- 分类筛选：PASS
+- 具体 Operation type 筛选：PASS
+- 日期范围筛选接口与 UI：PASS
+- 普通报告不包含原始请求体：PASS
+- 高级报告包含受控请求预览：PASS
+- API Key 对象字段脱敏：PASS
+- URL api_key/token 参数脱敏：PASS
+- Authorization Bearer 脱敏：PASS
+- sk- 密钥形态脱敏：PASS
+- 普通错误文本 token=... 脱敏：PASS
+- 单次操作报告导出：PASS
+- 筛选历史报告导出：PASS
+- 900,000 字符会话预算：PASS
+- 旧记录详情自动降级：PASS
+- 三层 UI 模式入口：PASS
+
+三、历史回归
+- V2.10-R0 操作中心：PASS
+- V2.10-R1 Prompt 来源：PASS
+- V2.10-R2/R2.1 后台操作与热修复：PASS
+- V2.10-R3/R3.1/R3.2/R3.3 数据变化、档案注入和任务稳定：PASS
+- V2.10-R4 AI 全功能覆盖：PASS
+- V2.10-R5 Prompt 协议与工作台互通：PASS
+- V2.1—V2.8 记忆审核、检索、Sidecar、生命周期、任务、反馈和质量：PASS
+- V2.9-R0—R11 应用、设置、启动、导航、搜索和记忆工作区：PASS
+
+四、明确边界
+- 未修改 IndexedDB schema
+- 未修改角色、聊天、记忆、世界书和备份格式
+- 未改变最终 Provider 请求体或模型调用次数
+- 未使用真实外部 API 密钥执行线上请求

@@ -1,0 +1,47 @@
+章鱼机 V2.11-R1 自动检查结果
+生成日期：2026-07-22
+
+一、版本
+- VERSION.txt: 2.11-R1
+
+二、生产源码
+- JavaScript 文件：88
+- node --check：88/88 通过
+- 静态架构检查：PASS
+
+三、专项能力
+- tag_service 使用现有 row.meta.tagBundle：PASS
+- 未新增平行标签字段：PASS
+- 模型 <tags> 协议解析：PASS
+- 标签更新清空旧 retrievalVector：PASS
+- context_assembler 表格角色识别：PASS
+- 相关表按角色关系选择：PASS
+- 相关行复用 MemoryPolicy.selectRelevantItems：PASS
+- 相关表保留 template/table/row/field ID：PASS
+- 相关表只读约束进入整理 Prompt：PASS
+- 相关上下文字符预算：PASS
+- 超预算按完整表块跳过，不截断 XML：PASS
+- add/update 审核链路携带标签：PASS
+- 接受审核后写入现有 tagBundle：PASS
+- 任务结果只保存相关上下文摘要：PASS
+- 任务输入体积计入相关表字符数：PASS
+- 范围预览显示相关表数量、行数和字符数：PASS
+
+四、真实数据运行
+- 清理优化版 .ee 读取：PASS
+- 角色：阿沉
+- 消息：19,133 条
+- 模板：8 张表
+- 中期总结目标表相关上下文：4 张表 / 9 行 / 约 6.5K 字符
+- 整理 Prompt：21 条消息 / 约 26K 字符
+- related_memory_tables 只读块：存在
+- 模型标签协议：存在
+- 标签写回现有 row.meta.tagBundle：PASS
+
+五、Node 回归
+- 总计：35 组
+- 通过：35
+- 失败：0
+- 包含 V2.10-R0—R6、V2.11-R0、V2.11-R1 与 V2.1—V2.9-R11 全部历史检查
+
+结论：PASS

@@ -6,7 +6,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const auditSource = read('js/features/memory/retrieval_audit.js');
 const auditCss = read('css/modules/memory_retrieval_audit.css');

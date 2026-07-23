@@ -7,8 +7,8 @@
     const TableGrouping = Kernel.require('tableGrouping');
 
     const TARGET_SELECTOR = '[data-memory-edit-target]';
-    const LONG_PRESS_MS = 480;
-    const MOVE_TOLERANCE = 12;
+    const DOUBLE_TAP_MS = 360;
+    const MOVE_TOLERANCE = 18;
     const bindings = new WeakMap();
 
     function closestTarget(node, root) {
@@ -49,15 +49,10 @@
         return state.editingRowId === descriptor.rowId;
     }
 
-    function select(state, descriptor) {
+    function focusDescriptor(state, descriptor) {
         if (!descriptor) return false;
-        if (descriptor.kind === 'field') {
-            if (state.focusedFieldPath === descriptor.fieldPath && !state.focusedRowId) return false;
-            TableSession.focusField(state, descriptor.fieldPath);
-        } else {
-            if (state.focusedRowId === descriptor.rowId && !state.focusedFieldPath) return false;
-            TableSession.focusRow(state, descriptor.rowId);
-        }
+        if (descriptor.kind === 'field') TableSession.focusField(state, descriptor.fieldPath);
+        else TableSession.focusRow(state, descriptor.rowId);
         return true;
     }
 
@@ -65,6 +60,7 @@
         if (!descriptor) return false;
         if (sameEditingTarget(state, descriptor)) {
             TableSession.finishEditing(state);
+            TableSession.clearFocus(state);
             return true;
         }
         if (descriptor.kind === 'field') TableSession.setEditingField(state, descriptor.fieldPath);
@@ -77,11 +73,18 @@
         return context.render?.();
     }
 
-    function clearPress(record) {
-        if (!record) return;
-        if (record.timer) global.clearTimeout(record.timer);
-        record.target?.classList?.remove('is-memory-longpress-pending');
-        record.timer = 0;
+    function activate(record, target, descriptor) {
+        const state = TableSession.ensure(record.context.state);
+        focusDescriptor(state, descriptor);
+        beginOrFinishEdit(state, descriptor);
+        record.suppressClickUntil = Date.now() + 450;
+        refresh(record.context, { focusFirstEdit: true });
+        try { global.navigator?.vibrate?.(10); } catch (_) {}
+        return true;
+    }
+
+    function resetTap(record) {
+        record.lastTap = null;
     }
 
     function bind(root, context = {}) {
@@ -91,7 +94,18 @@
             old.context = context;
             return old.unbind;
         }
-        const record = { context, press: null, suppressClickUntil: 0 };
+        const record = { context, pointer: null, lastTap: null, suppressClickUntil: 0 };
+
+        const onDoubleClick = event => {
+            if (isInteractive(event.target)) return;
+            const target = closestTarget(event.target, root);
+            const descriptor = describe(target);
+            if (!descriptor) return;
+            resetTap(record);
+            activate(record, target, descriptor);
+            event.preventDefault();
+            event.stopPropagation();
+        };
 
         const onPointerDown = event => {
             if (event.button !== undefined && event.button !== 0) return;
@@ -99,49 +113,44 @@
             const target = closestTarget(event.target, root);
             const descriptor = describe(target);
             if (!descriptor) return;
-            clearPress(record.press);
-            record.press = {
+            record.pointer = {
                 pointerId: event.pointerId,
+                pointerType: event.pointerType || '',
                 startX: Number(event.clientX) || 0,
                 startY: Number(event.clientY) || 0,
                 target,
                 descriptor,
-                timer: 0,
-                fired: false
+                moved: false
             };
-            target.classList.add('is-memory-longpress-pending');
-            record.press.timer = global.setTimeout(() => {
-                const active = record.press;
-                if (!active || active.target !== target) return;
-                active.fired = true;
-                target.classList.remove('is-memory-longpress-pending');
-                target.classList.add('is-memory-longpress-fired');
-                record.suppressClickUntil = Date.now() + 700;
-                const state = TableSession.ensure(record.context.state);
-                select(state, descriptor);
-                beginOrFinishEdit(state, descriptor);
-                try { global.navigator?.vibrate?.(12); } catch (_) {}
-                refresh(record.context, { focusFirstEdit: true });
-            }, LONG_PRESS_MS);
         };
 
         const onPointerMove = event => {
-            const press = record.press;
-            if (!press || press.pointerId !== event.pointerId || press.fired) return;
-            const dx = (Number(event.clientX) || 0) - press.startX;
-            const dy = (Number(event.clientY) || 0) - press.startY;
-            if (Math.hypot(dx, dy) > MOVE_TOLERANCE) {
-                clearPress(press);
-                record.press = null;
-            }
+            const pointer = record.pointer;
+            if (!pointer || pointer.pointerId !== event.pointerId) return;
+            const dx = (Number(event.clientX) || 0) - pointer.startX;
+            const dy = (Number(event.clientY) || 0) - pointer.startY;
+            if (Math.hypot(dx, dy) > MOVE_TOLERANCE) pointer.moved = true;
         };
 
         const onPointerEnd = event => {
-            const press = record.press;
-            if (!press || (event.pointerId !== undefined && press.pointerId !== event.pointerId)) return;
-            clearPress(press);
-            record.press = null;
+            const pointer = record.pointer;
+            record.pointer = null;
+            if (!pointer || pointer.pointerId !== event.pointerId || pointer.moved) return;
+            if (!/touch/i.test(pointer.pointerType)) return;
+            const now = Date.now();
+            const previous = record.lastTap;
+            const same = previous && previous.target === pointer.target;
+            const close = previous && Math.hypot(pointer.startX - previous.x, pointer.startY - previous.y) <= MOVE_TOLERANCE;
+            if (same && close && now - previous.time <= DOUBLE_TAP_MS) {
+                resetTap(record);
+                activate(record, pointer.target, pointer.descriptor);
+                event.preventDefault();
+            } else {
+                record.lastTap = { target: pointer.target, time: now, x: pointer.startX, y: pointer.startY };
+            }
         };
+
+        const onPointerCancel = () => { record.pointer = null; };
 
         const onClick = event => {
             if (Date.now() < record.suppressClickUntil) {
@@ -151,45 +160,40 @@
             }
             if (isInteractive(event.target)) return;
             const target = closestTarget(event.target, root);
-            const descriptor = describe(target);
-            if (!descriptor) return;
-            const state = TableSession.ensure(record.context.state);
-            const changed = select(state, descriptor);
-            if (changed) refresh(record.context);
+            target?.focus?.({ preventScroll: true });
         };
 
         const onKeyDown = event => {
             const inputLike = event.target?.matches?.('input,textarea,select,[contenteditable="true"]');
             if (event.key === 'Escape' && (record.context.state?.editingRowId || record.context.state?.editingFieldPath)) {
                 TableSession.finishEditing(record.context.state);
+                TableSession.clearFocus(record.context.state);
                 refresh(record.context);
                 event.preventDefault();
                 return;
             }
-            if (inputLike || event.key !== 'Enter') return;
+            if (inputLike || event.key !== 'F2') return;
             const target = closestTarget(event.target, root);
             const descriptor = describe(target);
             if (!descriptor) return;
-            const state = TableSession.ensure(record.context.state);
-            select(state, descriptor);
-            beginOrFinishEdit(state, descriptor);
-            refresh(record.context, { focusFirstEdit: true });
+            activate(record, target, descriptor);
             event.preventDefault();
         };
 
+        root.addEventListener('dblclick', onDoubleClick);
         root.addEventListener('pointerdown', onPointerDown);
         root.addEventListener('pointermove', onPointerMove, { passive: true });
         root.addEventListener('pointerup', onPointerEnd);
-        root.addEventListener('pointercancel', onPointerEnd);
+        root.addEventListener('pointercancel', onPointerCancel);
         root.addEventListener('click', onClick);
         root.addEventListener('keydown', onKeyDown);
 
         record.unbind = () => {
-            clearPress(record.press);
+            root.removeEventListener('dblclick', onDoubleClick);
             root.removeEventListener('pointerdown', onPointerDown);
             root.removeEventListener('pointermove', onPointerMove);
             root.removeEventListener('pointerup', onPointerEnd);
-            root.removeEventListener('pointercancel', onPointerEnd);
+            root.removeEventListener('pointercancel', onPointerCancel);
             root.removeEventListener('click', onClick);
             root.removeEventListener('keydown', onKeyDown);
             bindings.delete(root);
@@ -199,12 +203,13 @@
     }
 
     Kernel.register('tableGesture', Object.freeze({
-        VERSION: '2.12-R0',
+        VERSION: '2.12-R5.3',
         TARGET_SELECTOR,
-        LONG_PRESS_MS,
+        DOUBLE_TAP_MS,
         MOVE_TOLERANCE,
         describe,
-        select,
+        focusDescriptor,
+        select: focusDescriptor,
         beginOrFinishEdit,
         bind
     }));

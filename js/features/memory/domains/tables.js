@@ -3,7 +3,7 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     Kernel.register('memoryTablesDomain', Object.freeze({
-        VERSION: '2.12-R5.2',
+        VERSION: '2.12-R5.3',
         viewport: Kernel.require('tableViewport'),
         session: Kernel.require('tableSession'),
         grouping: Kernel.require('tableGrouping'),

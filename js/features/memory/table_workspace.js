@@ -115,7 +115,7 @@
                         <div>
                             <h2>${Core.escapeHtml(active.table.name)}</h2>
                             <div class="sub">${Core.escapeHtml(active.template.name)} · ${Domain.isRowsTable(active.table) ? '多行记录' : '键值档案'}${state.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'}</div>
-                            <div class="memory-table-interaction-hint" aria-label="表格编辑方式"><span>单击选中</span><span>长按编辑</span><span>Enter 编辑</span><span>Esc 退出</span></div>
+                            <div class="memory-table-interaction-hint" aria-label="表格编辑方式"><span>双击编辑</span><span>手机双点</span><span>Esc 退出</span></div>
                             ${policySummary(active.table)}
                             ${active.table.extractPrompt ? `<div class="memory-v2-json-meta memory-v2-json-only">extractPrompt: ${Core.escapeHtml(active.table.extractPrompt)}</div>` : ''}
                         </div>

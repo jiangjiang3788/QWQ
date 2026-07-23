@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const gridSource = read('js/features/memory/table_grid.js');
 const gestureSource = read('js/features/memory/table_gesture.js');
@@ -29,14 +29,19 @@ assert(gridSource.includes('TableReconciler.replace(root, render(config), bindVi
 assert(!gridSource.includes('target => bind(target, config.interactionContext)'));
 assert(!gridSource.includes('memory-flat-field-action memory-v2-normal-only'));
 assert(!menuSource.includes("['edit-row', '编辑此行']"));
-assert(workspaceSource.includes('单击选中'));
-assert(workspaceSource.includes('长按编辑'));
-assert(workspaceSource.includes('Enter 编辑'));
-assert(gestureSource.includes('LONG_PRESS_MS = 480'));
+assert(workspaceSource.includes('双击编辑'));
+assert(workspaceSource.includes('手机双点'));
+assert(!workspaceSource.includes('单击选中'));
+assert(!workspaceSource.includes('Enter 编辑'));
+assert(gestureSource.includes("root.addEventListener('dblclick'"));
+assert(gestureSource.includes('DOUBLE_TAP_MS = 360'));
+assert(!gestureSource.includes('LONG_PRESS_MS'));
+assert(!gestureSource.includes("event.key !== 'Enter'"));
 assert(gestureSource.includes("event.key === 'Escape'"));
 assert(css.includes('.memory-field-group-heading'));
 assert(css.includes('.memory-table-tags-head'));
-assert(css.includes('.is-memory-longpress-pending'));
+assert(css.includes('--memory-kv-label-width'));
+assert(css.includes('.memory-kv-label-col'));
 assert(controller.split(/\r?\n/).length < 4310, 'main controller exceeded V2.12-R0 budget');
 
 function context() {
@@ -104,6 +109,7 @@ K.register('tableFilter', {
   apply: rows => rows,
   renderToolbar: () => ''
 });
+vm.runInContext(read('js/features/memory/field_width.js'), c);
 vm.runInContext(read('js/features/memory/table_viewport.js'), c);
 vm.runInContext(read('js/features/memory/table_cache.js'), c);
 vm.runInContext(read('js/features/memory/table_presenter.js'), c);
@@ -130,7 +136,8 @@ const keyHtml = grid.render({
   helpers
 });
 assert.strictEqual((keyHtml.match(/memory-field-group-heading/g) || []).length, 2);
-assert(keyHtml.includes('长按编辑'));
+assert(keyHtml.includes('双击编辑'));
+assert(keyHtml.includes('data-memory-kv-label-width-mobile'));
 assert(!keyHtml.includes('data-action="edit-field"'));
 
 const rowsHtml = grid.render({

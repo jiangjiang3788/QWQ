@@ -6,13 +6,13 @@ const childProcess = require('child_process');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
 const contract = JSON.parse(read('architecture/memory_domains.json'));
 const budgets = JSON.parse(read('architecture/ui_budgets.json'));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
 
-assert(['2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2'].includes(contract.version));
+assert(['2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3'].includes(contract.version));
 assert.strictEqual(Object.keys(contract.publicFacades).length, 7);
 assert.strictEqual(budgets.memoryTable.maxPersistentRowEditButtons, 0);
 assert.strictEqual(budgets.quickDock.requiredTopActions, 8);

@@ -5,16 +5,19 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert.strictEqual(read('VERSION.txt').trim(), '2.12-R5.2');
+assert(['2.12-R5.2', '2.12-R5.3'].includes(read('VERSION.txt').trim()));
+const widthSource = read('js/features/memory/field_width.js');
 const schemaSource = read('js/features/memory/schema_editor.js');
 const schemaCss = read('css/modules/memory_schema_editor.css');
 const controller = read('js/modules/memory_table.js');
 
-assert(schemaSource.includes('function fieldNameVisualUnits'));
+assert(widthSource.includes('function visualUnits'));
+assert(widthSource.includes('function schemaFieldNames'));
 assert(schemaSource.includes('function fieldNameColumnWidth'));
+assert(schemaSource.includes('FieldWidth.schemaFieldNames'));
 assert(schemaSource.includes('function applyFieldNameWidth'));
-assert(schemaSource.includes('Math.min(112'));
-assert(schemaSource.includes('Math.min(74'));
+assert(widthSource.includes('max: 112'));
+assert(widthSource.includes('max: 74'));
 assert(schemaCss.includes('var(--schema-field-name-width,88px)'));
 assert(schemaCss.includes('var(--schema-field-name-width-mobile,64px)'));
 assert(!schemaCss.includes('width:142px'));
@@ -63,6 +66,7 @@ const Kernel = {
 };
 const context = { window: { OvoMemoryKernel: Kernel }, console, JSON, Math, Number, String, Array, Object, Map, Set, RegExp };
 vm.createContext(context);
+vm.runInContext(widthSource, context);
 vm.runInContext(read('js/features/memory/schema_model.js'), context);
 vm.runInContext(schemaSource, context);
 const editor = registry.get('schemaEditor');
@@ -98,4 +102,4 @@ assert(Number(dataset.schemaNameWidthMobile) <= 74);
 assert(Number(dataset.schemaNameWidthDesktop) > 68);
 assert(Number(dataset.schemaNameWidthMobile) > 54);
 
-console.log('V2.12-R5.2 ADAPTIVE SCHEMA FIELD WIDTH CHECKS: PASS');
+console.log('V2.12-R5.2/R5.3 ADAPTIVE SCHEMA FIELD WIDTH CHECKS: PASS');

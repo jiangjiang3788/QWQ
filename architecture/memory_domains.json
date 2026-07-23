@@ -1,5 +1,5 @@
 {
-  "version": "2.12-R5.2",
+  "version": "2.12-R5.3",
   "controller": "js/modules/memory_table.js",
   "publicFacades": {
     "memoryPlatformDomain": {
@@ -22,6 +22,7 @@
       "owns": [
         "api",
         "domain",
+        "fieldWidth",
         "workspace"
       ]
     },

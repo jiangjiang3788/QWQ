@@ -1,0 +1,65 @@
+QWQ V2.10-R3.2 自动检查结果
+生成时间: 2026-07-21 15:05:46 UTC
+
+一、实际备份根因审计
+- 主角色 memoryMode: vector
+- 结构化档案已启用并绑定 1 个有效模板
+- 最近结构化档案上下文: 2880 字符
+- 结构化档案数据: 约 466167 个 JSON 字符
+- 向量条目: 0；最近向量上下文: 0 字符
+- 结论: 旧互斥模式导致结构化档案被排除
+
+二、JavaScript 语法检查
+PASS: 112 个 JavaScript 文件
+
+三、Python 静态架构检查
+STATIC CHECKS: PASS
+
+四、Node 回归与专项检查
+run_backup_encoding_checks.js: BACKUP ENCODING CHECKS: PASS
+run_backup_service_checks.js: BACKUP CHECKS: PASS (9)
+run_v210_r0_operation_center_checks.js: V2.10-R0 OPERATION CENTER CHECKS: PASS
+run_v210_r1_prompt_source_checks.js: V2.10-R1 PROMPT SOURCE CHECKS: PASS
+run_v210_r21_hotfix_checks.js: V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS
+run_v210_r2_background_operation_checks.js: V2.10-R2 BACKGROUND OPERATION CHECKS: PASS
+run_v210_r31_quick_hotfix_checks.js: V2.10-R3.1 QUICK HOTFIX CHECKS: PASS
+run_v210_r32_archive_injection_checks.js: V2.10-R3.2 ARCHIVE INJECTION CHECKS: PASS
+run_v210_r3_mutation_receipt_checks.js: V2.10-R3 MUTATION RECEIPT CHECKS: PASS
+run_v21_review_checks.js: V2.1 REVIEW CHECKS: PASS
+run_v22_retrieval_checks.js: V2.2 RETRIEVAL CHECKS: PASS
+run_v23_sidecar_checks.js: V2.3 SIDECAR CHECKS: PASS
+run_v24_effects_checks.js: V2.4 EFFECT ROUTING CHECKS: PASS
+run_v25_lifecycle_checks.js: V2.5 LIFECYCLE CHECKS: PASS
+run_v26_task_checks.js: V2.6 TASK QUEUE CHECKS: PASS
+run_v27_feedback_checks.js: V2.7 FEEDBACK CHECKS: PASS
+run_v28_quality_checks.js: V2.8 QUALITY CHECKS: PASS
+run_v29_r0_app_registry_checks.js: V2.9-R0 APP REGISTRY CHECKS: PASS
+run_v29_r10_memory_search_checks.js: V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+run_v29_r11_memory_workspace_state_checks.js: V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+run_v29_r1_memory_kernel_checks.js: V2.9-R1 MEMORY KERNEL CHECKS: PASS
+run_v29_r2_memory_workspace_checks.js: V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+run_v29_r3_app_workspace_checks.js: V2.9-R3 APP WORKSPACE CHECKS: PASS
+run_v29_r4_settings_components_checks.js: V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+run_v29_r5_character_settings_checks.js: V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+run_v29_r6_experience_memory_checks.js: V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+run_v29_r7_startup_checks.js: V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+run_v29_r8_startup_contract_checks.js: V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+run_v29_r9_navigation_launcher_checks.js: V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS
+PASS: 29 组 Node 测试
+
+五、R3.2 核心断言
+- vector/journal 模式下仍读取结构化档案: PASS
+- 通过 OvoMemory.context 门面收敛读取: PASS
+- Provider 请求体生成前最终防丢失检查: PASS
+- structured_archive_memory 精确来源展示: PASS
+- memory_live_context 改为实时状态/待办: PASS
+- Sidecar 不再被 vector/journal 补充模式关闭: PASS
+- 自定义 Prompt 缺失共同回忆占位符时仍注入: PASS
+- 不重复注入结构化档案: PASS
+- 旧“三选一”界面文案清理: PASS
+
+六、兼容性
+- IndexedDB schema 未修改
+- 角色/聊天/结构化档案/向量/日记格式未修改
+- 备份格式未修改
+- R0/R1/R2/R2.1/R3/R3.1 与 V2.1—V2.9-R11 回归通过

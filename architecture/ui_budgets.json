@@ -1,5 +1,5 @@
 {
-  "version": "2.12-R5.2",
+  "version": "2.12-R5.3",
   "memoryTable": {
     "maxVisibleDataRows": 30,
     "maxActiveEditors": 1,

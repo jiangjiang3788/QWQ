@@ -6,6 +6,7 @@
     const Core = Kernel.core;
     const Model = Kernel.require('schemaModel');
     const Domain = Kernel.require('domain');
+    const FieldWidth = Kernel.require('fieldWidth');
     const Policy = Kernel.get('policy');
 
     const escapeHtml = Core.escapeHtml;
@@ -16,26 +17,8 @@
 
     function selected(value, expected) { return String(value) === String(expected) ? 'selected' : ''; }
 
-    function fieldNameVisualUnits(value) {
-        return Array.from(String(value || '').trim()).reduce((sum, char) => {
-            if (/[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60]/u.test(char)) return sum + 1;
-            if (/[A-Z0-9]/.test(char)) return sum + 0.66;
-            if (/[a-z]/.test(char)) return sum + 0.56;
-            if (/[_\-./]/.test(char)) return sum + 0.42;
-            if (/\s/.test(char)) return sum + 0.34;
-            return sum + 0.72;
-        }, 0);
-    }
-
-    function fieldNameColumnWidth(table) {
-        const names = (table?.columns || []).map(field => field?.key || '').filter(Boolean);
-        const longestUnits = Math.max(4, ...names.map(fieldNameVisualUnits));
-        return Object.freeze({
-            longestUnits: Number(longestUnits.toFixed(2)),
-            desktop: Math.round(Math.min(112, Math.max(68, 18 + longestUnits * 10))),
-            mobile: Math.round(Math.min(74, Math.max(54, 10 + longestUnits * 6.6)))
-        });
-    }
+    const fieldNameVisualUnits = FieldWidth.visualUnits;
+    function fieldNameColumnWidth(table) { return FieldWidth.schemaFieldNames(table); }
 
     function fieldNameWidthStyle(table) {
         const width = fieldNameColumnWidth(table);
@@ -246,7 +229,7 @@
     }
 
     Kernel.register('schemaEditor', Object.freeze({
-        VERSION: '2.12-R3',
+        VERSION: '2.12-R5.3',
         render,
         fieldNameVisualUnits,
         fieldNameColumnWidth,

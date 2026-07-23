@@ -113,7 +113,7 @@
     }
 
     Kernel.register('updateActivity', Object.freeze({
-        VERSION: '2.12-R5.2',
+        VERSION: '2.12-R5.3',
         entries,
         tableCounts,
         latest,

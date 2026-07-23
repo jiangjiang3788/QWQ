@@ -1,0 +1,128 @@
+章鱼机 V2.11-R0 自动检查结果
+生成时间：2026-07-22
+
+一、版本
+VERSION.txt: 2.11-R0
+
+二、生产 JavaScript 语法
+PRODUCTION_JS_COUNT=94
+FAIL=0
+PRODUCTION JAVASCRIPT SYNTAX: PASS
+
+三、静态检查
+STATIC CHECKS: PASS
+
+四、Node 回归
+== run_backup_encoding_checks.js ==
+BACKUP ENCODING CHECKS: PASS
+== run_backup_service_checks.js ==
+BACKUP CHECKS: PASS (9)
+== run_v210_r0_operation_center_checks.js ==
+V2.10-R0 OPERATION CENTER CHECKS: PASS
+== run_v210_r1_prompt_source_checks.js ==
+V2.10-R1 PROMPT SOURCE CHECKS: PASS
+== run_v210_r21_hotfix_checks.js ==
+V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS
+== run_v210_r2_background_operation_checks.js ==
+V2.10-R2 BACKGROUND OPERATION CHECKS: PASS
+== run_v210_r31_quick_hotfix_checks.js ==
+V2.10-R3.1 QUICK HOTFIX CHECKS: PASS
+== run_v210_r32_archive_injection_checks.js ==
+V2.10-R3.2 ARCHIVE INJECTION CHECKS: PASS
+== run_v210_r33_stability_memory_checks.js ==
+V2.10-R3.3 STABILITY + MEMORY PAYLOAD CHECKS: PASS
+== run_v210_r3_mutation_receipt_checks.js ==
+V2.10-R3 MUTATION RECEIPT CHECKS: PASS
+== run_v210_r4_ai_capability_coverage_checks.js ==
+V2.10-R4 AI CAPABILITY COVERAGE CHECKS: PASS
+== run_v210_r5_prompt_protocol_checks.js ==
+V2.10-R5 PROMPT PROTOCOL + WORKBENCH CHECKS: PASS
+== run_v210_r6_operation_productization_checks.js ==
+V2.10-R6 OPERATION CENTER PRODUCTIZATION CHECKS: PASS
+== run_v211_r0_memory_flat_table_checks.js ==
+V2.11-R0 MEMORY FLAT TABLE CHECKS: PASS
+== run_v21_review_checks.js ==
+V2.1 REVIEW CHECKS: PASS
+== run_v22_retrieval_checks.js ==
+V2.2 RETRIEVAL CHECKS: PASS
+== run_v23_sidecar_checks.js ==
+V2.3 SIDECAR CHECKS: PASS
+== run_v24_effects_checks.js ==
+V2.4 EFFECT ROUTING CHECKS: PASS
+== run_v25_lifecycle_checks.js ==
+V2.5 LIFECYCLE CHECKS: PASS
+== run_v26_task_checks.js ==
+V2.6 TASK QUEUE CHECKS: PASS
+== run_v27_feedback_checks.js ==
+V2.7 FEEDBACK CHECKS: PASS
+== run_v28_quality_checks.js ==
+V2.8 QUALITY CHECKS: PASS
+== run_v29_r0_app_registry_checks.js ==
+V2.9-R0 APP REGISTRY CHECKS: PASS
+== run_v29_r10_memory_search_checks.js ==
+V2.9-R10 MEMORY ENTRY + SEARCH NAVIGATION CHECKS: PASS
+== run_v29_r11_memory_workspace_state_checks.js ==
+V2.9-R11 MEMORY WORKSPACE STATE CHECKS: PASS
+== run_v29_r1_memory_kernel_checks.js ==
+V2.9-R1 MEMORY KERNEL CHECKS: PASS
+== run_v29_r2_memory_workspace_checks.js ==
+V2.9-R2 MEMORY WORKSPACE CHECKS: PASS
+== run_v29_r3_app_workspace_checks.js ==
+V2.9-R3 APP WORKSPACE CHECKS: PASS
+== run_v29_r4_settings_components_checks.js ==
+V2.9-R4 SETTINGS COMPONENTS CHECKS: PASS
+== run_v29_r5_character_settings_checks.js ==
+V2.9-R5 CHARACTER SETTINGS CHECKS: PASS
+== run_v29_r6_experience_memory_checks.js ==
+V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS
+== run_v29_r7_startup_checks.js ==
+V2.9-R7 STARTUP RELIABILITY CHECKS: PASS
+== run_v29_r8_startup_contract_checks.js ==
+V2.9-R8 STARTUP CONTRACT CHECKS: PASS
+== run_v29_r9_navigation_launcher_checks.js ==
+V2.9-R9 NAVIGATION + PHONE LAUNCHER CHECKS: PASS
+COUNT=34 FAIL=0
+
+五、真实数据运行测量
+{
+  "desktop": {
+    "nodes": 870,
+    "visible": 577,
+    "framed": 39,
+    "maxFrameDepth": 3,
+    "buttons": 51,
+    "controls": 44,
+    "tableRows": 15,
+    "activeEditors": 0
+  },
+  "mobile": {
+    "nodes": 870,
+    "visible": 558,
+    "framed": 37,
+    "maxFrameDepth": 3,
+    "buttons": 51,
+    "controls": 44,
+    "tableRows": 15,
+    "activeEditors": 0
+  }
+}
+
+六、关键断言
+- 旧键值卡片渲染路径已删除：PASS
+- 旧行卡片渲染路径已删除：PASS
+- 旧趋势图/火花线遗留路径已删除：PASS
+- 普通模式仅选中行/字段创建编辑器：PASS
+- 行操作收敛为单一菜单：PASS
+- 整理设置移入抽屉：PASS
+- 新 table_view 复用模块先于 controller 加载：PASS
+- 真实备份 15 行待办表渲染：PASS
+- 桌面截图：PASS
+- 390px 手机截图：PASS
+- 整理设置抽屉交互截图：PASS
+
+七、兼容边界
+- IndexedDB schema 未修改
+- 记忆模板/表格/行数据格式未修改
+- tagBundle 未修改
+- 备份格式未修改
+- Prompt/召回/审核/任务逻辑未修改
