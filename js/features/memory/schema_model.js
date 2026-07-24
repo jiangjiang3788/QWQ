@@ -7,6 +7,7 @@
     const Domain = Kernel.require('domain');
     const Policy = Kernel.get('policy');
     const FieldPolicy = Kernel.get('fieldPolicy');
+    const FieldSemantics = Kernel.get('fieldSemantics');
 
     const clone = Core.clone;
     const moveArrayItem = Core.moveArrayItem;
@@ -33,6 +34,8 @@
             table.updatePolicy = tablePolicy.updatePolicy;
             table.injectionPolicy = tablePolicy.injectionPolicy;
             table.columns.forEach(field => {
+                field.semanticRole = FieldSemantics?.normalizeSemanticRole?.(field.semanticRole, field, table) || field.semanticRole || 'custom';
+                field.identityRole = FieldSemantics?.normalizeIdentityRole?.(field.identityRole, field, table) || field.identityRole || 'none';
                 field.writePolicy = FieldPolicy ? FieldPolicy.normalizeFieldPolicy(field, table) : (field.writePolicy || { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 });
             });
         });
@@ -141,6 +144,7 @@
                 makeRow(section, '频率来源', `${base}.capturePolicy.frequencySource`, 'text', table.capturePolicy?.frequencySource || 'table'),
                 makeRow(section, '调用 API', `${base}.capturePolicy.apiMode`, 'text', table.capturePolicy?.apiMode || 'summary'),
                 makeRow(section, '写入方式', `${base}.commitPolicy.mode`, 'text', table.commitPolicy?.mode || 'review'),
+                makeRow(section, '晋升字段映射', `${base}.promotionPolicy.fieldMap`, 'json', JSON.stringify(table.promotionPolicy?.fieldMap || {}), { multiline: true }),
                 makeRow(section, '提取规则', `${base}.extractPrompt`, 'text', table.extractPrompt || '', { multiline: true }),
                 makeRow(section, '自动更新', `${base}.updatePolicy.enabled`, 'boolean', update.enabled !== false),
                 makeRow(section, '触发方式', `${base}.updatePolicy.triggerMode`, 'text', update.triggerMode || 'manual', { choices: ['rounds', 'messages', 'either', 'manual'] }),
@@ -163,6 +167,8 @@
                     makeRow(fieldSection, '字段名', `${fieldBase}.key`, 'text', field.key || ''),
                     makeRow(fieldSection, '字段分组', `${fieldBase}.group`, 'text', field.group || ''),
                     makeRow(fieldSection, '类型', `${fieldBase}.type`, 'text', field.type || 'text', { choices: ['text', 'longtext', 'number', 'enum', 'tags', 'progress', 'date', 'boolean'] }),
+                    makeRow(fieldSection, '字段语义', `${fieldBase}.semanticRole`, 'text', FieldSemantics?.semanticRole?.(field, table) || field.semanticRole || 'custom'),
+                    makeRow(fieldSection, '身份作用', `${fieldBase}.identityRole`, 'text', FieldSemantics?.identityRole?.(field, table) || field.identityRole || 'none', { choices: FieldSemantics?.IDENTITY_ROLES || ['none', 'primary_key', 'source_key', 'title', 'date', 'content', 'volatile'] }),
                     makeRow(fieldSection, '默认值', `${fieldBase}.default`, Array.isArray(field.default) ? 'array' : (typeof field.default === 'number' ? 'number' : 'text'), Array.isArray(field.default) ? field.default.join(', ') : (field.default ?? '')),
                     makeRow(fieldSection, '选项', `${fieldBase}.options`, 'array', (field.options || []).join(', ')),
                     makeRow(fieldSection, 'AI 可编辑', `${fieldBase}.aiEditable`, 'boolean', field.aiEditable !== false),
@@ -203,7 +209,7 @@
     }
 
     Kernel.register('schemaModel', Object.freeze({
-        VERSION: '2.14-R3',
+        VERSION: '2.15-R0B',
         prepare,
         normalize,
         summarize,

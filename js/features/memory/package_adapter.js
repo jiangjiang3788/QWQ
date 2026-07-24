@@ -6,7 +6,7 @@
     const Core = Kernel.core;
     const Domain = Kernel.require('domain');
 
-    const VERSION = '2.14-R0';
+    const VERSION = '2.14-R9';
     const TABLE_REFERENCE_KEYS = new Set([
         'targetTableId', 'suggestedTargetTableId', 'promotedToTableId', 'sourceTableId',
         'mergeTargetTableId', 'expectedTableId'
@@ -184,6 +184,21 @@
             });
         }
         if (next.workflow) remapWorkflow(next.workflow, plan, oldTemplateId, oldTableId);
+        if (next.provenance && Array.isArray(next.provenance.events)) {
+            next.provenance.events = next.provenance.events.map(event => {
+                const remapped = clone(event || {});
+                remapped.relatedRowIds = (Array.isArray(remapped.relatedRowIds) ? remapped.relatedRowIds : [])
+                    .map(id => resolveRowId(plan, id, oldTemplateId, oldTableId))
+                    .filter(Boolean);
+                remapped.refs = (Array.isArray(remapped.refs) ? remapped.refs : []).filter(ref => {
+                    const type = String(ref?.type || '').toLowerCase();
+                    return !['message', 'chat_message', 'round', 'chat_round'].includes(type);
+                });
+                remapped.transactionId = '';
+                remapped.operationId = '';
+                return remapped;
+            }).slice(-80);
+        }
         next.importedAt = Date.now();
         next.importedFromPortableSnapshot = true;
         return next;

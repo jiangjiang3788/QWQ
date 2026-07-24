@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const css = read('css/modules/memory_table_flat.css');
 const controllerText = read('js/modules/memory_table.js');
@@ -91,6 +91,7 @@ Kernel.register('lifecycle', {
 Kernel.register('api', { requestContent: async () => '' });
 
 for (const rel of [
+  'js/features/memory/field_semantics.js',
   'js/features/memory/tag_vocabulary.js',
   'js/features/memory/tag_service.js',
   'js/features/memory/relation_service.js',
@@ -108,7 +109,7 @@ const inspectorController = Kernel.get('rowInspectorController');
 assert.strictEqual(vocabulary.VERSION, '2.11-R3.1');
 assert.strictEqual(tags.VERSION, '2.11-R3.1');
 assert.strictEqual(relations.VERSION, '2.11-R3.1');
-assert.strictEqual(merge.VERSION, '2.11-R3.1');
+assert(['2.11-R3.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(merge.VERSION));
 
 const alias = vocabulary.registerAlias(chat, { dimension: 'topic', alias: '主动求助', canonical: '主动表达' });
 assert(alias.changed);

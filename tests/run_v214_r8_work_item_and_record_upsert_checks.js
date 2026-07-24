@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 function createBox(extra = {}) {
   const box = {
@@ -21,7 +21,7 @@ function createBox(extra = {}) {
 // Stable identity + deterministic upsert.
 {
   const table = {
-    id: 'events', name: '近期经历', mode: 'rows', memoryLayer: 'short', columns: [
+    id: 'events', name: '近期经历', systemRole: 'recent_events', mode: 'rows', memoryLayer: 'short', columns: [
       { id: 'event_id', key: '事件ID', type: 'text' },
       { id: 'date', key: '日期', type: 'date' },
       { id: 'title', key: '标题', type: 'text' },
@@ -31,11 +31,14 @@ function createBox(extra = {}) {
   const template = { id: 'tpl', name: '记忆', tables: [table] };
   const chat = { id: 'chat', memoryTables: { boundTemplateIds: ['tpl'], data: {}, lockedFields: {}, history: [] } };
   const box = createBox({ db: { memoryTableTemplates: [template], characters: [chat] } });
+  vm.runInContext(read('js/features/memory/memory_defaults.js'), box, { filename: 'memory_defaults.js' });
+  vm.runInContext(read('js/modules/memory_table_policy.js'), box, { filename: 'memory_table_policy.js' });
+  vm.runInContext(read('js/features/memory/field_semantics.js'), box, { filename: 'field_semantics.js' });
   vm.runInContext(read('js/features/memory/record_identity.js'), box, { filename: 'record_identity.js' });
   vm.runInContext(read('js/features/memory/domain.js'), box, { filename: 'domain.js' });
   const Domain = box.OvoMemoryKernel.require('domain');
   const Identity = box.OvoMemoryKernel.require('recordIdentity');
-  assert(['2.14-R8', '2.14-R8.1'].includes(Identity.VERSION));
+  assert(['2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(Identity.VERSION));
 
   let result = Domain.upsertRow(chat, template.id, table, {
     event_id: 'E-001', date: '2026-07-24', title: '边界约定', content: '第一次明确约定。'

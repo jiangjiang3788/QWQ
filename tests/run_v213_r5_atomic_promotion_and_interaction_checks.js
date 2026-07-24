@@ -38,6 +38,7 @@ function memorySandbox() {
     removeReferences() {},
     migrateRows() { return 0; }
   });
+  vm.runInContext(read('js/features/memory/field_semantics.js'), sandbox);
   vm.runInContext(read('js/features/memory/domain.js'), sandbox);
   vm.runInContext(read('js/features/memory/write_coordinator.js'), sandbox);
   vm.runInContext(read('js/features/memory/candidate_service.js'), sandbox);
@@ -46,7 +47,7 @@ function memorySandbox() {
 
 function candidateFixture() {
   const candidate = {
-    id: 'table_candidate', name: '长期候选审核队列', mode: 'rows', memoryLayer: 'review',
+    id: 'table_candidate', name: '长期候选审核队列', systemRole: 'long_candidate', mode: 'rows', memoryLayer: 'review',
     promotionPolicy: { enabled: true, targetTableId: 'table_target' },
     columns: [
       { id: 'candidate_content', key: '候选内容', type: 'longtext', default: '' },
@@ -59,7 +60,7 @@ function candidateFixture() {
   };
   const decoy = { id: 'table_decoy', name: '其他长期表', mode: 'rows', memoryLayer: 'long', columns: [{ id: 'decoy_content', key: '内容', type: 'longtext', default: '' }] };
   const target = {
-    id: 'table_target', name: '稳定长期特征库', mode: 'rows', memoryLayer: 'long', columns: [
+    id: 'table_target', name: '稳定长期特征库', systemRole: 'long_store', mode: 'rows', memoryLayer: 'long', columns: [
       { id: 'target_domain', key: '来源域', type: 'enum', default: '长期候选审核', options: ['长期候选审核', '成长沉淀'] },
       { id: 'target_category', key: '分类', type: 'text', default: '' },
       { id: 'target_content', key: '内容', type: 'longtext', default: '' },

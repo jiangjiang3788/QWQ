@@ -1,0 +1,49 @@
+{
+  "version": "2.15-R0B",
+  "validation": "semantic-identity-hardcode-removal",
+  "backup": {
+    "format": "ovo-full-backup",
+    "formatVersion": 1,
+    "mode": "single-user-compact",
+    "declaredCharacters": 1,
+    "sourceSha256Before": "0f8bdc71e9e08b6cd3a4cdf678f7fbed8eb50df8d7dd0dca78ab2daf5941241a",
+    "sourceSha256After": "0f8bdc71e9e08b6cd3a4cdf678f7fbed8eb50df8d7dd0dca78ab2daf5941241a",
+    "sourceUnchanged": true
+  },
+  "memory": {
+    "characters": 1,
+    "templates": 1,
+    "tables": 8,
+    "fields": 94,
+    "formalRowsBefore": 279,
+    "formalRowsAfter": 279,
+    "formalDataSha256Before": "4903006697efd91219350dcb8aa1cf100bf7e057055358725f28423792021c4a",
+    "formalDataSha256After": "4903006697efd91219350dcb8aa1cf100bf7e057055358725f28423792021c4a",
+    "formalDataUnchanged": true,
+    "templateIdsNamesFieldsUnchanged": true
+  },
+  "migration": {
+    "sourceSchema": "3.1",
+    "targetSchema": "3.2",
+    "steps": [
+      "memory-package-3.1-to-3.2"
+    ],
+    "sourcePackageUnchanged": true,
+    "fieldsMissingExplicitRolesBefore": 94,
+    "fieldsWithExplicitSemanticRoleAfter": 94,
+    "fieldsWithExplicitIdentityRoleAfter": 94,
+    "totalFieldsAfter": 94,
+    "longCandidateFieldMapPresent": true,
+    "idempotent": true
+  },
+  "renamedFieldValidation": {
+    "recentEventsFoundBySystemRole": true,
+    "primaryFieldFoundAfterRename": true,
+    "titleFieldFoundAfterRename": true,
+    "contentFieldFoundAfterRename": true,
+    "strongKeyAfterRename": "event_id=realbackupsemantic1",
+    "titleDateKeyAfterRename": "20260724|改名后标题",
+    "recordIdentitySurvivesRename": true
+  },
+  "sensitiveDataIncludedInReport": false
+}

@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const schema = read('js/features/memory/schema_editor.js');
 const schemaCss = read('css/modules/memory_schema_editor.css');
@@ -43,6 +43,7 @@ context.db = { memoryTableTemplates: [] };
 vm.createContext(context);
 vm.runInContext(read('js/features/memory/kernel.js'), context, { filename: 'kernel.js' });
 vm.runInContext(read('js/modules/memory_table_policy.js'), context, { filename: 'memory_table_policy.js' });
+vm.runInContext(read('js/features/memory/field_semantics.js'), context, { filename: 'field_semantics.js' });
 vm.runInContext(read('js/modules/memory_table_review.js'), context, { filename: 'memory_table_review.js' });
 vm.runInContext(read('js/features/memory/domain.js'), context, { filename: 'domain.js' });
 vm.runInContext(read('js/features/memory/schema_model.js'), context, { filename: 'schema_model.js' });

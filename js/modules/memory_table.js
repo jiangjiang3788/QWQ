@@ -503,6 +503,7 @@
             btn.classList.toggle('active', btn.dataset.tab === uiState.tab);
         });
         const renderTechnicalView = view => {
+            if (view === 'diagnostics') return MemoryWorkspace.renderDiagnosticsHome(chat, boundTemplates);
             if (view === 'templates') {
                 empty.style.display = db.memoryTableTemplates.length === 0 ? 'block' : 'none';
                 empty.innerHTML = '<p>还没有模板</p><p>点击右上角新建模板。</p>';
@@ -511,8 +512,8 @@
             if (view === 'review') return MemoryReview ? MemoryReview.renderReviewView(chat) : '<div class="memory-review-empty"><p>更新审核模块未加载。</p></div>';
             if (['usage_audit', 'retrieval', 'feedback'].includes(view)) return MemoryRetrievalAudit.render(chat);
             if (view === 'sidecar') return MemorySidecar ? MemorySidecar.renderCandidatesView(chat) : '<div class="memory-review-empty"><p>短期候选模块未加载。</p></div>';
-            if (view === 'reliability') return MemoryLifecycle ? MemoryLifecycle.renderReliabilityView(chat, boundTemplates) : '<div class="memory-review-empty"><p>可靠性模块未加载。</p></div>';
-            if (view === 'tasks') return MemoryTasks ? MemoryTasks.renderView(chat) : '<div class="memory-review-empty"><p>任务队列模块未加载。</p></div>';
+            if (view === 'reliability' || view === 'lifecycle') return MemoryLifecycle ? MemoryLifecycle.renderReliabilityView(chat, boundTemplates) : '<div class="memory-review-empty"><p>生命周期模块未加载。</p></div>';
+            if (view === 'tasks') return MemoryTasks ? MemoryTasks.renderView(chat) : '<div class="memory-review-empty"><p>维护作业模块未加载。</p></div>';
             if (view === 'integrity') return MemoryIntegrityDoctor ? MemoryIntegrityDoctor.renderView(chat, boundTemplates) : '<div class="memory-review-empty"><p>完整性医生模块未加载。</p></div>';
             if (view === 'quality') return MemoryQuality ? MemoryQuality.renderView(chat) : '<div class="memory-review-empty"><p>质量评估模块未加载。</p></div>';
             if (view === 'history') {
@@ -727,10 +728,13 @@
             const table = uiState.templateDraft.tables?.[tableIndex];
             if (!path || !table || !MemoryPolicyResolver) return false;
             uiState.policyOverrideDraft ||= {};
-            MemoryPolicyResolver.updateOverrideDraft(uiState.policyOverrideDraft, uiState.templateDraft, table.id, path, target.value);
+            const policyValue = path === 'commitPolicy.mode'
+                ? MemorySchemaEditor.resolveUiCommitMode(table, target.value, target.dataset.commitInternalMode || '')
+                : target.value;
+            MemoryPolicyResolver.updateOverrideDraft(uiState.policyOverrideDraft, uiState.templateDraft, table.id, path, policyValue);
             if (path === 'commitPolicy.mode') {
                 MemoryPolicyResolver.updateOverrideDraft(uiState.policyOverrideDraft, uiState.templateDraft, table.id,
-                    'commitPolicy.requireUserConfirmation', ['review', 'promotion'].includes(target.value));
+                    'commitPolicy.requireUserConfirmation', ['review', 'promotion'].includes(policyValue));
             }
             return true;
         }
@@ -2560,6 +2564,9 @@ ${tableContext}`;
                 } else if (action === 'lifecycle-maintenance') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryLifecycle) return;
+                    const plan = MemoryLifecycle.planMaintenance(chat, getBoundTemplates(chat));
+                    if (!plan.changed) return showToast('当前没有需要变更的生命周期状态');
+                    if (!window.confirm(`本次将检查 ${plan.checked} 条记忆，改变 ${plan.changed} 条状态（过期 ${plan.expired || 0}、归档 ${plan.archived || 0}、待确认 ${plan.uncertain || 0}）。不会删除或自动合并正文。确定执行吗？`)) return;
                     if (MemoryTasks) {
                         const queued = MemoryTasks.enqueueLifecycleMaintenance(chat);
                         await saveCharacter(chat.id);
@@ -2567,11 +2574,16 @@ ${tableContext}`;
                         const report = result.results?.[0]?.result?.report || result.results?.[0]?.task?.result?.report;
                         showToast(report ? `生命周期整理完成：检查 ${report.checked}，改变 ${report.changed}` : '生命周期整理任务已处理');
                     } else {
-                        const report = MemoryLifecycle.runMaintenance(chat, getBoundTemplates(chat));
-                        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-                        await saveCharacter(chat.id);
+                        const transaction = await MemoryWriteGateway.run(chat, {
+                            reason: 'lifecycle-maintenance', source: 'lifecycle-maintenance', writer: saveCharacter, persistRollback: true,
+                            summary: `生命周期维护 ${plan.changed} 条记忆`, recordCount: plan.changed
+                        }, ({ transactionId }) => {
+                            const report = MemoryLifecycle.applyMaintenancePlan(chat, getBoundTemplates(chat), plan, { transactionId });
+                            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+                            return { changed: report.changed > 0, report, recordCount: report.changed };
+                        });
                         renderMemoryTableScreen();
-                        showToast(`生命周期整理完成：检查 ${report.checked}，改变 ${report.changed}`);
+                        showToast(`生命周期整理完成：检查 ${transaction.report.checked}，改变 ${transaction.report.changed}`);
                     }
                 } else if (action === 'edit-row-reliability' || action === 'row-supersedes' || action === 'row-conflicts' || action === 'row-clear-relations') {
                     const chat = getCurrentMemoryTableChat();
@@ -3081,9 +3093,16 @@ ${text}`;
         });
         MemoryTasks.registerExecutor('lifecycle_maintenance', async chat => {
             if (!MemoryLifecycle) throw new Error('生命周期模块未加载');
-            const report = MemoryLifecycle.runMaintenance(chat, getBoundTemplates(chat));
-            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-            return { status: 'success', report };
+            const plan = MemoryLifecycle.planMaintenance(chat, getBoundTemplates(chat));
+            const transaction = await MemoryWriteGateway.run(chat, {
+                reason: 'lifecycle-maintenance-task', source: 'lifecycle-maintenance', writer: saveCharacter, persistRollback: true,
+                summary: `生命周期维护 ${plan.changed} 条记忆`, recordCount: plan.changed
+            }, ({ transactionId, operationId }) => {
+                const report = MemoryLifecycle.applyMaintenancePlan(chat, getBoundTemplates(chat), plan, { transactionId, operationId });
+                if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+                return { changed: report.changed > 0, status: 'success', report, recordCount: report.changed };
+            });
+            return { status: 'success', report: transaction.report, receipt: transaction.receipt };
         });
     }
     let resumeQueuedMemoryTasksPromise = null;

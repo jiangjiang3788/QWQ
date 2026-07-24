@@ -73,7 +73,7 @@ try:
     import json
     pkg=json.loads((root/'memory_templates/当前默认记忆模板_V2.8.json').read_text(encoding='utf-8'))
     if pkg.get('version') != 2: errors.append('memory v2 package version mismatch')
-    if pkg.get('schemaVersion') != '2.8': errors.append('memory v2.8 schemaVersion mismatch')
+    if pkg.get('schemaVersion') != '3.2': errors.append('memory schemaVersion mismatch')
     if pkg.get('binding',{}).get('engineSettings',{}).get('reviewMode') != 'summary_only': errors.append('memory v2.2 default review mode mismatch')
     if pkg.get('binding',{}).get('engineSettings',{}).get('retrievalMode') != 'auto': errors.append('memory v2.4 retrieval mode mismatch')
     if pkg.get('binding',{}).get('engineSettings',{}).get('tagWeight') != 0.35: errors.append('memory v2.4 tag weight mismatch')
@@ -133,8 +133,9 @@ if helper_hits: errors.append('memory shared helpers not converged: '+'; '.join(
 registry_js=(root/'js/app_registry.js').read_text(encoding='utf-8') if (root/'js/app_registry.js').exists() else ''
 favorites_js=(root/'js/modules/favorites.js').read_text(encoding='utf-8') if (root/'js/modules/favorites.js').exists() else ''
 message_content_js=(root/'js/modules/message_content.js').read_text(encoding='utf-8') if (root/'js/modules/message_content.js').exists() else ''
-if "const dockAppIds = Object.freeze(['chat', 'api', 'memory', 'settings'])" not in registry_js: errors.append('R6 dock source of truth missing')
-if "appsByIds(dockAppIds)" not in registry_js or "group === 'dock'" not in registry_js: errors.append('R6 dock registry/render consistency missing')
+if 'function appsByPlacement(placement)' not in registry_js: errors.append('R0A app placement source of truth missing')
+if "appsByPlacement('dock')" not in registry_js or "appsByPlacement('home')" not in registry_js: errors.append('R0A launcher placement/render consistency missing')
+if 'homeAppIds' in registry_js or 'dockAppIds' in registry_js: errors.append('R0A duplicate launcher id arrays remain')
 if 'OvoMessageContent' not in favorites_js or 'contentType' not in favorites_js or 'plainText' not in favorites_js: errors.append('R6 favorite message snapshot integration missing')
 if "parsed.type === 'voice'" not in message_content_js: errors.append('R6 voice transcript parser missing')
 if 'normalizeAutomationMode' not in policy_js or 'resolveEffectiveUpdatePolicy' not in policy_js: errors.append('R6 automation channel policy missing')

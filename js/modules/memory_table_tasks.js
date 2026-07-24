@@ -323,7 +323,7 @@
             source: 'manual_lifecycle_maintenance',
             apiMode: 'local',
             title: '运行生命周期整理'
-        }, { title: '运行生命周期整理', priority: 30, apiTask: false, apiMode: 'local' });
+        }, { title: '运行生命周期整理', priority: 30, apiTask: false, apiMode: 'local', force: true });
     }
     function registerExecutor(type, executor) {
         if (typeof executor === 'function') executors.set(type, executor);
@@ -555,14 +555,14 @@
         });
         const diagnostics = getSessionDiagnostics();
         return `<div class="memory-task-page">
-            <div class="memory-task-head"><div><h2>任务队列与成本</h2><p>可恢复的顺序任务队列。主聊天仍为交互式即时请求，不会被记忆后台任务阻塞。</p></div><span>${getPendingCount(chat)} 个待处理</span></div>
+            <div class="memory-task-head"><div><h2>维护作业与成本</h2><p>可恢复的顺序维护作业。主聊天仍为交互式即时请求，不会被记忆维护作业阻塞。</p></div><span>${getPendingCount(chat)} 个待处理</span></div>
             <div class="memory-task-stat-grid">
                 <span>排队<strong>${counts.queued + counts.paused}</strong></span><span>执行<strong>${counts.running}</strong></span><span>待审核<strong>${counts.waiting_review}</strong></span><span>失败<strong>${counts.failed}</strong></span><span>完成<strong>${counts.succeeded}</strong></span>
             </div>
             <section class="memory-task-settings">
                 <h3>执行策略</h3>
                 <div class="memory-task-setting-grid">
-                    <label>单轮最多任务<input type="number" min="1" max="20" data-task-setting="maxTasksPerCycle" value="${settings.maxTasksPerCycle}"></label>
+                    <label>单轮最多作业<input type="number" min="1" max="20" data-task-setting="maxTasksPerCycle" value="${settings.maxTasksPerCycle}"></label>
                     <label>失败最多尝试<input type="number" min="1" max="10" data-task-setting="maxAttempts" value="${settings.maxAttempts}"></label>
                     <label>重试基础秒数<input type="number" min="1" max="3600" data-task-setting="retryBaseSeconds" value="${settings.retryBaseSeconds}"></label>
                     <label>每聊天轮 API 上限<input type="number" min="1" max="20" data-task-setting="perRoundApiLimit" value="${settings.perRoundApiLimit}"></label>
@@ -577,8 +577,8 @@
                     <label>向量 API<input type="number" min="0" step="0.01" data-task-price="embeddingPerMillion" value="${settings.pricing.embeddingPerMillion}"></label>
                 </div></details>
                 <div class="memory-task-toolbar">
-                    <button class="btn btn-small btn-primary" data-action="task-run-queue">运行队列</button>
-                    <button class="btn btn-small btn-secondary" data-action="task-toggle-pause">${settings.paused ? '恢复队列' : '暂停队列'}</button>
+                    <button class="btn btn-small btn-primary" data-action="task-run-queue">运行作业</button>
+                    <button class="btn btn-small btn-secondary" data-action="task-toggle-pause">${settings.paused ? '恢复作业' : '暂停作业'}</button>
                     <button class="btn btn-small btn-secondary" data-action="task-retry-failed">重试失败</button>
                     <button class="btn btn-small btn-secondary" data-action="task-enqueue-retrieval">加入检索重建</button>
                     <button class="btn btn-small btn-secondary" data-action="task-enqueue-lifecycle">加入生命周期整理</button>
@@ -586,7 +586,7 @@
                 </div>
                 <div class="memory-task-summary">累计入队 ${state.stats.enqueued} · 去重 ${state.stats.deduped} · 自动重试 ${state.stats.retried} · 中断恢复 ${state.stats.recovered} · 估算输入 ${formatNumber(state.stats.estimatedInputTokens)} token · 估算费用 ${formatNumber(state.stats.estimatedCost)}</div>
             </section>
-            <section><h3>当前任务</h3>${tasks.length ? `<div class="memory-task-list">${tasks.map(renderTask).join('')}</div>` : '<div class="memory-review-empty"><p>当前没有任务。</p></div>'}</section>
+            <section><h3>当前作业</h3>${tasks.length ? `<div class="memory-task-list">${tasks.map(renderTask).join('')}</div>` : '<div class="memory-review-empty"><p>当前没有维护作业。</p></div>'}</section>
             <section class="memory-task-session"><h3>本会话最近记忆 API 诊断</h3>${diagnostics.length ? `<div class="memory-task-diagnostic-list">${diagnostics.map(item => `<div><strong>${escapeHtml(item.task || 'AI 请求')}</strong><span>${escapeHtml(item.model || '')} · ${item.ok ? '成功' : '失败'} · ${formatNumber(item.requestChars)} 字符 · ${formatNumber(item.durationMs)} ms${item.errorType ? ` · ${escapeHtml(item.errorType)}` : ''}</span></div>`).join('')}</div>` : '<p>暂无本会话诊断。</p>'}</section>
         </div>`;
     }

@@ -1,4 +1,4 @@
-// 结构化记忆 V2.5：来源证据、冲突关系、衰减、过期与归档
+// 结构化记忆 V2.14-R9：来源证据、生命周期维护计划、冲突与归档闭环
 (function () {
     'use strict';
 
@@ -7,8 +7,11 @@
     if (!Core) throw new Error('记忆内核未加载');
     const escapeHtml = Core.escapeHtml;
     const unique = (values, limit = 50) => Core.unique(values, limit);
+    const getProvenance = () => Kernel?.get?.('provenanceService') || null;
+    const getRecordIdentity = () => Kernel?.get?.('recordIdentity') || null;
+    const LifecycleDefaults = Kernel?.get?.('memoryDefaults')?.DEFAULTS?.lifecycle || {};
 
-    const VERSION = '2.5';
+    const VERSION = '2.15-R0B';
     const DAY = 86400000;
     const STATUS = Object.freeze({
         active: '当前有效',
@@ -38,12 +41,9 @@
     }
 
     function defaultRetention(effect) {
-        if (effect === 'temporary_state') return { mode: 'fixed', halfLife: 7, archive: 30 };
-        if (effect === 'reminder') return { mode: 'manual', halfLife: 30, archive: 90 };
-        if (effect === 'soft_preference') return { mode: 'decay', halfLife: 180, archive: 720 };
-        if (effect === 'historical_context') return { mode: 'decay', halfLife: 365, archive: 1460 };
-        if (effect === 'candidate') return { mode: 'manual', halfLife: 30, archive: 180 };
-        return { mode: 'permanent', halfLife: 3650, archive: 0 };
+        const retention = LifecycleDefaults.retention || {};
+        const selected = retention[effect] || retention.default || { mode: 'permanent', halfLife: 3650, archive: 0 };
+        return { mode: selected.mode, halfLife: Number(selected.halfLife) || 3650, archive: Number(selected.archive) || 0 };
     }
 
     function normalizeSourceRef(raw) {
@@ -159,7 +159,7 @@
 
     function getEffectiveConfidence(row, now = Date.now()) {
         const meta = ensureRowMeta(row, null, '');
-        let confidence = Math.max(0, Math.min(100, Number(meta?.confidence) || 70));
+        let confidence = Math.max(0, Math.min(100, Number(meta?.confidence) || Number(LifecycleDefaults.defaultConfidence) || 70));
         const life = meta.lifecycle;
         const evidence = meta.evidence;
         if (evidence.userConfirmed) confidence = Math.max(confidence, 92);
@@ -208,7 +208,7 @@
         if (['superseded', 'archived', 'expired'].includes(life.status)) blocked.push(`生命周期：${STATUS[life.status]}`);
         if (life.status === 'conflicting') blocked.push('存在未解决冲突');
         const effectiveConfidence = getEffectiveConfidence(row, now);
-        if (effectiveConfidence < 20 && !meta.pinned) blocked.push(`衰减后置信度过低（${effectiveConfidence}）`);
+        if (effectiveConfidence < (Number(LifecycleDefaults.lowConfidenceBlock) || 20) && !meta.pinned) blocked.push(`衰减后置信度过低（${effectiveConfidence}）`);
         const reasons = [`状态：${STATUS[life.status] || life.status}`, `来源：${SOURCE[evidence.primarySource] || evidence.primarySource}`];
         if (evidence.userConfirmed) reasons.push('用户已确认');
         if (life.retentionMode === 'decay') reasons.push(`衰减置信度：${effectiveConfidence}`);
@@ -240,6 +240,15 @@
         const normalizedRef = normalizeSourceRef(ref);
         if (normalizedRef) evidence.sourceRefs = normalizeEvidence({ ...evidence, sourceRefs: [...evidence.sourceRefs, normalizedRef] }).sourceRefs;
         meta.updatedAt = Date.now();
+        if (options.recordEvent !== false) getProvenance()?.record?.(row, 'source_observed', {
+            actor: options.actor || (normalized === 'manual' ? 'user' : 'system'),
+            source: normalized,
+            reason: options.reason || `补充${SOURCE[normalized] || normalized}来源证据`,
+            refs: normalizedRef ? [normalizedRef] : [],
+            transactionId: options.transactionId,
+            operationId: options.operationId,
+            eventKey: options.eventKey
+        });
         return evidence;
     }
 
@@ -249,17 +258,40 @@
         meta.versionLog = meta.versionLog.slice(-40);
     }
 
-    function setStatus(row, status, reason = '') {
+    function setStatus(row, status, reason = '', options = {}) {
         const meta = ensureRowMeta(row, null, '');
         const next = normalizeStatus(status);
         const old = meta.lifecycle.status;
         meta.lifecycle.status = next;
         meta.lifecycle.statusReason = String(reason || '').trim().slice(0, 1000);
-        if (next === 'archived') meta.lifecycle.archivedAt = Date.now();
-        if (next === 'expired') meta.lifecycle.expiredAt = Date.now();
-        if (next === 'superseded') meta.lifecycle.supersededAt = Date.now();
+        if (next === 'archived') meta.lifecycle.archivedAt = options.at || Date.now();
+        if (next === 'expired') meta.lifecycle.expiredAt = options.at || Date.now();
+        if (next === 'superseded') meta.lifecycle.supersededAt = options.at || Date.now();
+        if (next === 'active') {
+            meta.lifecycle.archivedAt = 0;
+            meta.lifecycle.expiredAt = 0;
+            if (old === 'superseded') meta.lifecycle.supersededAt = 0;
+        }
         meta.status = next;
-        addVersionLog(row, `status:${old}->${next}`, reason);
+        if (old !== next) {
+            addVersionLog(row, `status:${old}->${next}`, reason);
+            const action = next === 'archived' ? 'archive'
+                : next === 'expired' ? 'expire'
+                    : next === 'uncertain' ? 'uncertain'
+                        : next === 'active' && ['archived', 'expired', 'uncertain'].includes(old) ? 'restore'
+                            : next === 'superseded' ? 'supersede' : 'maintenance';
+            getProvenance()?.record?.(row, action, {
+                at: options.at,
+                actor: options.actor || 'system',
+                source: options.source || 'system',
+                reason: reason || `${STATUS[old] || old} → ${STATUS[next] || next}`,
+                before: STATUS[old] || old,
+                after: STATUS[next] || next,
+                transactionId: options.transactionId,
+                operationId: options.operationId,
+                relatedRowIds: options.relatedRowIds || []
+            });
+        }
         return old !== next;
     }
 
@@ -270,20 +302,23 @@
         if (mode === 'supersedes') {
             a.relations.supersedes = unique([...a.relations.supersedes, target.id]);
             b.relations.supersededBy = unique([...b.relations.supersededBy, current.id]);
-            setStatus(current, 'active', '作为更新版本生效');
-            setStatus(target, 'superseded', `被 ${current.id} 替代`);
+            setStatus(current, 'active', '作为更新版本生效', { actor: 'user', source: 'manual', relatedRowIds: [target.id] });
+            setStatus(target, 'superseded', `被 ${current.id} 替代`, { actor: 'user', source: 'manual', relatedRowIds: [current.id] });
+            getProvenance()?.record?.(current, 'supersede', { actor: 'user', source: 'manual', reason: '人工确认当前记录替代旧记录', relatedRowIds: [target.id] });
             return true;
         }
         if (mode === 'conflict') {
             a.relations.conflictsWith = unique([...a.relations.conflictsWith, target.id]);
             b.relations.conflictsWith = unique([...b.relations.conflictsWith, current.id]);
-            setStatus(current, 'conflicting', `与 ${target.id} 存在冲突`);
-            setStatus(target, 'conflicting', `与 ${current.id} 存在冲突`);
+            setStatus(current, 'conflicting', `与 ${target.id} 存在冲突`, { actor: 'user', source: 'manual', relatedRowIds: [target.id] });
+            setStatus(target, 'conflicting', `与 ${current.id} 存在冲突`, { actor: 'user', source: 'manual', relatedRowIds: [current.id] });
+            getProvenance()?.record?.(current, 'conflict', { actor: 'user', source: 'manual', reason: '人工建立冲突关系', relatedRowIds: [target.id] });
             return true;
         }
         if (mode === 'related') {
             a.relations.relatedTo = unique([...a.relations.relatedTo, target.id]);
             b.relations.relatedTo = unique([...b.relations.relatedTo, current.id]);
+            getProvenance()?.record?.(current, 'related', { actor: 'user', source: 'manual', reason: '人工建立相关关系', relatedRowIds: [target.id] });
             return true;
         }
         return false;
@@ -313,6 +348,7 @@
             setStatus(row, 'uncertain', '版本关系已人工解除，等待再次确认');
         }
         addVersionLog(row, 'clear_relations', linked.join(','));
+        if (linked.length) getProvenance()?.record?.(row, 'clear_relations', { actor: 'user', source: 'manual', reason: '人工解除记忆关系', relatedRowIds: linked });
         return linked.length > 0;
     }
 
@@ -365,6 +401,10 @@
         meta.expiresAt = meta.lifecycle.expiresAt || null;
         meta.updatedAt = Date.now();
         addVersionLog(row, 'manual_reliability_edit', '人工编辑来源和生命周期');
+        getProvenance()?.record?.(row, 'reliability_edit', {
+            actor: 'user', source: 'manual', reason: '人工修改来源、确认状态或生命周期',
+            after: `${STATUS[meta.lifecycle.status] || meta.lifecycle.status} · ${SOURCE[meta.evidence.primarySource] || meta.evidence.primarySource}`
+        });
         return true;
     }
 
@@ -414,49 +454,171 @@
         return changed;
     }
 
-    function runMaintenance(chat, templates) {
-        const report = { checked: 0, changed: 0, expired: 0, archived: 0, uncertain: 0 };
-        iterateRows(chat, templates, (row, table) => {
-            report.checked += 1;
-            const before = ensureRowMeta(row, table, '').lifecycle.status;
-            if (runRowMaintenance(row, table)) report.changed += 1;
-            const after = row.meta.lifecycle.status;
-            if (before !== after && report[after] !== undefined) report[after] += 1;
+    function buildMaintenanceOperation(row, table, template, now = Date.now()) {
+        const copy = Core.clone ? Core.clone(row) : JSON.parse(JSON.stringify(row));
+        const meta = ensureRowMeta(copy, table, '');
+        const before = meta.lifecycle.status;
+        runRowMaintenance(copy, table, now);
+        const after = copy.meta.lifecycle.status;
+        if (before === after) return null;
+        return {
+            templateId: template?.id || '',
+            tableId: table?.id || '',
+            tableName: table?.name || '记忆表',
+            rowId: row?.id || '',
+            before,
+            after,
+            reason: copy.meta.lifecycle.statusReason || `${STATUS[before] || before} → ${STATUS[after] || after}`,
+            excerpt: textForRow(table, row).slice(0, 220)
+        };
+    }
+
+    function planMaintenance(chat, templates, now = Date.now()) {
+        const operations = [];
+        let checked = 0;
+        iterateRows(chat, templates, (row, table, template) => {
+            checked += 1;
+            const operation = buildMaintenanceOperation(row, table, template, now);
+            if (operation) operations.push(operation);
+        });
+        const counts = { expired: 0, archived: 0, uncertain: 0, active: 0, superseded: 0, conflicting: 0 };
+        operations.forEach(item => { counts[item.after] = (counts[item.after] || 0) + 1; });
+        return {
+            schemaVersion: '1.0',
+            createdAt: now,
+            checked,
+            changed: operations.length,
+            operations,
+            ...counts
+        };
+    }
+
+    function rowLookup(templates) {
+        const result = new Map();
+        (templates || []).forEach(template => (template.tables || []).forEach(table => {
+            result.set(`${template.id}::${table.id}`, { template, table });
+        }));
+        return result;
+    }
+
+    function applyMaintenancePlan(chat, templates, plan, options = {}) {
+        const safePlan = plan && typeof plan === 'object' ? plan : planMaintenance(chat, templates, options.now);
+        const lookup = rowLookup(templates);
+        const report = { checked: Number(safePlan.checked) || 0, changed: 0, expired: 0, archived: 0, uncertain: 0, skipped: 0, operations: [] };
+        (safePlan.operations || []).forEach(operation => {
+            const descriptor = lookup.get(`${operation.templateId}::${operation.tableId}`);
+            const rows = descriptor ? chat?.memoryTables?.data?.[operation.templateId]?.[operation.tableId]?.__rows : null;
+            const row = Array.isArray(rows) ? rows.find(item => item.id === operation.rowId) : null;
+            if (!row || !descriptor) { report.skipped += 1; return; }
+            const current = ensureRowMeta(row, descriptor.table, '').lifecycle.status;
+            if (current !== operation.before && current !== operation.after) { report.skipped += 1; return; }
+            const changed = setStatus(row, operation.after, operation.reason, {
+                at: safePlan.createdAt,
+                actor: 'system',
+                source: 'system',
+                transactionId: options.transactionId,
+                operationId: options.operationId
+            });
+            if (!changed) return;
+            if (operation.after === 'uncertain') row.meta.lifecycle.reviewAt = 0;
+            report.changed += 1;
+            if (report[operation.after] !== undefined) report[operation.after] += 1;
+            report.operations.push({ ...operation });
         });
         chat.memoryTables ||= {};
         chat.memoryTables.lifecycle ||= {};
+        chat.memoryTables.lifecycle.schemaVersion = '3.1';
         chat.memoryTables.lifecycle.lastMaintenanceAt = Date.now();
-        chat.memoryTables.lifecycle.lastMaintenanceReport = report;
+        chat.memoryTables.lifecycle.lastMaintenanceReport = { ...report, operations: report.operations.slice(0, 60) };
         return report;
     }
 
-    function renderReliabilityView(chat, templates) {
+    function runMaintenance(chat, templates, options = {}) {
+        const plan = planMaintenance(chat, templates, options.now || Date.now());
+        return applyMaintenancePlan(chat, templates, plan, options);
+    }
+
+    function healthReport(chat, templates, now = Date.now()) {
         const stats = {};
         const sources = {};
         const due = [];
         const conflicts = [];
-        const now = Date.now();
+        const archived = [];
+        const missingSource = [];
+        const expiringSoon = [];
+        const signatureGroups = new Map();
+        const identity = getRecordIdentity();
+        let total = 0;
         iterateRows(chat, templates, (row, table, template) => {
-            const meta = ensureRowMeta(row, table, '');
+            total += 1;
+            const copy = Core.clone ? Core.clone(row) : JSON.parse(JSON.stringify(row));
+            const meta = ensureRowMeta(copy, table, '');
             stats[meta.lifecycle.status] = (stats[meta.lifecycle.status] || 0) + 1;
             sources[meta.evidence.primarySource] = (sources[meta.evidence.primarySource] || 0) + 1;
-            if ((meta.lifecycle.expiresAt && meta.lifecycle.expiresAt <= now) || (meta.lifecycle.reviewAt && meta.lifecycle.reviewAt <= now)) {
-                due.push({ row, table, template });
+            const item = { row, table, template, meta, text: textForRow(table, row) };
+            if ((meta.lifecycle.expiresAt && meta.lifecycle.expiresAt <= now) || (meta.lifecycle.reviewAt && meta.lifecycle.reviewAt <= now)) due.push(item);
+            if (meta.lifecycle.expiresAt && meta.lifecycle.expiresAt > now && meta.lifecycle.expiresAt <= now + (Number(LifecycleDefaults.expiringSoonDays) || 30) * DAY) expiringSoon.push(item);
+            if (meta.lifecycle.status === 'conflicting' || meta.relations.conflictsWith.length) conflicts.push(item);
+            if (meta.lifecycle.status === 'archived') archived.push(item);
+            if (meta.evidence.primarySource === 'legacy_import' && !(meta.evidence.sourceRefs || []).length) missingSource.push(item);
+            if (identity?.contentSignature && !['archived', 'superseded'].includes(meta.lifecycle.status)) {
+                const signature = identity.contentSignature(table, row?.cells || {});
+                if (signature) {
+                    const key = `${table.id}::${signature}`;
+                    const group = signatureGroups.get(key) || [];
+                    group.push(item);
+                    signatureGroups.set(key, group);
+                }
             }
-            if (meta.lifecycle.status === 'conflicting' || meta.relations.conflictsWith.length) conflicts.push({ row, table, template });
         });
+        const duplicateGroups = [...signatureGroups.values()].filter(group => group.length > 1);
+        const plan = planMaintenance(chat, templates, now);
+        const penalty = Math.min(100,
+            conflicts.length * (Number(LifecycleDefaults.healthPenalty?.conflict) || 8)
+            + due.length * (Number(LifecycleDefaults.healthPenalty?.due) || 3)
+            + duplicateGroups.length * (Number(LifecycleDefaults.healthPenalty?.duplicateGroup) || 4)
+            + missingSource.length * (Number(LifecycleDefaults.healthPenalty?.missingSource) || 0.25)
+        );
+        return {
+            generatedAt: now,
+            total,
+            stats,
+            sources,
+            due,
+            conflicts,
+            archived,
+            missingSource,
+            expiringSoon,
+            duplicateGroups,
+            plan,
+            score: Math.max(0, Math.round(100 - penalty))
+        };
+    }
+
+    function renderReliabilityView(chat, templates) {
+        const health = healthReport(chat, templates);
         const last = chat?.memoryTables?.lifecycle?.lastMaintenanceReport;
-        const cards = Object.entries(STATUS).map(([key, label]) => `<span>${label}<strong>${stats[key] || 0}</strong></span>`).join('');
-        const sourceText = Object.entries(sources).map(([key, count]) => `${SOURCE[key] || key} ${count}`).join(' · ');
-        const listItem = item => `<li><strong>${escapeHtml(item.table.name)}</strong> · ${escapeHtml(textForRow(item.table, item.row).slice(0, 180))} <code>${escapeHtml(item.row.id)}</code></li>`;
+        const cards = [
+            ['健康分数', health.score],
+            ['当前有效', health.stats.active || 0],
+            ['待确认', health.stats.uncertain || 0],
+            ['冲突', health.conflicts.length],
+            ['已过期', health.stats.expired || 0],
+            ['已归档', health.archived.length]
+        ].map(([label, count]) => `<span>${escapeHtml(label)}<strong>${count}</strong></span>`).join('');
+        const sourceText = Object.entries(health.sources).map(([key, count]) => `${SOURCE[key] || key} ${count}`).join(' · ');
+        const listItem = (item, actionLabel = '查看') => `<li><div><strong>${escapeHtml(item.table.name)}</strong> · ${escapeHtml((item.text || '').slice(0, 180))}</div><button type="button" class="memory-row-text-action" data-action="open-row-inspector" data-row-id="${escapeHtml(item.row.id)}">${actionLabel}</button></li>`;
+        const duplicateItem = group => `<li><div><strong>${escapeHtml(group[0]?.table?.name || '记忆表')}</strong> · ${group.length} 条内容相同或高度一致</div><button type="button" class="memory-row-text-action" data-action="open-row-inspector" data-row-id="${escapeHtml(group[0]?.row?.id || '')}">核对合并</button></li>`;
         return `<div class="memory-life-view">
-            <div class="memory-life-head"><div><h3>来源、冲突与遗忘</h3><p>过期、替代、归档和未解决冲突会在检索前被拦截；模型推测与旧迁移记录会降低使用强度。</p></div>
-            <div class="memory-life-actions"><button class="btn btn-small btn-primary" data-action="lifecycle-maintenance">运行生命周期整理</button></div></div>
+            <div class="memory-life-head"><div><h3>生命周期健康与来源变化</h3><p>维护只改变到期、复核和归档状态，不自动删除正文；重复记录必须进入人工核对后才能合并。</p></div>
+            <div class="memory-life-actions"><button class="btn btn-small btn-primary" data-action="lifecycle-maintenance" ${health.plan.changed ? '' : 'disabled'}>执行 ${health.plan.changed} 项维护</button></div></div>
             <div class="memory-life-stat-grid">${cards}</div>
-            <div class="memory-life-source-line">来源分布：${sourceText || '暂无'}</div>
-            ${last ? `<div class="memory-life-last">上次整理：检查 ${last.checked || 0}，改变 ${last.changed || 0}，过期 ${last.expired || 0}，归档 ${last.archived || 0}，待确认 ${last.uncertain || 0}</div>` : ''}
-            <section><h4>到期或需要复核（${due.length}）</h4>${due.length ? `<ul>${due.slice(0, 30).map(listItem).join('')}</ul>` : '<p>暂无。</p>'}</section>
-            <section><h4>冲突记录（${conflicts.length}）</h4>${conflicts.length ? `<ul>${conflicts.slice(0, 30).map(listItem).join('')}</ul>` : '<p>暂无未解决冲突。</p>'}</section>
+            <div class="memory-life-source-line">来源分布：${sourceText || '暂无'} · 缺少可验证来源 ${health.missingSource.length} 条 · 30 天内到期 ${health.expiringSoon.length} 条</div>
+            <div class="memory-life-last">本次预演：检查 ${health.plan.checked} 条，预计改变 ${health.plan.changed} 条（过期 ${health.plan.expired || 0}、归档 ${health.plan.archived || 0}、待确认 ${health.plan.uncertain || 0}）。${last ? `上次实际改变 ${last.changed || 0} 条。` : '尚未执行过维护。'}</div>
+            <section><h4>到期或需要复核（${health.due.length}）</h4>${health.due.length ? `<ul>${health.due.slice(0, 30).map(item => listItem(item)).join('')}</ul>` : '<p>暂无。</p>'}</section>
+            <section><h4>冲突记录（${health.conflicts.length}）</h4>${health.conflicts.length ? `<ul>${health.conflicts.slice(0, 30).map(item => listItem(item, '处理冲突')).join('')}</ul>` : '<p>暂无未解决冲突。</p>'}</section>
+            <section><h4>可能重复（${health.duplicateGroups.length} 组）</h4>${health.duplicateGroups.length ? `<ul>${health.duplicateGroups.slice(0, 20).map(duplicateItem).join('')}</ul>` : '<p>暂无完全一致的重复记录。</p>'}</section>
+            <section><h4>最近归档（${health.archived.length}）</h4>${health.archived.length ? `<ul>${health.archived.slice(-20).reverse().map(item => listItem(item)).join('')}</ul>` : '<p>暂无归档记忆。</p>'}</section>
         </div>`;
     }
 
@@ -480,6 +642,9 @@
         renderRowSummary,
         migrateRows,
         removeReferences,
+        planMaintenance,
+        applyMaintenancePlan,
+        healthReport,
         runMaintenance,
         renderReliabilityView,
         textForRow

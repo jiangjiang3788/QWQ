@@ -4,6 +4,7 @@
 
     const Kernel = window.OvoMemoryKernel || null;
     const Core = Kernel?.core;
+    const RetrievalDefaults = Kernel?.get?.('memoryDefaults')?.DEFAULTS?.retrieval || {};
     if (!Core) throw new Error('记忆内核未加载');
     const escapeHtml = Core.escapeHtml;
     const clamp = Core.clamp;
@@ -66,15 +67,15 @@
     function buildReasons(item, lexical, semantic, actualMode, effectEval) {
         const reasons = [];
         if (item.pinned) reasons.push('固定记忆');
-        if (semantic >= 0.72) reasons.push('语义高度相关');
-        else if (actualMode === 'hybrid' && semantic >= 0.5) reasons.push('语义相关');
+        if (semantic >= (Number(RetrievalDefaults.semanticHighThreshold) || 0.72)) reasons.push('语义高度相关');
+        else if (actualMode === 'hybrid' && semantic >= (Number(RetrievalDefaults.semanticRelatedThreshold) || 0.5)) reasons.push('语义相关');
         if (lexical >= 0.28) reasons.push('关键词命中');
         else if (lexical >= 0.12) reasons.push('文本片段相关');
         (effectEval?.tagReasons || []).forEach(reason => reasons.push(reason));
         if (item.active) reasons.push('当前有效');
         if ((Number(item.importance) || 0) >= 75) reasons.push('重要度较高');
         const updatedAt = Number(item.updatedAt) || 0;
-        if (updatedAt && Date.now() - updatedAt < 14 * 86400000) reasons.push('近期记录');
+        if (updatedAt && Date.now() - updatedAt < (Number(RetrievalDefaults.recentDays) || 14) * 86400000) reasons.push('近期记录');
         return reasons.length ? reasons : ['综合评分入选'];
     }
 
@@ -104,16 +105,16 @@
         const indexSnapshot = options.indexSnapshot || Maintenance?.getIndexSnapshot?.(chat) || {};
         const usageSnapshot = options.usageSnapshot || Maintenance?.getUsageSnapshot?.(chat) || {};
         const queryContext = effects ? effects.classifyQuery(queryText) : { text: queryText, topic: [], scene: [], entity: [] };
-        const semanticWeight = clamp(engineSettings?.semanticWeight, 0.55, 0, 1);
+        const semanticWeight = clamp(engineSettings?.semanticWeight, Number(RetrievalDefaults.semanticWeight) || 0.55, 0, 1);
         const tagWeight = clamp(engineSettings?.tagWeight, 0.35, 0, 0.8);
-        const candidateLimit = Math.round(clamp(engineSettings?.embeddingCandidateLimit, 32, 4, 200));
+        const candidateLimit = Math.round(clamp(engineSettings?.embeddingCandidateLimit, Number(RetrievalDefaults.embeddingCandidateLimit) || 32, 4, 200));
         const selectedByTable = {};
         const diagnostics = [];
         let fallbackError = '';
 
         const prepared = (groups || []).map(group => {
             const topK = Math.max(1, Number(group.policy?.topK) || 5);
-            const localLimit = Math.max(topK * 5, Math.min(candidateLimit, 28));
+            const localLimit = Math.max(topK * 5, Math.min(candidateLimit, Number(RetrievalDefaults.localCandidateFloor) || 28));
             const readItems = (group.items || []).map(item => makeReadItem(item, group.key, usageSnapshot));
             const lexical = lexicalCandidates(readItems, queryText, group.policy, localLimit);
             const byId = new Map();
@@ -245,7 +246,7 @@
             const score = memoryPolicy.computeLexicalScore(item.searchText || item.text || '', text);
             if (!best || score > best.score) best = { item, score };
         });
-        return best && best.score >= (Number(threshold) || 0.34) ? best : null;
+        return best && best.score >= (Number(threshold) || Number(RetrievalDefaults.similarThreshold) || 0.34) ? best : null;
     }
 
     function renderDiagnostics(chat) {

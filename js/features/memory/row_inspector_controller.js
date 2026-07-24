@@ -93,7 +93,7 @@
         }
         if (action === 'switch-row-inspector-tab') {
             const tab = actionEl.dataset.tab || 'relations';
-            state.inspectorTab = ['relations', 'tags', 'vocabulary'].includes(tab) ? tab : 'relations';
+            state.inspectorTab = ['relations', 'provenance', 'tags', 'vocabulary'].includes(tab) ? tab : 'relations';
             resetReview(state);
             render(context);
             return true;
@@ -256,5 +256,5 @@
         return true;
     }
 
-    Kernel.register('rowInspectorController', Object.freeze({ VERSION: '2.11-R3.1', handles: action => ACTIONS.has(action), handleAction, handleSubmit }));
+    Kernel.register('rowInspectorController', Object.freeze({ VERSION: '2.14-R9', handles: action => ACTIONS.has(action), handleAction, handleSubmit }));
 })(window);

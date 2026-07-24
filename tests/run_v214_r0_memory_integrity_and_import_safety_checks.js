@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 const context = {
   window: null, console, Date, JSON, Math, Number, String, Boolean, Object, Array, Map, Set,
@@ -26,7 +26,7 @@ for (const file of [
 const Kernel = context.OvoMemoryKernel;
 const Adapter = Kernel.require('packageAdapter');
 const Doctor = Kernel.require('integrityDoctor');
-assert.strictEqual(Adapter.VERSION, '2.14-R0');
+assert(['2.14-R0', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(Adapter.VERSION));
 assert.strictEqual(Doctor.VERSION, '2.14-R0');
 
 const template = {

@@ -7,12 +7,13 @@
     const Domain = Kernel.require('domain');
     const Policy = Kernel.require('policy');
     const FieldPolicy = Kernel.get('fieldPolicy') || Object.freeze({ effectiveCommitMode: () => 'direct', getRuntimeEntry: () => null });
+    const FieldSemantics = Kernel.require('fieldSemantics');
 
     const ROLE_RELATIONS = Object.freeze({
         core: ['current', 'long'],
-        current: ['core', 'observation', 'event', 'todo'],
+        current: ['core', 'observation', 'event', 'task'],
         task: ['current', 'event', 'long'],
-        event: ['current', 'observation', 'todo', 'medium'],
+        event: ['current', 'observation', 'task', 'medium'],
         observation: ['current', 'event'],
         medium: ['event', 'todo', 'long', 'observation', 'current', 'medium'],
         candidate: ['medium', 'candidate', 'long'],
@@ -23,7 +24,7 @@
     const ROLE_REASON = Object.freeze({
         core: '核对固定事实与边界',
         current: '核对当前状态与即时需求',
-        todo: '核对承诺、待办和未完成事项',
+        'task': '核对承诺、待办和未完成事项',
         event: '核对近期经历与事件脉络',
         observation: '核对近期日常观察和身体状态',
         medium: '检查已有成长经验、重复和阶段变化',
@@ -33,15 +34,13 @@
     });
 
     function inferRole(table) {
-        const name = String(table?.name || '');
-        if (/核心|确认档案|固定档案/.test(name)) return 'core';
-        if (/当前状态|即时状态|现状/.test(name)) return 'current';
-        if (/待办|承诺|未完成|提醒/.test(name)) return 'todo';
-        if (/近期经历|重要事件|经历|事件/.test(name)) return 'event';
-        if (/日常观察|观察|健康记录/.test(name)) return 'observation';
-        if (/中期|成长|经验/.test(name)) return 'medium';
-        if (/候选|审核队列/.test(name)) return 'candidate';
-        if (/稳定长期|长期特征|长期记忆/.test(name)) return 'long';
+        const role = Policy.normalizeTablePolicy(table).systemRole;
+        const roleMap = {
+            core_profile: 'core', current_state: 'current', tasks: 'task',
+            recent_events: 'event', daily_observation: 'observation',
+            medium_summary: 'medium', long_candidate: 'candidate', long_store: 'long'
+        };
+        if (roleMap[role]) return roleMap[role];
         const layer = Policy.normalizeTablePolicy(table).memoryLayer;
         if (layer === 'core') return 'core';
         if (layer === 'short') return 'current';
@@ -69,8 +68,9 @@
         const direct = Number(row?.meta?.lastMentionedAt || row?.meta?.updatedAt || row?.meta?.createdAt) || 0;
         if (direct) return direct;
         let best = 0;
+        const timestampRoles = new Set(['created_at', 'updated_at', 'completed_at', 'state_recorded_at', 'event_date', 'observation_date', 'state_expires_at']);
         (table?.columns || []).forEach(field => {
-            if (!/时间|日期|更新|发生|创建|完成/.test(field.key || '')) return;
+            if (!timestampRoles.has(FieldSemantics.semanticRole(field, table)) && FieldSemantics.identityRole(field, table) !== 'date') return;
             best = Math.max(best, Policy.parseDateLike(row?.cells?.[field.id]) || 0);
         });
         return best;
@@ -87,7 +87,8 @@
             const value = effectiveValue(chat, template, table, field, row?.cells?.[field.id], row?.id);
             return Domain.isEmptyMemoryValue(field, value) ? '' : `${field.key}: ${Domain.getFieldDisplayValue(field, value)}`;
         }).filter(Boolean).join('\n');
-        const statusText = (table.columns || []).filter(field => /状态|进度|结果/.test(field.key || '')).map(field => {
+        const statusRoles = new Set(['status', 'result', 'review_status', 'confirmation_status']);
+        const statusText = (table.columns || []).filter(field => statusRoles.has(FieldSemantics.semanticRole(field, table))).map(field => {
             const value = effectiveValue(chat, template, table, field, row?.cells?.[field.id], row?.id);
             return Domain.getFieldDisplayValue(field, value);
         }).filter(Boolean).join(' ');

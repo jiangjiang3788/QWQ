@@ -7,6 +7,8 @@
     if (!Core) throw new Error('记忆内核未加载');
     const clone = Core.clone;
     const clampNumber = Core.clamp;
+    const SharedDefaults = Kernel?.get?.('memoryDefaults')?.DEFAULTS || {};
+    const RetrievalDefaults = SharedDefaults.retrieval || {};
 
     const ENGINE_DEFAULTS = Object.freeze({
         enabled: true,
@@ -20,9 +22,9 @@
         maxAutoTablesPerRun: 2,
         reviewMode: 'summary_only',
         retrievalMode: 'auto',
-        semanticWeight: 0.55,
-        tagWeight: 0.35,
-        embeddingCandidateLimit: 32,
+        semanticWeight: Number(RetrievalDefaults.semanticWeight) || 0.55,
+        tagWeight: Number(RetrievalDefaults.tagWeight) || 0.35,
+        embeddingCandidateLimit: Number(RetrievalDefaults.embeddingCandidateLimit) || 32,
         sceneRoutingEnabled: true,
         sideEffectGuardEnabled: true
     });
@@ -67,29 +69,14 @@
     function normalizeLayer(layer, tableName) {
         const raw = String(layer || '').trim().toLowerCase();
         if (LAYER_DEFAULTS[raw]) return raw;
-        const name = String(tableName || '');
-        if (/审核|候选/.test(name)) return 'review';
-        if (/核心|确认档案/.test(name)) return 'core';
-        if (/当前|近期|事件|待办|日常|状态/.test(name)) return 'short';
-        if (/周期|总结|成长|趋势/.test(name)) return 'medium';
-        return 'long';
+        return Kernel.get('fieldSemantics')?.inferLegacyLayer?.({ name: tableName }) || 'long';
     }
-
 
     function inferSystemRole(table) {
         const descriptor = table && typeof table === 'object' ? table : {};
         const explicit = String(descriptor.systemRole || '').trim();
         if (SYSTEM_ROLES.includes(explicit)) return explicit;
-        const identity = `${descriptor.id || ''} ${descriptor.name || ''}`;
-        if (/table_current_state|当前状态|近期状态/i.test(identity)) return 'current_state';
-        if (/table_tasks|待办|承诺|未完成事项/i.test(identity)) return 'tasks';
-        if (/table_recent_events|近期经历|重要事件/i.test(identity)) return 'recent_events';
-        if (/table_daily_observation|日常观察|睡眠.*饮水|饮水.*身体/i.test(identity)) return 'daily_observation';
-        if (/长期候选|审核队列/i.test(identity)) return 'long_candidate';
-        if (/稳定长期|长期特征库/i.test(identity)) return 'long_store';
-        if (/中期总结|成长经验|周期总结/i.test(identity)) return 'medium_summary';
-        if (/核心确认|核心档案/i.test(identity)) return 'core_profile';
-        return 'general';
+        return Kernel.get('fieldSemantics')?.inferLegacyTableRole?.(descriptor) || 'general';
     }
 
     function normalizeSystemRole(role, table) {

@@ -16,12 +16,11 @@
     });
     const Review = Kernel.get('review');
     const PolicyResolver = Kernel.get('policyResolver');
+    const FieldSemantics = Kernel.get('fieldSemantics');
 
-    const VERSION = '2.14-R8.1';
+    const VERSION = '2.15-R0B';
     const MAX_CANDIDATES = 200;
     const MAX_HISTORY = 120;
-    const LIVE_TABLE_IDS = new Set(['table_current_state', 'table_tasks']);
-    const CANDIDATE_TABLE_IDS = new Set(['table_recent_events', 'table_daily_observation']);
     const ACTIVE_TASK_STATUSES = new Set(['进行中', '待办', '搁置']);
     const TERMINAL_TASK_STATUSES = new Set(['已完成', '取消']);
 
@@ -75,17 +74,23 @@
         return Kernel.get('policy')?.normalizeSystemRole?.(table?.systemRole, table) || String(table?.systemRole || '');
     }
 
+    function fieldBySemantic(table, role) {
+        return FieldSemantics?.findField?.(table, role)
+            || (table?.columns || []).find(field => String(field.semanticRole || '') === String(role || ''))
+            || null;
+    }
+
     function isCurrentStateTable(table) {
-        return !!table && (tableRole(table) === 'current_state' || table.id === 'table_current_state' || /当前状态|近期状态/.test(String(table.name || '')));
+        return !!table && tableRole(table) === 'current_state';
     }
 
     function isTaskTable(table) {
-        return !!table && (tableRole(table) === 'tasks' || table.id === 'table_tasks' || /待办|承诺|未完成事项/.test(String(table.name || '')));
+        return !!table && tableRole(table) === 'tasks';
     }
 
     function isCandidateSourceTable(table) {
         const role = tableRole(table);
-        return !!table && (role === 'recent_events' || role === 'daily_observation' || CANDIDATE_TABLE_IDS.has(table.id) || /近期经历|重要事件|日常观察|睡眠|饮水/.test(String(table.name || '')));
+        return !!table && (role === 'recent_events' || role === 'daily_observation');
     }
 
     function isLiveTable(table) {
@@ -356,7 +361,7 @@
     }
 
     function isStatusExpired(table, data) {
-        const field = (table.columns || []).find(item => /状态有效期/.test(item.key));
+        const field = fieldBySemantic(table, 'state_expires_at');
         const value = field ? data[field.id] : '';
         if (!value) return false;
         const timestamp = Date.parse(String(value).trim().length <= 10 ? `${value}T23:59:59` : String(value));
@@ -379,8 +384,8 @@
         if (!descriptor) return [];
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
-        const statusField = (table.columns || []).find(field => field.key === '当前状态');
-        const updatedField = (table.columns || []).find(field => /最后更新时间|更新时间/.test(field.key));
+        const statusField = fieldBySemantic(table, 'status');
+        const updatedField = fieldBySemantic(table, 'updated_at');
         return (data.__rows || []).filter(row => {
             const status = statusField ? String(row.cells?.[statusField.id] || '') : '';
             return !TERMINAL_TASK_STATUSES.has(status);
@@ -396,10 +401,10 @@
         const { table } = descriptor;
         const rows = getActiveTaskRows(chat, descriptor, 6);
         if (!rows.length) return '';
-        const title = (table.columns || []).find(field => field.key === '标题');
-        const content = (table.columns || []).find(field => field.key === '内容');
-        const status = (table.columns || []).find(field => field.key === '当前状态');
-        const next = (table.columns || []).find(field => field.key === '后续待办');
+        const title = fieldBySemantic(table, 'title');
+        const content = fieldBySemantic(table, 'content');
+        const status = fieldBySemantic(table, 'status');
+        const next = fieldBySemantic(table, 'next_action');
         return `【活跃待办与未完成事项】\n${rows.map(row => {
             const parts = [
                 title ? row.cells?.[title.id] : '',
@@ -420,8 +425,9 @@
 
     function describeFields(table, scope) {
         return (table.columns || []).filter(field => {
-            if (scope === 'status') return field.important !== false && !/状态记录时间|状态有效期/.test(field.key);
-            if (scope === 'task') return !/事件ID|创建时间|最后更新时间|完成时间|原始记录ID/.test(field.key);
+            const semanticRole = FieldSemantics?.semanticRole?.(field, table) || field.semanticRole || 'custom';
+            if (scope === 'status') return field.important !== false && !['state_recorded_at', 'state_expires_at'].includes(semanticRole);
+            if (scope === 'task') return !FieldSemantics?.isTechnical?.(field, table);
             return true;
         }).map(field => {
             const options = field.type === 'enum' && field.options?.length ? `，可选：${field.options.join('/')}` : '';
@@ -488,9 +494,9 @@
         };
         setFields(chat, template, table, data, payload.fields, report, '当前状态', context);
         if (!context.anyChanged) return;
-        const timeField = (table.columns || []).find(field => /状态记录时间|更新时间/.test(field.key));
+        const timeField = fieldBySemantic(table, 'state_recorded_at') || fieldBySemantic(table, 'updated_at');
         if (timeField && canEditField(chat, template, table, timeField)) data[timeField.id] = nowText();
-        const validField = (table.columns || []).find(field => /状态有效期/.test(field.key));
+        const validField = fieldBySemantic(table, 'state_expires_at');
         if (validField && canEditField(chat, template, table, validField)) {
             const days = Math.max(1, Math.min(7, Number(payload.validDays) || 3));
             const expires = new Date(Date.now() + days * 86400000);
@@ -541,12 +547,8 @@
         return batches.length;
     }
 
-    function findFieldByPattern(table, pattern) {
-        return (table.columns || []).find(field => pattern.test(field.key));
-    }
-
-    function setAutoField(chat, template, table, cells, pattern, value, report) {
-        const field = findFieldByPattern(table, pattern);
+    function setAutoField(chat, template, table, cells, semanticRole, value, report) {
+        const field = fieldBySemantic(table, semanticRole);
         if (!field) return false;
         if (!canEditField(chat, template, table, field)) {
             if (report) report.rejected.push(`${table.name}.${field.key}: 已锁定或禁止 AI 编辑`);
@@ -575,8 +577,8 @@
                 const tempReport = { changed: [], rejected: report.rejected, pendingFieldProposals: report.pendingFieldProposals };
                 const addContext = { source: operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', confidence: Math.max(0, Math.min(100, Number(operation.confidence) || 0)), rowAdd: true, deferredValues: {}, deferredDecisions: {} };
                 setFields(chat, template, table, cells, operation.fields || {}, tempReport, '新增待办', addContext);
-                const titleField = findFieldByPattern(table, /^标题$/);
-                const contentField = findFieldByPattern(table, /^内容$/);
+                const titleField = fieldBySemantic(table, 'title');
+                const contentField = fieldBySemantic(table, 'content');
                 const proposedCells = { ...cells, ...(addContext.deferredValues || {}) };
                 if (!String(proposedCells[titleField?.id] || proposedCells[contentField?.id] || '').trim()) {
                     report.rejected.push('新增待办：缺少标题或内容');
@@ -599,7 +601,7 @@
                 const titleText = titleField ? String(cells[titleField.id] || '').trim().toLowerCase() : '';
                 const contentText = contentField ? String(cells[contentField.id] || '').trim().toLowerCase() : '';
                 const duplicate = data.__rows.find(existing => {
-                    const statusField = findFieldByPattern(table, /^当前状态$/);
+                    const statusField = fieldBySemantic(table, 'status');
                     const currentStatus = statusField ? String(existing.cells?.[statusField.id] || '') : '';
                     if (TERMINAL_TASK_STATUSES.has(currentStatus)) return false;
                     const oldTitle = titleField ? String(existing.cells?.[titleField.id] || '').trim().toLowerCase() : '';
@@ -611,7 +613,7 @@
                     duplicate.meta ||= {};
                     duplicate.meta.updatedAt = Date.now();
                     if (window.MemoryTableLifecycle) window.MemoryTableLifecycle.recordSource(duplicate, operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', { type: 'round', roundId: context.roundId || '', at: Date.now() }, { userConfirmed: operation.source === 'user_explicit' });
-                    setAutoField(chat, template, table, duplicate.cells, /最后更新时间/, nowText(), report);
+                    setAutoField(chat, template, table, duplicate.cells, 'updated_at', nowText(), report);
                     report.changed.push(`合并重复待办:${duplicate.id}`);
                     continue;
                 }
@@ -631,10 +633,10 @@
                 } };
                 if (window.MemoryTableEffects) window.MemoryTableEffects.ensureRowMeta(row, table, `${cells[titleField?.id] || ''} ${cells[contentField?.id] || ''}`);
                 if (window.MemoryTableLifecycle) window.MemoryTableLifecycle.recordSource(row, operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', { type: 'round', roundId: context.roundId || '', at: Date.now() }, { userConfirmed: operation.source === 'user_explicit' });
-                setAutoField(chat, template, table, row.cells, /事件ID/, row.id, report);
-                setAutoField(chat, template, table, row.cells, /创建时间/, nowText(), report);
-                setAutoField(chat, template, table, row.cells, /最后更新时间/, nowText(), report);
-                const statusField = findFieldByPattern(table, /^当前状态$/);
+                setAutoField(chat, template, table, row.cells, 'event_id', row.id, report);
+                setAutoField(chat, template, table, row.cells, 'created_at', nowText(), report);
+                setAutoField(chat, template, table, row.cells, 'updated_at', nowText(), report);
+                const statusField = fieldBySemantic(table, 'status');
                 if (statusField && !row.cells[statusField.id]) row.cells[statusField.id] = '待办';
                 data.__rows.push(row);
                 report.changed.push(`新增待办:${row.id}`);
@@ -650,20 +652,20 @@
             if (op === 'update') {
                 setFields(chat, template, table, row.cells, operation.fields || {}, report, `待办:${row.id}`, { rowId: row.id, source: operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', confidence: Number(operation.confidence) || 0 });
             } else if (op === 'complete') {
-                setAutoField(chat, template, table, row.cells, /^当前状态$/, '已完成', report);
-                setAutoField(chat, template, table, row.cells, /完成时间/, nowText(), report);
-                if (operation.result) setAutoField(chat, template, table, row.cells, /^结果$/, operation.result, report);
+                setAutoField(chat, template, table, row.cells, 'status', '已完成', report);
+                setAutoField(chat, template, table, row.cells, 'completed_at', nowText(), report);
+                if (operation.result) setAutoField(chat, template, table, row.cells, 'result', operation.result, report);
                 report.changed.push(`完成待办:${row.id}`);
             } else if (op === 'cancel') {
-                setAutoField(chat, template, table, row.cells, /^当前状态$/, '取消', report);
-                if (operation.reason) setAutoField(chat, template, table, row.cells, /搁置或取消原因/, operation.reason, report);
+                setAutoField(chat, template, table, row.cells, 'status', '取消', report);
+                if (operation.reason) setAutoField(chat, template, table, row.cells, 'cancel_reason', operation.reason, report);
                 report.changed.push(`取消待办:${row.id}`);
             } else if (op === 'reopen') {
-                setAutoField(chat, template, table, row.cells, /^当前状态$/, '进行中', report);
-                setAutoField(chat, template, table, row.cells, /完成时间/, '', report);
+                setAutoField(chat, template, table, row.cells, 'status', '进行中', report);
+                setAutoField(chat, template, table, row.cells, 'completed_at', '', report);
                 report.changed.push(`重开待办:${row.id}`);
             }
-            setAutoField(chat, template, table, row.cells, /最后更新时间/, nowText(), report);
+            setAutoField(chat, template, table, row.cells, 'updated_at', nowText(), report);
             row.meta.updatedAt = Date.now();
             if (window.MemoryTableLifecycle) window.MemoryTableLifecycle.recordSource(row, operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', { type: 'round', roundId: context.roundId || '', at: Date.now() }, { userConfirmed: operation.source === 'user_explicit' });
         }
@@ -770,21 +772,21 @@
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
         if (isStatusExpired(table, data)) return null;
-        const findValue = regex => {
-            const field = (table.columns || []).find(item => regex.test(item.key));
+        const findValue = role => {
+            const field = fieldBySemantic(table, role);
             return field ? getFieldDisplay(field, getEffectiveFieldValue(chat, template, table, field, data[field.id])) : '';
         };
-        const mentalField = (table.columns || []).find(item => /user_精神状态/.test(item.key));
+        const mentalField = fieldBySemantic(table, 'user_mental_state');
         const mentalMeta = mentalField ? ensureMemoryTables(chat).statusMeta?.[mentalField.id] : null;
         return {
-            scene: findValue(/user_当前场景/),
-            mental: findValue(/user_精神状态/),
-            body: findValue(/user_身体状态/),
-            energy: findValue(/user_精力/),
-            need: findValue(/user_当前需求/),
-            pressure: findValue(/user_压力源/),
-            validUntil: findValue(/状态有效期/),
-            updatedAt: findValue(/状态记录时间/),
+            scene: findValue('user_scene'),
+            mental: findValue('user_mental_state'),
+            body: findValue('user_body_state'),
+            energy: findValue('user_energy'),
+            need: findValue('user_need'),
+            pressure: findValue('user_stressor'),
+            validUntil: findValue('state_expires_at'),
+            updatedAt: findValue('state_recorded_at'),
             inferred: mentalMeta?.source === 'assistant_inferred'
         };
     }

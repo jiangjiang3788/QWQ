@@ -3,7 +3,9 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     Kernel.register('memoryFoundationDomain', Object.freeze({
-        VERSION: '2.14-R8',
+        VERSION: '2.15-R0B',
+        memoryDefaults: Kernel.require('memoryDefaults'),
+        fieldSemantics: Kernel.require('fieldSemantics'),
         api: Kernel.require('api'),
         domain: Kernel.require('domain'),
         recordIdentity: Kernel.require('recordIdentity'),

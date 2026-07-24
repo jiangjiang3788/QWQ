@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
 const recent = {
-  id: 'table_recent_events', name: '近期经历、想法与重要事件', mode: 'rows', memoryLayer: 'short', columns: [
+  id: 'table_recent_events', name: '近期经历、想法与重要事件', systemRole: 'recent_events', mode: 'rows', memoryLayer: 'short', columns: [
     { id: 'event_id', key: '事件ID', type: 'text', default: '' },
     { id: 'created', key: '创建时间', type: 'text', default: '' },
     { id: 'updated', key: '最后更新时间', type: 'text', default: '' },
@@ -22,7 +22,7 @@ const recent = {
   ]
 };
 const daily = {
-  id: 'table_daily_observation', name: '日常观察（睡眠/饮水/身体）', mode: 'rows', memoryLayer: 'short', columns: [
+  id: 'table_daily_observation', name: '日常观察（睡眠/饮水/身体）', systemRole: 'daily_observation', mode: 'rows', memoryLayer: 'short', columns: [
     { id: 'date', key: '日期', type: 'date', default: '' },
     { id: 'sleep', key: '睡眠情况', type: 'longtext', default: '' },
     { id: 'water', key: '饮水情况', type: 'longtext', default: '' },
@@ -43,7 +43,11 @@ const sandbox = {
 sandbox.window.window = sandbox.window;
 vm.createContext(sandbox);
 vm.runInContext(read('js/features/memory/kernel.js'), sandbox);
+vm.runInContext(read('js/features/memory/memory_defaults.js'), sandbox);
+vm.runInContext(read('js/modules/memory_table_policy.js'), sandbox);
+vm.runInContext(read('js/features/memory/field_semantics.js'), sandbox);
 vm.runInContext(read('js/modules/memory_table_sidecar.js'), sandbox);
+vm.runInContext(read('js/features/memory/record_identity.js'), sandbox);
 vm.runInContext(read('js/features/memory/domain.js'), sandbox);
 vm.runInContext(read('js/features/memory/write_coordinator.js'), sandbox);
 vm.runInContext(read('js/features/memory/sidecar_candidate_service.js'), sandbox);

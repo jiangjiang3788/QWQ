@@ -4,7 +4,7 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     const SchemaMigrator = Kernel.require('schemaMigrator');
-    const VERSION = '2.14-R7';
+    const VERSION = '2.15-R0B';
     const SCHEMA_VERSION = SchemaMigrator.CURRENT_SCHEMA_VERSION;
 
     function create(env = {}) {

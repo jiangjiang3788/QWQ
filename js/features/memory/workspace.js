@@ -4,6 +4,7 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
+    const Policy = Kernel.get('policy');
 
     const WORKSPACES = Object.freeze({
         memory: Object.freeze({ id: 'memory', label: '记忆', defaultView: 'tables' }),
@@ -12,7 +13,11 @@
     });
 
     const INBOX_VIEWS = new Set(['inbox_home', 'review', 'sidecar', 'reliability', 'tasks']);
-    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'integrity', 'usage_audit', 'quality', 'history']);
+    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'diagnostics', 'integrity', 'lifecycle', 'usage_audit', 'quality', 'history']);
+
+    function tableRole(table) {
+        return Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(table || {}).systemRole : String(table?.systemRole || 'general');
+    }
 
     function getModules() {
         return {
@@ -71,7 +76,7 @@
                 });
             });
         });
-        const taskDescriptor = findTable(templates, table => table.id === 'table_tasks' || /待办|承诺|未完成事项/.test(String(table.name || '')));
+        const taskDescriptor = findTable(templates, table => tableRole(table) === 'tasks');
         if (taskDescriptor && modules.sidecar?.getActiveTaskRows) {
             counts.activeTasks = modules.sidecar.getActiveTaskRows(chat, taskDescriptor, 99).length;
         }
@@ -88,7 +93,7 @@
     }
 
     function getStatusSummary(chat, templates) {
-        const descriptor = findTable(templates, table => table.id === 'table_current_state' || /当前状态|近期状态/.test(String(table.name || '')));
+        const descriptor = findTable(templates, table => tableRole(table) === 'current_state');
         if (!descriptor) return { title: '暂无当前状态', detail: '聊天中出现明确变化后会自动更新。' };
         const data = chat?.memoryTables?.data?.[descriptor.template.id]?.[descriptor.table.id] || {};
         const values = (descriptor.table.columns || [])
@@ -118,13 +123,27 @@
         const latestRun = quality?.runs?.[quality.runs.length - 1];
         const cards = [
             ['templates', '表结构编辑器', `${counts.templates} 个已绑定模板`, '统一管理字段、表格和结构 JSON'],
-            ['integrity', '记忆完整性医生', '只读检查结构与引用', '发现孤立数据、失效目标、重复职责和游标断点'],
-            ['usage_audit', '记忆引用与作用', '按表查看来源、原因与效果', '核对本轮实际使用的记忆'],
-            ['quality', '质量与诊断', latestRun ? `最近得分 ${Math.round(latestRun.score || 0)}` : '尚未建立质量基线', '运行回归与质量测试'],
-            ['history', '更新历史', '查看表格变更快照', '用于核对和回滚']
+            ['diagnostics', '记忆诊断中心', `${counts.reliability + counts.tasks} 项需要关注`, latestRun ? `完整性、来源、召回、质量与历史；最近质量得分 ${Math.round(latestRun.score || 0)}` : '集中查看完整性、来源时效、召回索引、质量和历史']
         ];
         return `<div class="memory-workbench-overview">
-            <div class="memory-workbench-overview-head"><div><h2>管理</h2><p>日常使用无需调整这些设置</p></div><span class="memory-workbench-health">${counts.tasks ? `${counts.tasks} 项任务待处理` : '运行正常'}</span></div>
+            <div class="memory-workbench-overview-head"><div><h2>管理</h2><p>日常使用无需调整这些设置</p></div><span class="memory-workbench-health">${counts.tasks ? `${counts.tasks} 项维护作业待处理` : '运行正常'}</span></div>
+            <div class="memory-workbench-card-grid">${cards.map(([view, title, meta, text]) => `<button type="button" class="memory-workbench-card" data-workbench-view="${view}"><strong>${Core.escapeHtml(title)}</strong><small>${Core.escapeHtml(meta)}</small><em>${Core.escapeHtml(text)}</em></button>`).join('')}</div>
+        </div>`;
+    }
+
+    function renderDiagnosticsHome(chat, templates) {
+        const counts = getCounts(chat, templates);
+        const quality = Kernel.get('quality')?.ensureState?.(chat);
+        const latestRun = quality?.runs?.[quality.runs.length - 1];
+        const cards = [
+            ['integrity', '结构完整性', '记忆完整性医生', '检查孤立数据、失效引用、重复职责与游标断点'],
+            ['lifecycle', '来源与时效', `${counts.reliability} 条需要复核`, '查看来源变化链，预演过期、归档、冲突与重复'],
+            ['usage_audit', '召回与索引', '本轮使用与注入原因', '核对哪些记忆被召回、为什么选中以及实际注入内容'],
+            ['quality', '质量测试', latestRun ? `最近得分 ${Math.round(latestRun.score || 0)}` : '尚未建立质量基线', '运行固定测试对话和质量回归'],
+            ['history', '历史与回滚', '正式记忆变更快照', '查看每次写入并按快照恢复']
+        ];
+        return `<div class="memory-workbench-overview memory-diagnostics-center">
+            <div class="memory-workbench-overview-head"><div><h2>记忆诊断中心</h2><p>入口集中，底层检查模块保持独立；所有检查默认只读。</p></div><span class="memory-workbench-health">${counts.tasks ? `${counts.tasks} 项维护作业` : '没有待运行作业'}</span></div>
             <div class="memory-workbench-card-grid">${cards.map(([view, title, meta, text]) => `<button type="button" class="memory-workbench-card" data-workbench-view="${view}"><strong>${Core.escapeHtml(title)}</strong><small>${Core.escapeHtml(meta)}</small><em>${Core.escapeHtml(text)}</em></button>`).join('')}</div>
         </div>`;
     }
@@ -135,13 +154,13 @@
 
     function viewTitle(view) {
         return ({
-            review: '更新确认', sidecar: '短期候选', reliability: '需要复核', tasks: '任务队列',
-            templates: '表结构编辑器', integrity: '记忆完整性医生', usage_audit: '记忆引用与作用', retrieval: '记忆引用与作用', feedback: '记忆引用与作用', quality: '质量与诊断', history: '更新历史'
+            review: '更新确认', sidecar: '短期候选', reliability: '需要复核', tasks: '维护作业',
+            templates: '表结构编辑器', diagnostics: '记忆诊断中心', integrity: '记忆完整性医生', lifecycle: '生命周期与变化链', usage_audit: '记忆引用与作用', retrieval: '记忆引用与作用', feedback: '记忆引用与作用', quality: '质量与诊断', history: '更新历史'
         })[view] || '';
     }
 
     Kernel.register('workspace', {
-        VERSION: '2.14-R0',
+        VERSION: '2.15-R0B',
         WORKSPACES,
         canonicalView,
         getWorkspaceForView,
@@ -150,6 +169,7 @@
         getStatusSummary,
         renderInboxHome,
         renderManageHome,
+        renderDiagnosticsHome,
         renderDetailHeader,
         viewTitle
     });

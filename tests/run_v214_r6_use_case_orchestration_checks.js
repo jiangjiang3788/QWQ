@@ -5,7 +5,7 @@ const assert = require('assert');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 const controller = read('js/modules/memory_table.js');
 const retrieval = read('js/features/memory/retrieval_orchestrator.js');
@@ -29,7 +29,7 @@ assert(retrieval.includes('function prepareMemoryTableContext'));
 assert(review.includes('function finalizeMemoryReviewBatch'));
 assert(pkg.includes('async function importTemplatesFromFile'));
 
-assert(['2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(contract.version));
+assert(['2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(contract.version));
 assert(contract.publicFacades.memoryRetrievalDomain.owns.includes('retrievalOrchestrator'));
 assert(contract.publicFacades.memoryGovernanceDomain.owns.includes('reviewOrchestrator'));
 assert(contract.publicFacades.memoryFoundationDomain.owns.includes('packageOrchestrator'));
@@ -56,9 +56,9 @@ for (const rel of [
 ]) vm.runInContext(read(rel), box, { filename: rel });
 
 for (const [name, versions] of Object.entries({
-  retrievalOrchestrator: ['2.14-R6', '2.14-R8.1'],
+  retrievalOrchestrator: ['2.14-R6', '2.14-R8.1', '2.14-R9', '2.15-R0A'],
   reviewOrchestrator: ['2.14-R6', '2.14-R8'],
-  packageOrchestrator: ['2.14-R6', '2.14-R7', '2.14-R8']
+  packageOrchestrator: ['2.14-R6', '2.14-R7', '2.14-R8', '2.14-R9', '2.15-R0A', '2.15-R0B']
 })) {
   const module = box.OvoMemoryKernel.require(name);
   assert(versions.includes(module.VERSION));

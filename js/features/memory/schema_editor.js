@@ -9,6 +9,7 @@
     const FieldWidth = Kernel.require('fieldWidth');
     const Policy = Kernel.get('policy');
     const FieldPolicy = Kernel.get('fieldPolicy');
+    const FieldSemantics = Kernel.get('fieldSemantics');
 
     const escapeHtml = Core.escapeHtml;
     const escapeAttribute = Core.escapeAttribute;
@@ -27,15 +28,71 @@
         ['sidecar', '聊天同请求'], ['scheduled', '周期整理'], ['manual', '手动整理'], ['disabled', '关闭']
     ];
     const COMMIT_MODES = [
-        ['direct', '直接生效'], ['review', '先确认再生效'], ['candidate', '进入候选'],
-        ['manual_only', '仅人工编辑'], ['promotion', '批准后晋升']
+        ['direct', '自动生效'], ['pending', '待确认'], ['manual_only', '仅人工编辑']
     ];
+
+    function isPromotionTable(table) {
+        const normalized = Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(table || {}) : (table || {});
+        return (normalized.systemRole || table?.systemRole || '') === 'long_candidate';
+    }
+
+    function displayCommitMode(mode) {
+        return mode === 'review' || mode === 'candidate' ? 'pending' : (mode || 'pending');
+    }
+
+    function commitModeChoices(table) {
+        const choices = COMMIT_MODES.map(item => [...item]);
+        if (isPromotionTable(table)) choices.push(['promotion', '长期晋升']);
+        return choices;
+    }
+
+    function resolveUiCommitMode(table, requested, currentMode = '') {
+        if (requested !== 'pending') return requested;
+        const normalized = Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(table || {}) : (table || {});
+        const current = currentMode || normalized.commitPolicy?.mode || table?.commitPolicy?.mode || '';
+        if (current === 'review' || current === 'candidate') return current;
+        const role = normalized.systemRole || table?.systemRole || 'general';
+        return ['recent_events', 'daily_observation'].includes(role) ? 'candidate' : 'review';
+    }
     const API_MODES = [['none', '不额外调用'], ['main', '主聊天 API'], ['summary', '总结 API']];
     const FREQUENCY_SOURCES = [['global', '使用全局默认'], ['table', '本表自定义']];
 
     const FIELD_SUBJECTS = [['user', '用户'], ['assistant', '角色'], ['relationship', '双方关系'], ['system', '系统运行']];
     const FIELD_EVIDENCE = [['explicit', '用户明确表达'], ['inferred', '允许推断'], ['manual', '仅人工确认']];
-    const FIELD_COMMIT_MODES = [['inherit', '继承表格'], ['direct', '直接生效'], ['review', '先确认'], ['candidate', '进入候选'], ['runtime_only', '仅运行态'], ['manual_only', '仅人工编辑']];
+    const FIELD_COMMIT_MODES = [['inherit', '继承表格'], ['direct', '自动生效'], ['pending', '待确认'], ['runtime_only', '仅运行态'], ['manual_only', '仅人工编辑']];
+
+    const SEMANTIC_LABELS = Object.freeze({
+        custom: '自定义', system_timestamp: '系统时间', created_at: '创建时间', updated_at: '更新时间', completed_at: '完成时间', state_recorded_at: '状态记录时间', event_date: '事件发生时间', event_id: '事件标识', source_record_id: '来源记录标识',
+        record_type: '记录类型', title: '标题', content: '正文', related_entity: '相关主体', impact: '影响',
+        status: '状态', next_action: '下一步', result: '结果', cancel_reason: '取消原因', observation_date: '观察日期',
+        sleep: '睡眠', hydration: '饮水', activity: '活动', body_state: '身体状态', energy_mood: '精力情绪',
+        data_completeness: '数据完整度', source_note: '来源说明', user_scene: '用户场景', user_mental_state: '用户精神状态',
+        user_body_state: '用户身体状态', user_stamina: '用户体力', user_energy: '用户精力', user_stressor: '用户压力源',
+        user_need: '用户需求', user_risk: '用户风险', user_next_step: '用户下一步建议', assistant_scene: '角色场景',
+        assistant_mental_state: '角色精神状态', assistant_runtime_state: '角色运行态', assistant_user_assessment: '角色对用户判断',
+        assistant_response_strategy: '角色回应策略', assistant_boundary_reminder: '角色边界提醒', state_expires_at: '状态有效期',
+        user_profile: '用户档案', assistant_profile: '角色档案', relationship_definition: '关系定义',
+        relationship_addressing: '称呼系统', relationship_agreement: '相处约定', topic: '主题', summary: '摘要',
+        growth_subject: '成长主体', old_pattern: '旧模式', new_response: '新反应', evidence: '证据',
+        growth_meaning: '成长意义', stability: '稳定程度', reusable_experience: '可复用经验', confidence: '置信度',
+        candidate_category: '候选类别', candidate_content: '候选内容', exception: '反例或例外', observation_span: '观察跨度',
+        evidence_count: '证据次数', review_status: '审核状态', source_domain: '来源域', dimension: '维度',
+        category: '分类', confirmation_status: '确认状态', applicability_exception: '适用场景或例外'
+    });
+    const SEMANTIC_ROLES = (FieldSemantics?.SEMANTIC_ROLES || ['custom']).map(role => [role, SEMANTIC_LABELS[role] || role]);
+    const IDENTITY_ROLES = [['none', '不参与身份'], ['primary_key', '主业务键'], ['source_key', '来源键'], ['title', '标题'], ['date', '日期'], ['content', '内容'], ['volatile', '易变技术字段']];
+
+    function displayFieldCommitMode(mode) {
+        return mode === 'review' || mode === 'candidate' ? 'pending' : (mode || 'inherit');
+    }
+
+    function resolveFieldUiCommitMode(field, table, requested, currentMode = '') {
+        if (requested !== 'pending') return requested;
+        const current = currentMode || field?.writePolicy?.commitMode || '';
+        if (current === 'review' || current === 'candidate') return current;
+        const tableMode = Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(table || {}).commitPolicy?.mode : table?.commitPolicy?.mode;
+        return tableMode === 'candidate' ? 'candidate' : 'review';
+    }
 
     function selected(value, expected) { return String(value) === String(expected) ? 'selected' : ''; }
 
@@ -65,6 +122,7 @@
             options.placeholder ? `placeholder="${escapeAttribute(options.placeholder)}"` : '',
             options.className ? `class="${escapeAttribute(options.className)}"` : '',
             options.policyPath ? `data-policy-path="${escapeAttribute(options.policyPath)}"` : '',
+            options.internalMode ? `data-commit-internal-mode="${escapeAttribute(options.internalMode)}"` : '',
             options.disabled ? 'disabled' : ''
         ].filter(Boolean).join(' ');
         if (options.choices) return `<select ${attrs}>${options.choices.map(item => {
@@ -117,15 +175,16 @@
         if (!resolution) return '<span class="memory-schema-effective-empty">保存后计算</span>';
         const labels = resolution.labels || {};
         const counts = FieldPolicy?.summarizeRoutes?.(resolution.materializedTable) || {};
+        const pending = Number(counts.review || 0) + Number(counts.candidate || 0);
+        const pendingDetail = counts.review && counts.candidate ? `（审核 ${counts.review} · 候选 ${counts.candidate}）` : '';
         const parts = [
-            counts.direct ? `${counts.direct}直接` : '',
-            counts.review ? `${counts.review}审核` : '',
-            counts.candidate ? `${counts.candidate}候选` : '',
-            counts.runtime_only ? `${counts.runtime_only}运行态` : '',
-            counts.manual_only ? `${counts.manual_only}人工` : '',
-            counts.blocked ? `${counts.blocked}禁写` : ''
+            counts.direct ? `直接写入 ${counts.direct}` : '',
+            pending ? `待确认 ${pending}${pendingDetail}` : '',
+            counts.runtime_only ? `仅运行态 ${counts.runtime_only}` : '',
+            counts.manual_only ? `仅人工 ${counts.manual_only}` : '',
+            counts.blocked ? `禁止自动写入 ${counts.blocked}` : ''
         ].filter(Boolean);
-        const fieldSummary = parts.length ? `字段：${parts.join(' · ')}` : '字段：无可写字段';
+        const fieldSummary = parts.length ? `字段实际分流：${parts.join(' · ')}` : '字段实际分流：无可写字段';
         return `<div class="memory-schema-effective-summary"><strong>${escapeHtml(labels.capture || '')}</strong><span>${escapeHtml(labels.commit || '')}</span><span>${escapeHtml(labels.schedule || '')}</span><span>${escapeHtml(labels.injection || '')}</span><small class="memory-schema-field-route-summary">${escapeHtml(fieldSummary)}</small></div>`;
     }
 
@@ -176,7 +235,7 @@
                         <td>${renderInput('table-mode', table.mode || 'keyValue', { tableIndex, choices: [['keyValue', 'KV'], ['rows', '多行']], disabled: roleScope })}</td>
                         <td>${renderInput('table-memory-layer', layer, { tableIndex, choices: LAYERS, disabled: roleScope })}</td>
                         <td>${policy('table-capture-mode', 'capturePolicy.mode', capture.mode, { tableIndex, choices: CAPTURE_MODES })}</td>
-                        <td>${policy('table-commit-mode', 'commitPolicy.mode', commit.mode, { tableIndex, choices: COMMIT_MODES })}</td>
+                        <td>${policy('table-commit-mode', 'commitPolicy.mode', displayCommitMode(commit.mode), { tableIndex, choices: commitModeChoices(table), internalMode: commit.mode })}</td>
                         <td>${policy('table-api-mode', 'capturePolicy.apiMode', capture.apiMode, { tableIndex, choices: API_MODES, disabled: capture.mode === 'sidecar' || capture.mode === 'disabled' })}</td>
                         <td>${policy('table-frequency-source', 'capturePolicy.frequencySource', capture.frequencySource, { tableIndex, choices: FREQUENCY_SOURCES, disabled: !scheduled })}</td>
                         <td>${policy('table-trigger-mode', 'updatePolicy.triggerMode', update.triggerMode || 'manual', { tableIndex, choices: [['rounds', '按轮'], ['messages', '按消息'], ['either', '先到者'], ['manual', '仅手动']], disabled: !ownSchedule })}</td>
@@ -224,12 +283,14 @@
         return `<section class="memory-schema-unified-section memory-schema-fields-section ${roleScope ? 'is-readonly' : ''}" id="memory-schema-fields-section" aria-label="字段设置">
             <div class="memory-schema-section-head"><div><strong>${escapeHtml(table.name)} · 字段设置</strong><small>字段 ID 不在日常界面显示；选项、最小值和最大值都允许留空；每个字段可以独立决定主体、证据要求、写入方式和最低置信度。</small></div><button type="button" class="btn btn-small btn-primary" data-schema-action="add-field" data-table-index="${tableIndex}" ${roleScope ? 'disabled' : ''}>新增字段</button></div>
             <div class="memory-schema-grid-wrap memory-schema-wide-grid-wrap"><table class="memory-schema-grid memory-schema-fields-grid memory-schema-unified-field-grid" style="--schema-field-name-width:${width.desktop}px;--schema-field-name-width-mobile:${width.mobile}px" data-schema-name-width-desktop="${width.desktop}" data-schema-name-width-mobile="${width.mobile}" data-schema-name-max-units="${width.longestUnits}">
-                <colgroup><col class="schema-col-group"><col class="schema-col-name"><col class="schema-col-type"><col class="schema-col-default"><col class="schema-col-options"><col class="schema-col-min"><col class="schema-col-max"><col class="schema-col-display"><col class="schema-col-ai"><col class="schema-col-subject"><col class="schema-col-evidence"><col class="schema-col-commit"><col class="schema-col-confidence"><col class="schema-col-summary"><col class="schema-col-format"><col class="schema-col-hint"><col class="schema-col-rules"><col class="schema-col-actions"></colgroup>
-                <thead><tr><th>分组</th><th>字段名</th><th>类型</th><th>默认值</th><th>选项</th><th>最小值</th><th>最大值</th><th>普通显示</th><th>AI 编辑</th><th>信息主体</th><th>证据要求</th><th>字段写入</th><th>最低置信度</th><th>摘要标签</th><th>显示格式</th><th>AI 提示</th><th>条件规则</th><th>操作</th></tr></thead>
-                ${groups.map(group => `<tbody><tr class="memory-schema-group-row"><th colspan="18"><span>${escapeHtml(group.name)}</span><small>${group.fields.length} 个字段</small></th></tr>${group.fields.map(({ field, index }) => `<tr>
+                <colgroup><col class="schema-col-group"><col class="schema-col-name"><col class="schema-col-type"><col class="schema-col-semantic"><col class="schema-col-identity"><col class="schema-col-default"><col class="schema-col-options"><col class="schema-col-min"><col class="schema-col-max"><col class="schema-col-display"><col class="schema-col-ai"><col class="schema-col-subject"><col class="schema-col-evidence"><col class="schema-col-commit"><col class="schema-col-confidence"><col class="schema-col-summary"><col class="schema-col-format"><col class="schema-col-hint"><col class="schema-col-rules"><col class="schema-col-actions"></colgroup>
+                <thead><tr><th>分组</th><th>字段名</th><th>类型</th><th>字段语义</th><th>身份作用</th><th>默认值</th><th>选项</th><th>最小值</th><th>最大值</th><th>普通显示</th><th>AI 编辑</th><th>信息主体</th><th>证据要求</th><th>字段写入</th><th>最低置信度</th><th>摘要标签</th><th>显示格式</th><th>AI 提示</th><th>条件规则</th><th>操作</th></tr></thead>
+                ${groups.map(group => `<tbody><tr class="memory-schema-group-row"><th colspan="20"><span>${escapeHtml(group.name)}</span><small>${group.fields.length} 个字段</small></th></tr>${group.fields.map(({ field, index }) => `<tr>
                     <td>${renderInput('field-group', field.group || '', { tableIndex, fieldIndex: index, placeholder: '未分组' })}</td>
                     <td class="memory-schema-sticky-field-name">${renderInput('field-key', field.key || '', { tableIndex, fieldIndex: index, title: field.key || '', className: 'schema-col-name' })}</td>
                     <td>${renderInput('field-type', field.type || 'text', { tableIndex, fieldIndex: index, choices: FIELD_TYPES })}</td>
+                    <td>${renderInput('field-semantic-role', FieldSemantics?.semanticRole?.(field, table) || field.semanticRole || 'custom', { tableIndex, fieldIndex: index, choices: SEMANTIC_ROLES })}</td>
+                    <td>${renderInput('field-identity-role', FieldSemantics?.identityRole?.(field, table) || field.identityRole || 'none', { tableIndex, fieldIndex: index, choices: IDENTITY_ROLES })}</td>
                     <td>${renderInput('field-default', Array.isArray(field.default) ? field.default.join(', ') : (field.default ?? ''), { tableIndex, fieldIndex: index, multiline: field.type === 'longtext', rows: field.type === 'longtext' ? 3 : 2, placeholder: '可空' })}</td>
                     <td>${renderInput('field-options', (field.options || []).join('\n'), { tableIndex, fieldIndex: index, multiline: true, rows: 3, placeholder: '可空' })}</td>
                     <td>${renderInput('field-min', field.min ?? '', { tableIndex, fieldIndex: index, type: 'number', placeholder: '可空' })}</td>
@@ -238,7 +299,7 @@
                     <td>${renderInput('field-ai-editable', field.aiEditable !== false ? 'true' : 'false', { tableIndex, fieldIndex: index, choices: [['true', '允许'], ['false', '只读']] })}</td>
                     <td>${renderInput('field-policy-subject', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).subject || 'user', { tableIndex, fieldIndex: index, choices: FIELD_SUBJECTS })}</td>
                     <td>${renderInput('field-policy-evidence', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).evidence || 'explicit', { tableIndex, fieldIndex: index, choices: FIELD_EVIDENCE })}</td>
-                    <td>${renderInput('field-policy-commit', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).commitMode || 'inherit', { tableIndex, fieldIndex: index, choices: FIELD_COMMIT_MODES })}</td>
+                    <td>${(() => { const mode = (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).commitMode || 'inherit'; return renderInput('field-policy-commit', displayFieldCommitMode(mode), { tableIndex, fieldIndex: index, choices: FIELD_COMMIT_MODES, internalMode: mode }); })()}</td>
                     <td>${renderInput('field-policy-confidence', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).minConfidence ?? 60, { tableIndex, fieldIndex: index, type: 'number', placeholder: '0-100' })}</td>
                     <td>${renderInput('field-summary-label', field.summaryLabel || '', { tableIndex, fieldIndex: index, placeholder: '可空' })}</td>
                     <td>${renderInput('field-display-format', field.displayFormat || '{value}', { tableIndex, fieldIndex: index, placeholder: '{value}' })}</td>
@@ -298,7 +359,13 @@
                 item.updatePolicy.enabled = value === 'scheduled';
                 item.updatePolicy.triggerMode = value === 'scheduled' && item.updatePolicy.triggerMode === 'manual' ? 'either' : (value === 'scheduled' ? item.updatePolicy.triggerMode : 'manual');
                 break;
-            case 'table-commit-mode': ensurePolicies(); item.commitPolicy.mode = value; item.commitPolicy.requireUserConfirmation = value === 'review' || value === 'promotion'; break;
+            case 'table-commit-mode': {
+                ensurePolicies();
+                const resolvedMode = resolveUiCommitMode(item, value);
+                item.commitPolicy.mode = resolvedMode;
+                item.commitPolicy.requireUserConfirmation = resolvedMode === 'review' || resolvedMode === 'promotion';
+                break;
+            }
             case 'table-api-mode': ensurePolicies(); item.capturePolicy.apiMode = value; if (value !== 'none') item.updatePolicy.useSummaryApi = value === 'summary'; break;
             case 'table-frequency-source': ensurePolicies(); item.capturePolicy.frequencySource = value; break;
             case 'table-extract-prompt': item.extractPrompt = value; break;
@@ -322,11 +389,17 @@
             case 'field-key': item.key = value; break;
             case 'field-group': item.group = value; break;
             case 'field-type': item.type = Domain.normalizeFieldType(value); break;
+            case 'field-semantic-role': item.semanticRole = FieldSemantics?.normalizeSemanticRole?.(value, item, draft.tables?.[tableIndex]) || value || 'custom'; break;
+            case 'field-identity-role': item.identityRole = FieldSemantics?.normalizeIdentityRole?.(value, item, draft.tables?.[tableIndex]) || value || 'none'; break;
             case 'field-default': item.default = item.type === 'tags' ? Domain.parseOptionText(value) : value; break;
             case 'field-ai-editable': item.aiEditable = value !== 'false'; break;
             case 'field-policy-subject': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), subject: value }; break;
             case 'field-policy-evidence': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), evidence: value }; break;
-            case 'field-policy-commit': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), commitMode: value }; break;
+            case 'field-policy-commit': {
+                const normalizedField = FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {};
+                item.writePolicy = { ...normalizedField, commitMode: resolveFieldUiCommitMode(item, draft.tables?.[tableIndex], value, element.dataset.commitInternalMode || '') };
+                break;
+            }
             case 'field-policy-confidence': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), minConfidence: Math.max(0, Math.min(100, Number(value) || 0)) }; break;
             case 'field-important': item.important = value !== 'false'; break;
             case 'field-summary-label': item.summaryLabel = value; break;
@@ -347,7 +420,7 @@
     }
 
     Kernel.register('schemaEditor', Object.freeze({
-        VERSION: '2.14-R5',
+        VERSION: '2.15-R0B',
         render,
         fieldNameVisualUnits,
         fieldNameColumnWidth,
@@ -357,6 +430,11 @@
         mutate: Model.mutate,
         applyRawJson: Model.applyRawJson,
         prepare: Model.prepare,
-        normalize: Model.normalize
+        normalize: Model.normalize,
+        displayCommitMode,
+        commitModeChoices,
+        resolveUiCommitMode,
+        displayFieldCommitMode,
+        resolveFieldUiCommitMode
     }));
 })(window);

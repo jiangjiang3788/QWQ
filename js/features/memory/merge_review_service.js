@@ -10,6 +10,8 @@
     const TagVocabulary = Kernel.require('tagVocabulary');
     const Lifecycle = Kernel.get('lifecycle');
     const Policy = Kernel.get('policy');
+    const Provenance = Kernel.get('provenanceService');
+    const FieldSemantics = Kernel.require('fieldSemantics');
 
     function clone(value) {
         return Core.clone ? Core.clone(value) : JSON.parse(JSON.stringify(value));
@@ -21,11 +23,16 @@
         return value === undefined || value === null || String(value).trim() === '';
     }
 
-    const MERGE_EXCLUDED_FIELD = /^(记录类型|来源域|原始记录ID|记录ID|事件ID|发生或更新时间|创建时间|更新时间|原置信度|置信度|确认状态|迁移状态)$/;
+    function fieldMatchKey(field, table) {
+        const role = FieldSemantics.semanticRole(field, table);
+        return role && role !== 'custom' ? `semantic:${role}` : `key:${String(field?.key || '').trim()}`;
+    }
 
     function fieldMap(descriptor) {
         const result = new Map();
-        (descriptor?.table?.columns || []).filter(field => !MERGE_EXCLUDED_FIELD.test(String(field.key || '').trim())).forEach(field => result.set(String(field.key || '').trim(), field));
+        (descriptor?.table?.columns || [])
+            .filter(field => !FieldSemantics.isTechnical(field, descriptor?.table))
+            .forEach(field => result.set(fieldMatchKey(field, descriptor?.table), field));
         return result;
     }
 
@@ -36,8 +43,9 @@
         const currentFields = fieldMap(current);
         const candidateFields = fieldMap(candidate);
         const keys = Core.unique([...currentFields.keys(), ...candidateFields.keys()].filter(Boolean), 80);
-        const fields = keys.map(key => {
-            const leftField = currentFields.get(key), rightField = candidateFields.get(key);
+        const fields = keys.map(matchKey => {
+            const leftField = currentFields.get(matchKey), rightField = candidateFields.get(matchKey);
+            const key = String(leftField?.key || rightField?.key || matchKey.replace(/^[^:]+:/, ''));
             const leftValue = leftField ? current.row.cells?.[leftField.id] : undefined;
             const rightValue = rightField ? candidate.row.cells?.[rightField.id] : undefined;
             const leftText = leftField ? String(Domain.getFieldDisplayValue(leftField, leftValue) ?? '') : '';
@@ -45,6 +53,7 @@
             const same = JSON.stringify(leftValue) === JSON.stringify(rightValue);
             return {
                 key,
+                matchKey,
                 currentFieldId: leftField?.id || '',
                 candidateFieldId: rightField?.id || '',
                 currentValue: leftValue,
@@ -113,7 +122,7 @@
         if (options.copyEmptyFields !== false) {
             plan.fields.forEach(item => {
                 if (!item.canFillCurrent) return;
-                const winnerField = winnerFields.get(item.key), loserField = loserFields.get(item.key);
+                const winnerField = winnerFields.get(item.matchKey), loserField = loserFields.get(item.matchKey);
                 if (!winnerField || !loserField) return;
                 const oldValue = clone(winner.row.cells?.[winnerField.id]);
                 const newValue = clone(loser.row.cells?.[loserField.id]);
@@ -159,6 +168,12 @@
             tagsChanged: !!tags.changed,
             conflictFieldCount: plan.conflictCount
         });
+        Provenance?.record?.(winner.row, 'merge', {
+            actor: 'user', source: 'manual',
+            reason: `合并另一条记忆，补齐 ${changedFields.length} 个字段并汇总 ${plan.sourceIds.length} 个来源`,
+            fieldIds: changedFields.map(item => item.fieldId),
+            relatedRowIds: [loser.row.id]
+        });
         return {
             changed: true,
             winner,
@@ -190,7 +205,7 @@
     }
 
     const api = Object.freeze({
-        VERSION: '2.11-R3.1',
+        VERSION: '2.15-R0B',
         preview,
         applyMerge,
         resolve

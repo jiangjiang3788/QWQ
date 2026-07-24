@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
 const css = read('css/modules/memory_table_flat.css');
@@ -83,6 +83,7 @@ Kernel.register('lifecycle', {
 });
 Kernel.register('api', { requestContent: async () => '<tags topic="身体,求助" scene="健康追踪" entity="用户" effect="historical_context"/>' });
 
+vm.runInContext(read('js/features/memory/field_semantics.js'), context);
 vm.runInContext(read('js/features/memory/tag_vocabulary.js'), context);
 vm.runInContext(read('js/features/memory/tag_service.js'), context);
 vm.runInContext(read('js/features/memory/relation_service.js'), context);
@@ -97,8 +98,8 @@ const inspectorController = Kernel.get('rowInspectorController');
 assert.strictEqual(Kernel.get('tagVocabulary').VERSION, '2.11-R3.1');
 assert.strictEqual(tags.VERSION, '2.11-R3.1');
 assert.strictEqual(relations.VERSION, '2.11-R3.1');
-assert.strictEqual(inspector.VERSION, '2.11-R3.1');
-assert.strictEqual(inspectorController.VERSION, '2.11-R3.1');
+assert(['2.11-R3.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(inspector.VERSION));
+assert(['2.11-R3.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(inspectorController.VERSION));
 
 const analysis = relations.analyze(chat, 'row_target', { topK: 5, threshold: 0.1 });
 assert.strictEqual(analysis.target.row.id, 'row_target');

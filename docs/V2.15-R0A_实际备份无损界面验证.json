@@ -1,0 +1,123 @@
+{
+  "version": "2.15-R0A",
+  "validation": "lossless-ui-convergence",
+  "backup": {
+    "format": "ovo-full-backup",
+    "formatVersion": 1,
+    "mode": "single-user-compact",
+    "declaredCharacters": 1,
+    "sourceSha256Before": "0f8bdc71e9e08b6cd3a4cdf678f7fbed8eb50df8d7dd0dca78ab2daf5941241a",
+    "sourceSha256After": "0f8bdc71e9e08b6cd3a4cdf678f7fbed8eb50df8d7dd0dca78ab2daf5941241a",
+    "sourceUnchanged": true
+  },
+  "memory": {
+    "characters": 1,
+    "templates": 1,
+    "tables": 8,
+    "fields": 94,
+    "formalRows": 279,
+    "templateSha256Before": "5f9d7e24401a314a5500fc68081c8123c267d7a1506743aa15899a694581977a",
+    "templateSha256After": "5f9d7e24401a314a5500fc68081c8123c267d7a1506743aa15899a694581977a",
+    "templateUnchanged": true,
+    "formalDataSha256Before": "4903006697efd91219350dcb8aa1cf100bf7e057055358725f28423792021c4a",
+    "formalDataSha256After": "4903006697efd91219350dcb8aa1cf100bf7e057055358725f28423792021c4a",
+    "formalDataUnchanged": true
+  },
+  "uiPolicyInspection": {
+    "tables": [
+      {
+        "tableId": "memory_table_1784806626817_z7vb8f",
+        "role": "core_profile",
+        "internalMode": "manual_only",
+        "uiMode": "manual_only",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_abdsin",
+        "role": "current_state",
+        "internalMode": "direct",
+        "uiMode": "direct",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_7yyhw3",
+        "role": "tasks",
+        "internalMode": "direct",
+        "uiMode": "direct",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_xotoxz",
+        "role": "recent_events",
+        "internalMode": "candidate",
+        "uiMode": "pending",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_83suwc",
+        "role": "daily_observation",
+        "internalMode": "candidate",
+        "uiMode": "pending",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_jzhr05",
+        "role": "medium_summary",
+        "internalMode": "review",
+        "uiMode": "pending",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_heeojl",
+        "role": "long_candidate",
+        "internalMode": "promotion",
+        "uiMode": "promotion",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only",
+          "promotion"
+        ]
+      },
+      {
+        "tableId": "memory_table_1784806626817_ibkyxa",
+        "role": "long_store",
+        "internalMode": "manual_only",
+        "uiMode": "manual_only",
+        "choices": [
+          "direct",
+          "pending",
+          "manual_only"
+        ]
+      }
+    ],
+    "promotionVisibleTableCount": 1,
+    "ordinaryTablesHidePromotion": true,
+    "pendingInternalModesPreserved": true
+  },
+  "sensitiveDataIncludedInReport": false
+}

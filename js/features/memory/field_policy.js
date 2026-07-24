@@ -5,16 +5,12 @@
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
     const TablePolicy = Kernel.require('policy');
+    const FieldSemantics = Kernel.get('fieldSemantics');
 
-    const VERSION = '2.14-R8.1';
+    const VERSION = '2.15-R0B';
     const SUBJECTS = Object.freeze(['user', 'assistant', 'relationship', 'system']);
     const EVIDENCE_MODES = Object.freeze(['explicit', 'inferred', 'manual']);
     const COMMIT_MODES = Object.freeze(['inherit', 'direct', 'review', 'candidate', 'runtime_only', 'manual_only']);
-
-    const INFERRED_PATTERN = /精神|情绪|体力|精力|风险|倾向|判断|推测|状态评分|好感|关系阶段|依赖程度|信任|亲密度/i;
-    const RUNTIME_PATTERN = /角色.*判断|回应策略|回复策略|角色策略|边界提醒|下一步建议|系统提醒|内部判断|assistant_|role_|char_/i;
-    const SYSTEM_META_PATTERN = /事件ID|记录ID|原始记录ID|状态记录时间|状态有效期|创建时间|最后更新时间|更新时间|完成时间|游标|索引/i;
-    const EXPLICIT_PATTERN = /当前场景|身体状态|当前需求|压力源|近期变化|标题|内容|截止|后续待办|当前状态|结果|取消原因|偏好|边界|称呼/i;
 
     function normalizeSubject(value) {
         return SUBJECTS.includes(value) ? value : 'user';
@@ -29,40 +25,19 @@
     }
 
     function inferFieldPolicy(field, table) {
-        const identity = `${field?.group || ''} ${field?.key || ''} ${field?.summaryLabel || ''} ${field?.aiHint || ''}`;
         const tablePolicy = TablePolicy.normalizeTablePolicy(table || {});
-        let subject = 'user';
-        let evidence = 'explicit';
-        let commitMode = 'inherit';
-        let minConfidence = 60;
-
-        if (RUNTIME_PATTERN.test(identity)) {
-            subject = /边界/.test(identity) ? 'relationship' : 'assistant';
-            evidence = 'inferred';
-            commitMode = 'runtime_only';
-            minConfidence = 0;
-        } else if (SYSTEM_META_PATTERN.test(identity)) {
-            subject = 'system';
-            evidence = 'inferred';
-            commitMode = 'direct';
-            minConfidence = 0;
-        } else if (INFERRED_PATTERN.test(identity)) {
-            subject = /关系|好感|依赖|信任|亲密/.test(identity) ? 'relationship' : 'user';
-            evidence = 'inferred';
-            commitMode = tablePolicy.memoryLayer === 'short' ? 'candidate' : 'review';
-            minConfidence = 75;
-        } else if (EXPLICIT_PATTERN.test(identity)) {
-            subject = /边界|称呼/.test(identity) ? 'relationship' : 'user';
-            evidence = 'explicit';
-            commitMode = tablePolicy.commitPolicy?.mode === 'direct' ? 'direct' : 'inherit';
-            minConfidence = 65;
-        } else if (tablePolicy.memoryLayer === 'core' || tablePolicy.memoryLayer === 'long') {
-            subject = 'user';
-            evidence = 'manual';
-            commitMode = 'manual_only';
-            minConfidence = 100;
+        const semanticDefaults = FieldSemantics?.policyDefaults?.(field, table)
+            || { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 65 };
+        const semanticRole = FieldSemantics?.semanticRole?.(field, table) || 'custom';
+        if ((tablePolicy.memoryLayer === 'core' || tablePolicy.memoryLayer === 'long')
+            && semanticDefaults.commitMode === 'inherit'
+            && !['relationship_definition', 'relationship_addressing', 'relationship_agreement'].includes(semanticRole)) {
+            return { subject: semanticDefaults.subject, evidence: 'manual', commitMode: 'manual_only', minConfidence: 100 };
         }
-        return { subject, evidence, commitMode, minConfidence };
+        if (semanticDefaults.commitMode === 'inherit' && tablePolicy.commitPolicy?.mode === 'direct') {
+            return { ...semanticDefaults, commitMode: 'direct' };
+        }
+        return { ...semanticDefaults };
     }
 
     function normalizeFieldPolicy(field, table) {

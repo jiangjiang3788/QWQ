@@ -8,6 +8,14 @@
     const Policy = Kernel.get('policy');
     const Lifecycle = Kernel.get('lifecycle');
     const WriteGateway = Kernel.get('writeGateway') || Kernel.require('writeCoordinator');
+    const FieldSemantics = Kernel.get('fieldSemantics');
+
+    const DEFAULT_PROMOTION_FIELD_MAP = Object.freeze({
+        candidate_category: Object.freeze(['dimension', 'category']),
+        candidate_content: 'content',
+        confidence: 'confidence',
+        exception: 'applicability_exception'
+    });
 
     function fieldByKey(table, key) {
         return (table?.columns || []).find(field => String(field.key || '').trim() === String(key || '').trim()) || null;
@@ -18,6 +26,28 @@
         return field ? row?.cells?.[field.id] : undefined;
     }
 
+    function fieldBySemantic(table, role) {
+        return FieldSemantics?.findField?.(table, role)
+            || (table?.columns || []).find(field => String(field.semanticRole || '') === String(role || ''))
+            || null;
+    }
+
+    function rowValueBySemantic(table, row, role) {
+        const field = fieldBySemantic(table, role);
+        return field ? row?.cells?.[field.id] : undefined;
+    }
+
+    function promotionFieldMap(sourceTable) {
+        const raw = sourceTable?.promotionPolicy?.fieldMap;
+        if (raw && typeof raw === 'object' && Object.keys(raw).length) return raw;
+        return DEFAULT_PROMOTION_FIELD_MAP;
+    }
+
+    function targetRoles(fieldMap, sourceRole) {
+        const value = fieldMap?.[sourceRole];
+        return (Array.isArray(value) ? value : [value]).map(String).filter(Boolean);
+    }
+
     function findFormalRow(chat, templateId, table, rowId) {
         if (typeof Domain.findRowById === 'function') return Domain.findRowById(chat, templateId, table, rowId);
         const rows = typeof Domain.getRows === 'function' ? Domain.getRows(chat, templateId, table) : [];
@@ -25,7 +55,7 @@
     }
 
     function statusText(table, row) {
-        const field = fieldByKey(table, '审核状态');
+        const field = fieldBySemantic(table, 'review_status');
         return field ? String(Domain.getFieldDisplayValue(field, row?.cells?.[field.id]) || '').trim() : '';
     }
 
@@ -36,7 +66,7 @@
 
     function setStatus(chat, descriptor, row, status, options = {}) {
         const { template, table } = descriptor || {};
-        const field = fieldByKey(table, '审核状态');
+        const field = fieldBySemantic(table, 'review_status');
         if (!chat || !template || !table || !row || !field) return { changed: false, reason: '缺少审核状态字段' };
         const oldValue = row.cells?.[field.id];
         const changed = Domain.updateRowFieldValue(chat, template.id, table, row.id, field, status, {
@@ -73,6 +103,7 @@
                     ...(sourceTable.promotionPolicy || {}),
                     enabled: true,
                     targetTableId: targetId,
+                    fieldMap: sourceTable.promotionPolicy?.fieldMap || Core.clone(DEFAULT_PROMOTION_FIELD_MAP),
                     migratedFromLegacy: true
                 };
             }
@@ -85,8 +116,8 @@
     }
 
     function findDuplicate(chat, template, targetTable, sourceRow, content) {
-        const originalIdField = fieldByKey(targetTable, '原始记录ID');
-        const contentField = fieldByKey(targetTable, '内容');
+        const originalIdField = fieldBySemantic(targetTable, 'source_record_id');
+        const contentField = fieldBySemantic(targetTable, 'content');
         const workflowTargetId = sourceRow?.meta?.workflow?.promotedToRowId;
         return Domain.getRows(chat, template.id, targetTable).find(item => {
             if (workflowTargetId && item.id === workflowTargetId) return true;
@@ -96,29 +127,33 @@
     }
 
     function buildTargetValues(sourceTable, targetTable, row) {
-        const content = rowValueByKey(sourceTable, row, '候选内容');
-        const category = rowValueByKey(sourceTable, row, '候选类别');
+        const map = promotionFieldMap(sourceTable);
         const values = {};
-        const assign = (key, value) => {
-            const field = fieldByKey(targetTable, key);
-            if (field && value !== undefined && value !== null && value !== '') values[field.id] = value;
+        const assignRole = (targetRole, value) => {
+            if (value === undefined || value === null || value === '') return;
+            const field = fieldBySemantic(targetTable, targetRole);
+            if (field) values[field.id] = value;
         };
-        const sourceDomainField = fieldByKey(targetTable, '来源域');
-        if (sourceDomainField) {
-            const preferred = (sourceDomainField.options || []).includes('长期候选审核') ? '长期候选审核'
-                : ((sourceDomainField.options || []).includes('成长沉淀') ? '成长沉淀' : sourceDomainField.options?.[0]);
-            assign('来源域', preferred);
-        }
-        assign('维度或类型', category);
-        assign('分类', category);
-        assign('内容', content);
-        assign('原置信度', rowValueByKey(sourceTable, row, '置信度'));
-        assign('确认状态', '用户确认');
-        const evidence = rowValueByKey(sourceTable, row, '支持证据');
-        const exception = rowValueByKey(sourceTable, row, '反例或例外');
-        assign('例外或适用场景', [exception ? `例外：${exception}` : '', evidence ? `支持证据：${evidence}` : ''].filter(Boolean).join('\n'));
-        assign('原始记录ID', row.id);
-        return { values, content, category };
+        Object.keys(map).forEach(sourceRole => {
+            if (sourceRole === 'exception' || sourceRole === 'evidence') return;
+            const value = rowValueBySemantic(sourceTable, row, sourceRole);
+            targetRoles(map, sourceRole).forEach(targetRole => assignRole(targetRole, value));
+        });
+        const content = rowValueBySemantic(sourceTable, row, 'candidate_content');
+        const category = rowValueBySemantic(sourceTable, row, 'candidate_category');
+        const evidence = rowValueBySemantic(sourceTable, row, 'evidence');
+        const exception = rowValueBySemantic(sourceTable, row, 'exception');
+        assignRole('source_domain', (() => {
+            const field = fieldBySemantic(targetTable, 'source_domain');
+            if (!field) return '';
+            if ((field.options || []).includes('长期候选审核')) return '长期候选审核';
+            if ((field.options || []).includes('成长沉淀')) return '成长沉淀';
+            return field.options?.[0] || '长期候选审核';
+        })());
+        assignRole('confirmation_status', '用户确认');
+        assignRole('applicability_exception', [exception ? `例外：${exception}` : '', evidence ? `支持证据：${evidence}` : ''].filter(Boolean).join('\n'));
+        assignRole('source_record_id', row.id);
+        return { values, content, category, fieldMap: Core.clone(map) };
     }
 
     function ensureWorkflow(row) {
@@ -137,7 +172,7 @@
         const operationId = options.operationId || Core.createId('memory_candidate_promotion');
         const beforeSnapshot = options.beforeSnapshot || Core.clone(chat.memoryTables?.data || {});
         const duplicate = findDuplicate(chat, template, targetTable, row, content);
-        const statusField = fieldByKey(sourceTable, '审核状态');
+        const statusField = fieldBySemantic(sourceTable, 'review_status');
         const oldStatus = statusField ? Core.clone(row.cells?.[statusField.id]) : undefined;
         const oldWorkflow = Core.clone(row.meta?.workflow || null);
         let targetRow = duplicate;
@@ -312,9 +347,12 @@
     }
 
     Kernel.register('candidateService', Object.freeze({
-        VERSION: '2.14-R2',
+        VERSION: '2.15-R0B',
         fieldByKey,
         rowValueByKey,
+        fieldBySemantic,
+        rowValueBySemantic,
+        promotionFieldMap,
         statusText,
         isPending,
         setStatus,

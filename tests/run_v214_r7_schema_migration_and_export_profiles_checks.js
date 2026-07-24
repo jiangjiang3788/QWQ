@@ -6,7 +6,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 const box = {
   window: null, console, Date, JSON, Math, Number, String, Boolean, Object, Array, Map, Set,
@@ -17,6 +17,9 @@ box.window = box;
 vm.createContext(box);
 for (const rel of [
   'js/features/memory/kernel.js',
+  'js/features/memory/memory_defaults.js',
+  'js/modules/memory_table_policy.js',
+  'js/features/memory/field_semantics.js',
   'js/features/memory/schema_migrator.js',
   'js/features/memory/package_orchestrator.js'
 ]) vm.runInContext(read(rel), box, { filename: rel });
@@ -24,9 +27,9 @@ for (const rel of [
 const Kernel = box.OvoMemoryKernel;
 const Migrator = Kernel.require('schemaMigrator');
 const OrchestratorFactory = Kernel.require('packageOrchestrator');
-assert.strictEqual(Migrator.VERSION, '2.14-R7');
-assert.strictEqual(Migrator.CURRENT_SCHEMA_VERSION, '3.0');
-assert.strictEqual(OrchestratorFactory.VERSION, '2.14-R7');
+assert(['2.14-R7', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(Migrator.VERSION));
+assert.strictEqual(Migrator.CURRENT_SCHEMA_VERSION, '3.2');
+assert(['2.14-R7', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(OrchestratorFactory.VERSION));
 
 const legacy = {
   type: 'memory_table_package', version: 2, schemaVersion: '2.8', producerVersion: '2.13-R5.4',
@@ -37,13 +40,15 @@ const legacySnapshot = JSON.stringify(legacy);
 const preview = Migrator.preview(legacy);
 assert.strictEqual(preview.ok, true);
 assert.strictEqual(preview.fromVersion, '2.8');
-assert.strictEqual(preview.toVersion, '3.0');
+assert.strictEqual(preview.toVersion, '3.2');
 assert.deepStrictEqual(Array.from(preview.steps, item => item.id), [
   'memory-package-2.8-to-2.9',
-  'memory-package-2.9-to-3.0'
+  'memory-package-2.9-to-3.0',
+  'memory-package-3.0-to-3.1',
+  'memory-package-3.1-to-3.2'
 ]);
 const migrated = Migrator.migrate(legacy);
-assert.strictEqual(migrated.payload.schemaVersion, '3.0');
+assert.strictEqual(migrated.payload.schemaVersion, '3.2');
 assert.strictEqual(migrated.payload.packageProfile, 'portable_snapshot');
 assert.strictEqual(migrated.payload.version, 3);
 assert.strictEqual(migrated.report.migrated, true);
@@ -128,13 +133,13 @@ const useCases = OrchestratorFactory.create({
 
 const templateBundle = useCases.buildTemplateBundlePayload();
 assert.strictEqual(templateBundle.packageProfile, 'template_bundle');
-assert.strictEqual(templateBundle.schemaVersion, '3.0');
+assert.strictEqual(templateBundle.schemaVersion, '3.2');
 assert.strictEqual(templateBundle.binding, null);
 assert.strictEqual(templateBundle.templates[0].id, 'tpl-live');
 
 const portable = useCases.buildPortableSnapshotPayload(['tpl-live']);
 assert.strictEqual(portable.packageProfile, 'portable_snapshot');
-assert.strictEqual(portable.schemaVersion, '3.0');
+assert.strictEqual(portable.schemaVersion, '3.2');
 assert.strictEqual(portable.binding.data['tpl-live']['table-live'].__rows[0].meta.retrievalVector, undefined);
 assert.strictEqual(portable.binding.tableStates['tpl-live']['table-live'].lastProcessedMsgId, null);
 assert.strictEqual(portable.binding.tableStates['tpl-live']['table-live'].pendingReviewBatchId, null);
@@ -175,9 +180,9 @@ assert(html.includes('>迁移快照</button>'));
 assert(html.includes('>完整备份</button>'));
 assert(controller.includes('exportFullBackup'));
 assert(foundation.includes("schemaMigrator: Kernel.require('schemaMigrator')"));
-assert(['2.14-R8', '2.14-R8.1'].includes(contract.version));
+assert(['2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(contract.version));
 assert(contract.publicFacades.memoryFoundationDomain.owns.includes('schemaMigrator'));
-assert(contract.budgets['js/features/memory/schema_migrator.js'] === 260);
+assert(contract.budgets['js/features/memory/schema_migrator.js'] === 340);
 
 console.log('V2.14-R7 SCHEMA MIGRATION AND EXPORT PROFILE CHECKS: PASS');
 

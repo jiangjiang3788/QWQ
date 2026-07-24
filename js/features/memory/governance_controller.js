@@ -9,6 +9,7 @@
     const Policy = Kernel.get('policy');
     const Review = Kernel.get('review');
     const Feedback = Kernel.get('feedback');
+    const Provenance = Kernel.get('provenanceService');
 
     const ACTIONS = new Set([
         'open-review', 'open-view', 'open-row', 'approve-candidate', 'reject-candidate',
@@ -34,7 +35,8 @@
         const meta = Lifecycle.ensureRowMeta(row, table, '');
         ensureEvidence(row);
         if (meta.lifecycle.status !== 'conflicting' && !['archived', 'superseded'].includes(meta.lifecycle.status)) {
-            Lifecycle.setStatus(row, 'active', '用户在统一待处理队列中确认有效');
+            Lifecycle.setStatus(row, 'active', '用户在统一待处理队列中确认有效', { actor: 'user', source: 'manual' });
+            Provenance?.record?.(row, 'confirm', { actor: 'user', source: 'manual', reason: '用户在待处理队列中确认有效' });
             row.meta.lifecycle.reviewAt = 0;
             row.meta.lifecycle.expiresAt = 0;
         }
@@ -49,6 +51,7 @@
         meta.lifecycle.reviewAt = Date.now() + Math.max(1, days) * 86400000;
         meta.lifecycle.statusReason = `用户延后 ${days} 天复核`;
         row.meta.updatedAt = Date.now();
+        Provenance?.record?.(row, 'snooze', { actor: 'user', source: 'manual', reason: `延后 ${days} 天复核`, after: new Date(meta.lifecycle.reviewAt).toLocaleDateString() });
         Policy?.clearRetrievalCache?.(chat);
         return true;
     }
@@ -56,7 +59,7 @@
     function archiveItem(chat, item) {
         const row = itemRow(item);
         if (!row || !Lifecycle) return false;
-        Lifecycle.setStatus(row, 'archived', '用户在统一待处理队列中归档');
+        Lifecycle.setStatus(row, 'archived', '用户在统一待处理队列中归档', { actor: 'user', source: 'manual' });
         Policy?.clearRetrievalCache?.(chat);
         return true;
     }
@@ -152,6 +155,6 @@
     }
 
     Kernel.register('governanceController', Object.freeze({
-        VERSION: '2.14-R8', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
+        VERSION: '2.14-R9', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
     }));
 })(window);

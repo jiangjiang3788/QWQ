@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert.strictEqual(read('VERSION.txt').trim(), '2.14-R8.1');
+assert(['2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 global.window = global;
 global.document = { getElementById: () => null, addEventListener() {}, querySelectorAll: () => [] };
@@ -81,7 +81,9 @@ global.db = { memoryTableTemplates: [template], characters: [chat] };
 
 [
   'js/features/memory/kernel.js',
+  'js/features/memory/memory_defaults.js',
   'js/modules/memory_table_policy.js',
+  'js/features/memory/field_semantics.js',
   'js/features/memory/policy_resolver.js',
   'js/features/memory/field_policy.js',
   'js/features/memory/record_identity.js',
@@ -167,7 +169,7 @@ global.db = { memoryTableTemplates: [template], characters: [chat] };
 
   const schemaSource = read('js/features/memory/schema_editor.js');
   assert(schemaSource.includes('memory-schema-field-route-summary'));
-  assert(schemaSource.includes('字段：'));
+  assert(schemaSource.includes('字段实际分流：'));
   assert(read('js/features/memory/retrieval_orchestrator.js').includes('readEffectiveValue'));
   assert(read('js/features/memory/update_service.js').includes("?.value\n                            : formalValue"));
 

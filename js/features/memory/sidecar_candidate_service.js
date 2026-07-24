@@ -7,8 +7,9 @@
     const Domain = Kernel.require('domain');
     const FieldPolicy = Kernel.get('fieldPolicy') || Object.freeze({ assess: field => ({ allowed: field?.aiEditable !== false, route: field?.aiEditable === false ? 'blocked' : 'direct', reasons: [] }) });
     const PolicyResolver = Kernel.get('policyResolver');
+    const FieldSemantics = Kernel.get('fieldSemantics');
 
-    const VERSION = '2.14-R8.1';
+    const VERSION = '2.15-R0B';
     const STATUS = Object.freeze({
         PENDING: 'pending',
         PROMOTED: 'promoted',
@@ -27,17 +28,6 @@
         deleted: '已删除',
         legacy_unverified: '旧版去向未验证'
     });
-    const TARGET_RULES = Object.freeze({
-        experience: Object.freeze({
-            ids: Object.freeze(['table_recent_events']),
-            name: /近期经历|重要事件/
-        }),
-        daily_observation: Object.freeze({
-            ids: Object.freeze(['table_daily_observation']),
-            name: /日常观察|睡眠.*饮水|饮水.*身体/
-        })
-    });
-
     function nowText() {
         const date = new Date();
         const pad = value => String(value).padStart(2, '0');
@@ -55,10 +45,7 @@
     function isRowsTarget(table, type) {
         if (!table || !Domain.isRowsTable(table)) return false;
         const role = Kernel.get('policy')?.normalizeSystemRole?.(table.systemRole, table) || table.systemRole;
-        if (type === 'daily_observation' && role === 'daily_observation') return true;
-        if (type === 'experience' && role === 'recent_events') return true;
-        const rule = TARGET_RULES[type] || TARGET_RULES.experience;
-        return rule.ids.includes(table.id) || rule.name.test(String(table.name || ''));
+        return type === 'daily_observation' ? role === 'daily_observation' : role === 'recent_events';
     }
 
     function normalizeCandidate(candidate) {
@@ -104,7 +91,6 @@
         const type = candidateType(candidate);
         const preferred = descriptorByIds(chat, candidate?.suggestedTargetTemplateId, candidate?.suggestedTargetTableId, type);
         if (preferred) return preferred;
-        const rule = TARGET_RULES[type];
         const expectedRole = type === 'daily_observation' ? 'daily_observation' : 'recent_events';
         for (const template of boundTemplates(chat)) {
             const tableByRole = (template.tables || []).find(table => {
@@ -113,24 +99,18 @@
             });
             if (tableByRole) return { template, table: tableByRole };
         }
-        for (const template of boundTemplates(chat)) {
-            const tableById = (template.tables || []).find(table => rule.ids.includes(table.id) && Domain.isRowsTable(table));
-            if (tableById) return { template, table: tableById };
-        }
-        for (const template of boundTemplates(chat)) {
-            const tableByName = (template.tables || []).find(table => isRowsTarget(table, type));
-            if (tableByName) return { template, table: tableByName };
-        }
         return null;
     }
 
-    function findField(table, pattern) {
-        return (table.columns || []).find(field => pattern.test(String(field.key || ''))) || null;
+    function findField(table, semanticRole) {
+        return FieldSemantics?.findField?.(table, semanticRole)
+            || (table?.columns || []).find(field => String(field.semanticRole || '') === String(semanticRole || ''))
+            || null;
     }
 
-    function assign(values, table, pattern, value) {
+    function assign(values, table, semanticRole, value) {
         if (value === undefined || value === null || value === '') return;
-        const field = findField(table, pattern);
+        const field = findField(table, semanticRole);
         if (field) values[field.id] = value;
     }
 
@@ -152,19 +132,19 @@
 
     function buildExperienceValues(candidate, table) {
         const values = {};
-        const completedField = findField(table, /^当前状态$/);
+        const completedField = findField(table, 'status');
         const canComplete = completedField?.type === 'enum' && (completedField.options || []).includes('已完成');
-        assign(values, table, /^事件ID$/, candidate.id);
-        assign(values, table, /^创建时间$/, nowText());
-        assign(values, table, /最后更新时间|更新时间/, nowText());
-        assign(values, table, /^完成时间$/, canComplete ? nowText() : '');
-        assign(values, table, /^类型$/, '近期经历');
-        assign(values, table, /^标题$/, summaryTitle(candidate.summary));
-        assign(values, table, /^内容$/, candidate.summary);
-        assign(values, table, /相关主体/, Array.isArray(candidate.tags?.entity) ? candidate.tags.entity : []);
-        assign(values, table, /^影响$/, tagSummary(candidate));
-        assign(values, table, /^当前状态$/, canComplete ? '已完成' : '进行中');
-        assign(values, table, /原始记录ID/, candidate.id);
+        assign(values, table, 'event_id', candidate.id);
+        assign(values, table, 'created_at', nowText());
+        assign(values, table, 'updated_at', nowText());
+        assign(values, table, 'completed_at', canComplete ? nowText() : '');
+        assign(values, table, 'record_type', '近期经历');
+        assign(values, table, 'title', summaryTitle(candidate.summary));
+        assign(values, table, 'content', candidate.summary);
+        assign(values, table, 'related_entity', Array.isArray(candidate.tags?.entity) ? candidate.tags.entity : []);
+        assign(values, table, 'impact', tagSummary(candidate));
+        assign(values, table, 'status', canComplete ? '已完成' : '进行中');
+        assign(values, table, 'source_record_id', candidate.id);
         return values;
     }
 
@@ -176,21 +156,21 @@
             candidate.tags?.effect || '',
             candidate.summary || ''
         ].join(' ');
-        assign(values, table, /^日期$/, todayText());
+        assign(values, table, 'observation_date', todayText());
         let classified = false;
-        const classify = (pattern, fieldPattern) => {
+        const classify = (pattern, semanticRole) => {
             if (!pattern.test(tagText)) return;
-            assign(values, table, fieldPattern, candidate.summary);
+            assign(values, table, semanticRole, candidate.summary);
             classified = true;
         };
-        classify(/睡眠|入睡|醒来|困|梦/, /睡眠情况/);
-        classify(/饮水|喝水|水分|口渴/, /饮水情况/);
-        classify(/运动|活动|步行|走路|锻炼/, /运动与活动/);
-        classify(/身体|疼|痛|胃|腰|胸|头|发冷|发热|乏力|健康/, /身体状态/);
-        classify(/精力|情绪|焦虑|压力|紧张|麻木|恢复/, /精力与情绪/);
-        if (!classified) assign(values, table, /身体状态|精力与情绪|来源说明/, candidate.summary);
-        assign(values, table, /数据完整度/, Math.max(0, Math.min(100, Number(candidate.confidence) || 0)));
-        assign(values, table, /来源说明/, `聊天候选 · ${candidate.source || 'unknown'} · 置信度 ${Number(candidate.confidence) || 0} · ${candidate.id}`);
+        classify(/睡眠|入睡|醒来|困|梦/, 'sleep');
+        classify(/饮水|喝水|水分|口渴/, 'hydration');
+        classify(/运动|活动|步行|走路|锻炼/, 'activity');
+        classify(/身体|疼|痛|胃|腰|胸|头|发冷|发热|乏力|健康/, 'body_state');
+        classify(/精力|情绪|焦虑|压力|紧张|麻木|恢复/, 'energy_mood');
+        if (!classified) assign(values, table, findField(table, 'body_state') ? 'body_state' : (findField(table, 'energy_mood') ? 'energy_mood' : 'source_note'), candidate.summary);
+        assign(values, table, 'data_completeness', Math.max(0, Math.min(100, Number(candidate.confidence) || 0)));
+        assign(values, table, 'source_note', `聊天候选 · ${candidate.source || 'unknown'} · 置信度 ${Number(candidate.confidence) || 0} · ${candidate.id}`);
         return values;
     }
 
@@ -262,7 +242,7 @@
 
     function rowContainsCandidate(table, row, candidate) {
         if (row?.meta?.sourceCandidateId === candidate.id) return true;
-        const origin = findField(table, /原始记录ID/);
+        const origin = findField(table, 'source_record_id');
         return !!origin && String(row.cells?.[origin.id] || '') === candidate.id;
     }
 
@@ -412,7 +392,8 @@
     }
 
     function rowLabel(table, row) {
-        const preferred = (table.columns || []).filter(field => /标题|内容|日期|身体状态|睡眠情况|精力与情绪/.test(String(field.key || '')));
+        const preferredRoles = new Set(['title', 'content', 'observation_date', 'body_state', 'sleep', 'energy_mood']);
+        const preferred = (table.columns || []).filter(field => preferredRoles.has(FieldSemantics?.semanticRole?.(field, table) || field.semanticRole));
         const text = preferred.map(field => String(row.cells?.[field.id] || '').trim()).filter(Boolean).join(' · ')
             || Domain.getRowSearchText(table, row).replace(/\n/g, ' · ');
         return text.slice(0, 90) || row.id;

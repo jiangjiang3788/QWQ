@@ -1,0 +1,24 @@
+QWQ V2.15-R0A 无损界面收敛版
+
+源码验证：
+- JavaScript 历史与专项回归：73 / 73 PASS
+- 应用脚本语法：146 / 146 PASS
+- 静态检查：PASS
+- 记忆领域架构门禁：PASS
+- memory_table.js：3152 / 3300 行
+- schema_editor.js：414 / 900 行
+
+实际备份只读验证：
+- 角色：1
+- 模板：1
+- 表格：8
+- 字段：94
+- 正式多行记忆：279
+- 源 .ee SHA-256 前后一致：PASS
+- 模板 SHA-256 前后一致：PASS
+- 正式记忆数据 SHA-256 前后一致：PASS
+- 普通表隐藏长期晋升：PASS
+- 长期候选表显示长期晋升：PASS
+- review / candidate 内部类型保持：PASS
+
+发布包不得包含用户 .ee 备份。

@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controllerText = read('js/modules/memory_table.js');
 const workspaceText = read('js/features/memory/workspace.js');
@@ -32,7 +32,7 @@ Kernel.core.escapeAttribute = Kernel.core.escapeHtml;
 
 let seq = 0;
 const reviewTable = {
-  id: 'candidate_table', name: '长期候选审核队列', mode: 'rows', memoryLayer: 'review', columns: [
+  id: 'candidate_table', name: '长期候选审核队列', systemRole: 'long_candidate', mode: 'rows', memoryLayer: 'review', columns: [
     { id: 'candidate_status', key: '审核状态', type: 'enum', options: ['待审核', '已批准', '已拒绝', '需要更多证据'] },
     { id: 'candidate_content', key: '候选内容', type: 'longtext' },
     { id: 'candidate_type', key: '候选类别', type: 'text' },
@@ -42,7 +42,7 @@ const reviewTable = {
   ]
 };
 const longTable = {
-  id: 'long_table', name: '稳定长期特征库', mode: 'rows', memoryLayer: 'long', columns: [
+  id: 'long_table', name: '稳定长期特征库', systemRole: 'long_store', mode: 'rows', memoryLayer: 'long', columns: [
     { id: 'long_source', key: '来源域', type: 'enum', options: ['长期候选审核', '成长沉淀'] },
     { id: 'long_category', key: '分类', type: 'text' },
     { id: 'long_content', key: '内容', type: 'longtext' },
@@ -52,7 +52,7 @@ const longTable = {
     { id: 'long_origin', key: '原始记录ID', type: 'text' }
   ]
 };
-const stateTable = { id: 'state_table', name: '近期状态与经历', mode: 'rows', memoryLayer: 'short', columns: [{ id: 'content', key: '内容', type: 'longtext' }] };
+const stateTable = { id: 'state_table', name: '近期状态与经历', systemRole: 'recent_events', mode: 'rows', memoryLayer: 'short', columns: [{ id: 'content', key: '内容', type: 'longtext' }] };
 const template = { id: 'tpl', name: '分层记忆', tables: [reviewTable, stateTable, longTable] };
 const candidate = { id: 'candidate-1', cells: { candidate_status: '待审核', candidate_content: '用户在身体不适时会主动表达需求。', candidate_type: '成长经验', candidate_conf: 88, candidate_evidence: '多次明确表达', candidate_exception: '' }, meta: { createdAt: 10 } };
 const uncertain = { id: 'uncertain-1', cells: { content: '最近睡眠不足，需要降低工作强度。' }, meta: { tagBundle: { topic: ['睡眠'], scene: ['健康追踪'], entity: ['用户'], effect: 'temporary_state' }, lifecycle: { status: 'uncertain', reviewAt: Date.now() - 10, expiresAt: 0 }, evidence: {}, relations: { supersedes: [], supersededBy: [], conflictsWith: [], relatedTo: [] } } };
@@ -98,6 +98,7 @@ const lifecycle = {
 Kernel.register('domain', domain);
 Kernel.register('policy', { normalizeTablePolicy: table => ({ memoryLayer: table.memoryLayer || 'long' }), clearRetrievalCache() {} });
 Kernel.register('lifecycle', lifecycle);
+vm.runInContext(read('js/features/memory/field_semantics.js'), context);
 vm.runInContext(read('js/features/memory/write_coordinator.js'), context);
 Kernel.register('review', { getPendingBatches: () => [{ id: 'batch-1', tableName: '当前状态', proposals: [{ risk: 'high' }, { risk: 'low' }], sourceMessageCount: 12, relatedContext: { rowCount: 6 }, createdAt: 20 }], getBatchChangeSummary: batch => ({ recordCount: 1, fieldCount: batch.proposals.length }), setActiveBatch() {} });
 Kernel.register('tasks', { getCounts: () => ({ failed: 1, queued: 2, paused: 0 }), ensureState: () => ({ tasks: [{ id: 'task-fail', status: 'failed', title: '失败任务', attempts: 1, maxAttempts: 3, createdAt: 5, lastError: '模拟失败' }] }) });
@@ -118,10 +119,10 @@ const candidates = Kernel.get('candidateService');
 const filters = Kernel.get('tableFilter');
 const queue = Kernel.get('governanceQueue');
 const governance = Kernel.get('governanceController');
-assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(candidates.VERSION));
+assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(candidates.VERSION));
 assert.strictEqual(filters.VERSION, '2.11-R4');
-assert.strictEqual(queue.VERSION, '2.14-R8');
-assert.strictEqual(governance.VERSION, '2.14-R8');
+assert(['2.14-R8', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(queue.VERSION));
+assert(['2.14-R8', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(governance.VERSION));
 
 const items = queue.scan(chat, [template]);
 const counts = queue.countByCategory(items);

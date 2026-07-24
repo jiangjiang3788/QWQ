@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 const box = {
   console, Date, Math, JSON, Map, Set, Array, String, Number, Boolean, Object, Error, Promise,
@@ -111,7 +111,7 @@ assert(workspace.includes("VERSION: '2.14-R5'"));
 assert(workspace.includes('策略来源：'));
 
 const contract = JSON.parse(read('architecture/memory_domains.json'));
-assert(['2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(contract.version));
+assert(['2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(contract.version));
 assert(contract.publicFacades.memoryPlatformDomain.owns.includes('policyResolver'));
 
 console.log('V2.14-R5 EFFECTIVE POLICY RESOLVER CHECKS: PASS');

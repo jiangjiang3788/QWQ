@@ -211,7 +211,8 @@
 
     function isLiveTable(table) {
         if (window.MemoryTableSidecar?.isLiveTable) return window.MemoryTableSidecar.isLiveTable(table);
-        return /当前状态|待办、承诺|未完成事项/.test(String(table?.name || ''));
+        const role = window.MemoryTablePolicy?.normalizeTablePolicy?.(table)?.systemRole || '';
+        return role === 'current_state' || role === 'tasks';
     }
 
     function buildGroups(chat) {

@@ -1,0 +1,55 @@
+{
+  "version": "2.14-R9",
+  "sourceBackupType": "single-user-compact",
+  "sourceSha256Unchanged": true,
+  "sourceSha256": "0f8bdc71e9e08b6cd3a4cdf678f7fbed8eb50df8d7dd0dca78ab2daf5941241a",
+  "baseline": {
+    "characters": 1,
+    "templates": 1,
+    "tables": 8,
+    "fields": 94,
+    "formalRows": 279
+  },
+  "provenanceReadOnly": {
+    "rowsWithReadableSourceOrChangeEvents": 88,
+    "derivedEventCount": 119,
+    "formalMemoryHashUnchanged": true
+  },
+  "lifecycleHealth": {
+    "score": 51,
+    "statuses": {
+      "active": 279
+    },
+    "sources": {
+      "legacy_import": 197,
+      "summary_api": 14,
+      "assistant_inferred": 21,
+      "user_explicit": 7,
+      "manual": 40
+    },
+    "dueRows": 0,
+    "conflictRows": 0,
+    "archivedRows": 0,
+    "missingSourceRows": 197,
+    "expiringSoonRows": 0,
+    "exactDuplicateGroups": 0,
+    "previewChecked": 279,
+    "previewChanged": 0
+  },
+  "maintenanceOnCopy": {
+    "checked": 279,
+    "changed": 0,
+    "expired": 0,
+    "archived": 0,
+    "uncertain": 0,
+    "skipped": 0,
+    "formalRowCountBefore": 279,
+    "formalRowCountAfter": 279,
+    "changedRowsWithProvenance": 0
+  },
+  "promentDesktop": {
+    "presentInHomeAppIds": true,
+    "targetScreen": "magic-room-screen"
+  },
+  "sourceBackupModified": false
+}

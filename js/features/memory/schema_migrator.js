@@ -1,12 +1,13 @@
 (function (global) {
     'use strict';
-
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
-
-    const VERSION = '2.14-R7';
-    const CURRENT_SCHEMA_VERSION = '3.0';
+    const FieldSemantics = Kernel.get('fieldSemantics');
+    const MemoryDefaults = Kernel.get('memoryDefaults');
+    const Policy = Kernel.get('policy');
+    const VERSION = '2.15-R0B';
+    const CURRENT_SCHEMA_VERSION = '3.2';
     const LEGACY_DEFAULT_VERSION = '2.8';
     const PROFILE_ALIASES = Object.freeze({
         template: 'template_bundle',
@@ -20,11 +21,9 @@
         backup: 'full_backup',
         full_backup: 'full_backup'
     });
-
     function clone(value) {
         return Core.clone ? Core.clone(value) : JSON.parse(JSON.stringify(value));
     }
-
     function normalizeProfile(value, payload = {}) {
         const raw = String(value || '').trim().toLowerCase();
         if (PROFILE_ALIASES[raw]) return PROFILE_ALIASES[raw];
@@ -32,20 +31,17 @@
         if (payload.binding) return 'portable_snapshot';
         return 'template_bundle';
     }
-
     function normalizeSchemaVersion(payload) {
         const raw = String(payload?.schemaVersion || '').trim();
         if (!raw && payload?.type === 'memory_table_package') return LEGACY_DEFAULT_VERSION;
         const match = raw.match(/^(\d+)\.(\d+)/);
         return match ? `${Number(match[1])}.${Number(match[2])}` : raw;
     }
-
     function appendTrace(payload, step) {
         const trace = Array.isArray(payload.migrationTrace) ? payload.migrationTrace.slice(-30) : [];
         trace.push({ id: step.id, from: step.from, to: step.to, title: step.title, at: Date.now() });
         payload.migrationTrace = trace;
     }
-
     const MIGRATIONS = Object.freeze([
         Object.freeze({
             id: 'memory-package-2.8-to-2.9',
@@ -120,9 +116,80 @@
                 appendTrace(payload, this);
                 return payload;
             }
+        }),
+        Object.freeze({
+            id: 'memory-package-3.0-to-3.1',
+            from: '3.0',
+            to: '3.1',
+            title: '补齐生命周期与来源变化链语义',
+            apply(source) {
+                const payload = clone(source || {});
+                payload.schemaVersion = '3.1';
+                payload.producerVersion = String(payload.producerVersion || 'legacy');
+                payload.packageProfile = normalizeProfile(payload.packageProfile, payload);
+                payload.transferPolicy = {
+                    includeLifecycleState: payload.packageProfile !== 'template_bundle',
+                    includeProvenance: payload.packageProfile !== 'template_bundle',
+                    ...(payload.transferPolicy || {})
+                };
+                if (payload.packageProfile === 'portable_snapshot' && payload.binding && typeof payload.binding === 'object') {
+                    payload.binding.lifecycle = payload.binding.lifecycle && typeof payload.binding.lifecycle === 'object'
+                        ? { ...payload.binding.lifecycle, schemaVersion: '3.1' }
+                        : { schemaVersion: '3.1', lastMaintenanceAt: 0, lastMaintenanceReport: null };
+                }
+                if (payload.packageProfile === 'full_backup' && payload.backup?.memoryTables) {
+                    const lifecycle = payload.backup.memoryTables.lifecycle;
+                    payload.backup.memoryTables.lifecycle = lifecycle && typeof lifecycle === 'object'
+                        ? { ...lifecycle, schemaVersion: '3.1' }
+                        : { schemaVersion: '3.1', lastMaintenanceAt: 0, lastMaintenanceReport: null };
+                }
+                appendTrace(payload, this);
+                return payload;
+            }
+        }),
+        Object.freeze({
+            id: 'memory-package-3.1-to-3.2',
+            from: '3.1',
+            to: '3.2',
+            title: '补齐字段语义、记录身份与晋升映射',
+            apply(source) {
+                const payload = clone(source || {});
+                payload.schemaVersion = '3.2';
+                payload.producerVersion = String(payload.producerVersion || 'legacy');
+                payload.templates = Array.isArray(payload.templates) ? payload.templates : [];
+                payload.templates.forEach(template => {
+                    if (!template || typeof template !== 'object') return;
+                    template.memoryDefaults ||= clone(MemoryDefaults?.DEFAULTS || {});
+                    (template.tables || []).forEach(table => {
+                        const systemRole = Policy?.normalizeSystemRole?.(table?.systemRole, table) || table?.systemRole || 'general';
+                        table.systemRole = systemRole;
+                        (table.columns || []).forEach(field => {
+                            field.semanticRole = FieldSemantics?.normalizeSemanticRole?.(field.semanticRole, field, table) || field.semanticRole || 'custom';
+                            field.identityRole = FieldSemantics?.normalizeIdentityRole?.(field.identityRole, field, table) || field.identityRole || 'none';
+                        });
+                        if (systemRole === 'long_candidate') {
+                            table.promotionPolicy ||= {};
+                            table.promotionPolicy.enabled = table.promotionPolicy.enabled !== false;
+                            table.promotionPolicy.fieldMap ||= {
+                                candidate_category: ['dimension', 'category'],
+                                candidate_content: 'content',
+                                confidence: 'confidence',
+                                exception: 'applicability_exception'
+                            };
+                        }
+                    });
+                });
+                payload.transferPolicy = {
+                    includeFieldSemantics: true,
+                    includeIdentityRoles: true,
+                    includePromotionFieldMap: true,
+                    ...(payload.transferPolicy || {})
+                };
+                appendTrace(payload, this);
+                return payload;
+            }
         })
     ]);
-
     function findPath(fromVersion, targetVersion = CURRENT_SCHEMA_VERSION) {
         const path = [];
         let cursor = fromVersion;
@@ -137,7 +204,6 @@
         }
         return path;
     }
-
     function validatePackage(payload) {
         const errors = [];
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) errors.push('记忆包必须是 JSON 对象');
@@ -148,7 +214,6 @@
         if (profile === 'full_backup' && (!payload.backup || typeof payload.backup !== 'object')) errors.push('完整备份缺少角色记忆数据');
         return errors;
     }
-
     function preview(input) {
         const payload = input && typeof input === 'object' ? input : null;
         const fromVersion = normalizeSchemaVersion(payload);
@@ -186,7 +251,6 @@
             errors: []
         });
     }
-
     function migrate(input) {
         const report = preview(input);
         if (!report.ok) {
@@ -210,7 +274,6 @@
             report: Object.freeze({ ...report, applied: path.map(step => step.id), migrated: path.length > 0 })
         });
     }
-
     function formatPreview(report) {
         if (!report?.ok) return `无法导入：${(report?.errors || ['未知迁移错误']).join('；')}`;
         if (!report.steps.length) return `Schema ${report.toVersion}，无需迁移。`;

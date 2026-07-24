@@ -1,0 +1,40 @@
+QWQ V2.14-R9 自动检查结果
+
+版本：2.14-R9
+
+源码检查：
+- JavaScript 历史与专项回归：72 / 72 PASS
+- 应用 JavaScript 语法：146 / 146 PASS
+- 静态检查：PASS
+- 记忆领域架构门禁：PASS
+- memory_table.js：3148 / 3300 行
+- schema_migrator.js：254 / 260 行
+- provenance_service.js：253 / 360 行
+
+实际用户备份验证：
+- 角色：1
+- 模板：1
+- 表格：8
+- 字段：94
+- 正式多行记忆：279
+- 来源/变化只读扫描后正式数据哈希不变：PASS
+- 生命周期健康报告后正式数据哈希不变：PASS
+- 生命周期维护预演后正式数据哈希不变：PASS
+- 维护副本前后正式行数 279 → 279：PASS
+- 用户源 .ee SHA-256 前后一致：PASS
+- 用户 .ee 未包含进发布包：PASS
+
+Proment：
+- 桌面 homeAppIds 包含 proment：PASS
+- 桌面只渲染一个 Proment 入口：PASS
+- 打开目标 magic-room-screen：PASS
+
+干净发布目录复验：
+- JavaScript 历史与专项回归：72 / 72 PASS
+- 应用 JavaScript 语法：146 / 146 PASS
+- 静态检查：PASS
+- 记忆领域架构门禁：PASS
+- 实际备份生命周期与来源链验证：PASS
+- 发布文件清单：436 / 436 PASS（不含清单文件自身）
+- 用户 .ee 文件：0
+- Netlify 文件：0

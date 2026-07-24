@@ -11,10 +11,11 @@ const api = fs.readFileSync(path.join(root, 'js/features/apps/api_workspace.js')
 const css = fs.readFileSync(path.join(root, 'css/modules/app_workspace.css'), 'utf8');
 const ui = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
 
-assert(registry.includes("const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data'])"), 'flat phone launcher app list missing');
+assert(registry.includes("function appsByPlacement(placement)"), 'placement-driven launcher missing');
+assert(registry.includes("placement: { home: 60 }"), 'Proment home placement missing');
 assert(!registry.includes('launcherSections'), 'grouped launcher sections should be retired');
 assert(registry.includes("id: 'settings'"), 'settings app is not registered');
-assert(registry.includes("['chat', 'api', 'memory', 'settings']"), 'quick dock should expose API instead of duplicate character entry');
+assert(registry.includes("placement: { dock: 20 }") && registry.includes("placement: { dock: 30 }"), 'quick dock placement should expose API and memory');
 assert(!html.includes('id="global-bottom-nav"'), 'legacy bottom Apps navigation should be removed');
 assert(ui.includes("targetId === 'more-screen'"), 'legacy More route redirect is missing');
 assert(ui.includes("return 'settings-hub-screen'"), 'legacy More route does not reach Settings');
@@ -31,7 +32,7 @@ for (const id of ['chat', 'memory', 'automation', 'perception']) {
 assert(api.includes("section.dataset.apiGroup = classify(section)"), 'API sections are not grouped');
 assert(css.includes('.settings-hub-list'), 'settings list style missing');
 assert(css.includes('.api-workspace-tabs'), 'API workspace tabs style missing');
-assert(/^V?2\.(?:10-R(?:1|2(?:\.1)?|3(?:\.[123])?|4|5|6)|11-R(?:[0124567]|3(?:\.1)?)|12-R(?:[0-4]|5(?:\.[1234])?)|13-R(?:[014]|5(?:\.[1234])?)|14-R(?:0|1|2|3|4|5|6|7|8(?:\.1)?))$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
+assert(/^V?2\.(?:10-R(?:1|2(?:\.1)?|3(?:\.[123])?|4|5|6)|11-R(?:[0124567]|3(?:\.1)?)|12-R(?:[0-4]|5(?:\.[1234])?)|13-R(?:[014]|5(?:\.[1234])?)|14-R(?:0|1|2|3|4|5|6|7|8(?:\.1)?|9)|15-R0[AB])$/.test(fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8').trim()), 'release compatibility version mismatch');
 
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);

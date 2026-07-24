@@ -12,8 +12,9 @@ const memoryController = read('js/modules/memory_table.js');
 const scheduleUi = read('js/modules/memory_table_schedule.js');
 const workspace = read('js/features/memory/workspace.js');
 
-assert(registry.includes("['chat', 'api', 'memory', 'settings']"), 'dock replacement missing');
-assert(registry.includes("const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data'])"), 'flat phone home app list missing');
+assert(registry.includes("placement: { dock: 10 }") && registry.includes("placement: { dock: 40 }"), 'dock placement declarations missing');
+assert(registry.includes("function appsByPlacement(placement)"), 'placement-driven launcher missing');
+assert(registry.includes("placement: { home: 60 }"), 'Proment home placement missing');
 assert(!registry.includes("id: 'characters'") && !registry.includes("id: 'contacts'"), 'retired duplicate chat entries remain');
 assert(html.includes('js/modules/message_content.js'), 'message content parser is not loaded');
 assert(favorites.includes('FavoriteMessageContent.snapshot'), 'favorites do not use shared message parser');
@@ -39,6 +40,7 @@ policyContext.window = policyContext;
 vm.createContext(policyContext);
 vm.runInContext(read('js/features/memory/kernel.js'), policyContext);
 vm.runInContext(read('js/modules/memory_table_policy.js'), policyContext);
+vm.runInContext(read('js/features/memory/field_semantics.js'), policyContext);
 const policy = policyContext.OvoMemoryKernel.get('policy');
 const chat = {
   history: Array.from({ length: 12 }, (_, index) => ({ id: `m${index + 1}`, timestamp: index + 1 })),

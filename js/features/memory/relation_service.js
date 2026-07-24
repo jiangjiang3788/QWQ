@@ -9,6 +9,7 @@
     const Effects = Kernel.get('effects');
     const Lifecycle = Kernel.get('lifecycle');
     const TagVocabulary = Kernel.require('tagVocabulary');
+    const FieldSemantics = Kernel.require('fieldSemantics');
 
     const RELATION_LABELS = Object.freeze({
         duplicate: '可能重复',
@@ -24,10 +25,8 @@
         return Core.unique(source.map(item => String(item || '').trim().toLowerCase()).filter(Boolean), 40);
     }
 
-    const TECHNICAL_FIELD = /^(记录类型|来源域|原始记录ID|记录ID|事件ID|发生或更新时间|创建时间|更新时间|原置信度|置信度|确认状态|迁移状态)$/;
-
     function rowText(table, row) {
-        const meaningful = (table?.columns || []).filter(field => !TECHNICAL_FIELD.test(String(field.key || '').trim())).map(field => {
+        const meaningful = (table?.columns || []).filter(field => !FieldSemantics.isTechnical(field, table)).map(field => {
             const value = Domain.getFieldDisplayValue ? Domain.getFieldDisplayValue(field, row?.cells?.[field.id]) : row?.cells?.[field.id];
             const text = String(value ?? '').replace(/\s+/g, ' ').trim();
             return text ? `${field.key}: ${text}` : '';

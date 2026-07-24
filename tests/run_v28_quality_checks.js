@@ -91,7 +91,7 @@ function assert(condition, message) {
   assert(md.includes('结构化记忆质量报告') && md.includes('预期命中率'),'markdown report missing metrics');
 
   const pkg = JSON.parse(fs.readFileSync(path.join(root,'memory_templates','当前默认记忆模板_V2.8.json'),'utf8'));
-  assert(pkg.schemaVersion === '2.8','package schema version');
+  assert(['2.8','3.2'].includes(pkg.schemaVersion),'package schema version');
   assert(pkg.binding.quality?.testCases?.length === 4,'quality test cases not exported');
   const tpl = pkg.templates[0];
   const allRows=[];

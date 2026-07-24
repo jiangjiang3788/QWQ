@@ -5568,7 +5568,7 @@
 <button class="memory-table-tab-btn" data-tab="usage_audit" type="button">记忆引用与作用<span id="memory-usage-audit-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="sidecar" type="button">短期候选<span id="memory-sidecar-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="reliability" type="button">可靠性</button>
-<button class="memory-table-tab-btn" data-tab="tasks" type="button">任务队列<span id="memory-task-tab-count">0</span></button>
+<button class="memory-table-tab-btn" data-tab="tasks" type="button">维护作业<span id="memory-task-tab-count">0</span></button>
 <button class="memory-table-tab-btn" data-tab="quality" type="button">质量评估</button>
 <button class="memory-table-tab-btn" data-tab="history" type="button">历史</button>
 </div>
@@ -6729,8 +6729,10 @@
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
 <script src="js/features/memory/kernel.js"></script>
+<script src="js/features/memory/memory_defaults.js"></script>
 <script src="js/modules/memory_table_policy.js"></script>
 <script src="js/features/memory/policy_resolver.js"></script>
+<script src="js/features/memory/field_semantics.js"></script>
 <script src="js/features/memory/field_policy.js"></script>
 <script src="js/modules/memory_table_schedule.js"></script>
 <script src="js/modules/memory_table_lifecycle.js"></script>
@@ -6746,6 +6748,7 @@
 <script src="js/modules/memory_table_quality.js"></script>
 <script src="js/features/memory/api_adapter.js"></script>
 <script src="js/features/memory/record_identity.js"></script>
+<script src="js/features/memory/provenance_service.js"></script>
 <script src="js/features/memory/domain.js"></script>
 <script src="js/features/memory/package_adapter.js"></script>
 <script src="js/features/memory/schema_migrator.js"></script>

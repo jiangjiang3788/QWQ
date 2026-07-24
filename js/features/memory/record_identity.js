@@ -4,13 +4,8 @@
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
-    const VERSION = '2.14-R8.1';
-
-    const STRONG_KEY_PATTERN = /(?:^|[^a-z])(事件|记录|任务|待办|候选|原始记录|条目|事项|日程)?\s*(?:id|编号|标识)(?:$|[^a-z])/i;
-    const TITLE_PATTERN = /标题|主题|事项|事件|名称|概要|候选内容|内容/;
-    const DATE_PATTERN = /日期|时间|发生时间|创建时间/;
-    const VOLATILE_PATTERN = /最后更新时间|更新时间|完成时间|当前状态|审核状态|进度|置信度|完整度|排序|序号/;
-    const DAILY_ROLE_PATTERN = /日常观察|每日观察|睡眠.*饮水|饮水.*身体/;
+    const FieldSemantics = Kernel.get('fieldSemantics');
+    const VERSION = '2.15-R0B';
 
     function normalizeText(value) {
         if (Array.isArray(value)) return value.map(normalizeText).filter(Boolean).sort().join('|');
@@ -39,21 +34,23 @@
         const includeVolatile = options.includeVolatile === true;
         return (table?.columns || []).map(field => ({
             field,
-            value: cells?.[field.id]
-        })).filter(entry => nonEmpty(entry.value) && (includeVolatile || !VOLATILE_PATTERN.test(String(entry.field.key || ''))));
+            value: cells?.[field.id],
+            identityRole: FieldSemantics?.identityRole?.(field, table) || field?.identityRole || 'none',
+            semanticRole: FieldSemantics?.semanticRole?.(field, table) || field?.semanticRole || 'custom'
+        })).filter(entry => nonEmpty(entry.value) && (includeVolatile || entry.identityRole !== 'volatile'));
     }
 
     function strongKey(table, cells) {
         const entries = fieldEntries(table, cells, { includeVolatile: true })
-            .filter(entry => STRONG_KEY_PATTERN.test(String(entry.field.key || '')))
-            .map(entry => `${normalizeText(entry.field.key)}=${normalizeText(entry.value)}`)
+            .filter(entry => entry.identityRole === 'primary_key' || entry.identityRole === 'source_key')
+            .map(entry => `${entry.semanticRole}=${normalizeText(entry.value)}`)
             .filter(item => !item.endsWith('='));
         return entries.length ? entries.sort().join('|') : '';
     }
 
     function titleDateKey(table, cells) {
-        const title = fieldEntries(table, cells).find(entry => TITLE_PATTERN.test(String(entry.field.key || '')));
-        const date = fieldEntries(table, cells, { includeVolatile: true }).find(entry => DATE_PATTERN.test(String(entry.field.key || '')));
+        const title = fieldEntries(table, cells).find(entry => entry.identityRole === 'title');
+        const date = fieldEntries(table, cells, { includeVolatile: true }).find(entry => entry.identityRole === 'date');
         const titleText = normalizeText(title?.value);
         const dateText = normalizeText(date?.value);
         if (!titleText || !dateText) return '';
@@ -62,7 +59,7 @@
 
     function isDailyObservationTable(table) {
         const role = Kernel.get('policy')?.normalizeSystemRole?.(table?.systemRole, table) || String(table?.systemRole || '');
-        return role === 'daily_observation' || DAILY_ROLE_PATTERN.test(String(table?.name || ''));
+        return role === 'daily_observation';
     }
 
     function normalizeDateOnly(value) {
@@ -79,13 +76,14 @@
 
     function dailyDateKey(table, cells) {
         if (!isDailyObservationTable(table)) return '';
-        const date = fieldEntries(table, cells, { includeVolatile: true }).find(entry => /日期|记录日|发生日/.test(String(entry.field.key || '')));
+        const date = fieldEntries(table, cells, { includeVolatile: true }).find(entry => entry.semanticRole === 'observation_date' || entry.identityRole === 'date');
         return normalizeDateOnly(date?.value);
     }
 
     function contentSignature(table, cells) {
         const entries = fieldEntries(table, cells)
-            .map(entry => `${normalizeText(entry.field.key)}=${normalizeText(entry.value)}`)
+            .filter(entry => !['primary_key', 'source_key', 'volatile'].includes(entry.identityRole))
+            .map(entry => `${entry.semanticRole}=${normalizeText(entry.value)}`)
             .filter(item => !item.endsWith('='))
             .sort();
         if (!entries.length) return '';

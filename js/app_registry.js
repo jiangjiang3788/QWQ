@@ -28,23 +28,23 @@
     }
 
     const apps = Object.freeze([
-        { id: 'memory', label: '记忆', group: 'main', section: 'people', opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
-        { id: 'worldbook', label: '世界书', group: 'main', section: 'creative', target: 'world-book-screen', opener: 'worldbook', iconKey: 'world-book-screen', fallbackIcon: svgIcon('界', '#eef8f2', '#438663') },
-        { id: 'theater', label: '剧场', group: 'main', section: 'creative', target: 'theater-screen', iconKey: 'theater-screen', fallbackIcon: svgIcon('剧', '#fff2eb', '#bd6d3f') },
-        { id: 'favorites', label: '收藏', group: 'main', section: 'organize', opener: 'favorites', iconKey: 'favorites-screen', fallbackIcon: svgIcon('藏', '#fff1f4', '#d55d78') },
-        { id: 'reminder', label: '提醒', group: 'main', section: 'organize', opener: 'reminder', iconKey: 'reminder-screen', fallbackIcon: svgIcon('醒', '#fff8e8', '#b98224') },
-        { id: 'search', label: '搜索', group: 'main', section: 'organize', opener: 'search', iconKey: 'search-history-screen', fallbackIcon: svgIcon('搜', '#edf7fa', '#3f8191') },
+        { id: 'memory', label: '记忆', group: 'main', section: 'people', placement: { dock: 30 }, opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
+        { id: 'worldbook', label: '世界书', group: 'main', section: 'creative', placement: { home: 10 }, target: 'world-book-screen', opener: 'worldbook', iconKey: 'world-book-screen', fallbackIcon: svgIcon('界', '#eef8f2', '#438663') },
+        { id: 'theater', label: '剧场', group: 'main', section: 'creative', placement: { home: 20 }, target: 'theater-screen', iconKey: 'theater-screen', fallbackIcon: svgIcon('剧', '#fff2eb', '#bd6d3f') },
+        { id: 'favorites', label: '收藏', group: 'main', section: 'organize', placement: { home: 30 }, opener: 'favorites', iconKey: 'favorites-screen', fallbackIcon: svgIcon('藏', '#fff1f4', '#d55d78') },
+        { id: 'reminder', label: '提醒', group: 'main', section: 'organize', placement: { home: 40 }, opener: 'reminder', iconKey: 'reminder-screen', fallbackIcon: svgIcon('醒', '#fff8e8', '#b98224') },
+        { id: 'search', label: '搜索', group: 'main', section: 'organize', placement: { home: 50 }, opener: 'search', iconKey: 'search-history-screen', fallbackIcon: svgIcon('搜', '#edf7fa', '#3f8191') },
 
-        { id: 'chat', label: '聊天', group: 'dock', target: 'chat-list-screen', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('聊', '#eff3ff', '#5570d8') },
-        { id: 'api', label: 'API', group: 'dock', opener: 'api', iconKey: 'api-settings-screen', fallbackIcon: svgIcon('API', '#f2f2f5', '#555764') },
-        { id: 'data', label: '数据', group: 'system', target: 'storage-analysis-screen', iconKey: 'storage-analysis-screen', fallbackIcon: svgIcon('数', '#eff8f5', '#4b8975') },
-        { id: 'appearance', label: '外观', group: 'system', target: 'appearance-settings-screen', iconKey: 'appearance-settings-screen', fallbackIcon: svgIcon('美', '#fff0f4', '#b55e7b') },
-        { id: 'settings', label: '设置', group: 'system', opener: 'settings', customizable: false, fallbackIcon: svgIcon('设', '#f1f2f6', '#596170') },
+        { id: 'chat', label: '聊天', group: 'dock', placement: { dock: 10 }, target: 'chat-list-screen', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('聊', '#eff3ff', '#5570d8') },
+        { id: 'api', label: 'API', group: 'dock', placement: { dock: 20 }, opener: 'api', iconKey: 'api-settings-screen', fallbackIcon: svgIcon('API', '#f2f2f5', '#555764') },
+        { id: 'data', label: '数据', group: 'system', placement: { home: 80 }, target: 'storage-analysis-screen', iconKey: 'storage-analysis-screen', fallbackIcon: svgIcon('数', '#eff8f5', '#4b8975') },
+        { id: 'appearance', label: '外观', group: 'system', placement: { home: 70 }, target: 'appearance-settings-screen', iconKey: 'appearance-settings-screen', fallbackIcon: svgIcon('美', '#fff0f4', '#b55e7b') },
+        { id: 'settings', label: '设置', group: 'system', placement: { dock: 40 }, opener: 'settings', customizable: false, fallbackIcon: svgIcon('设', '#f1f2f6', '#596170') },
 
-        { id: 'proment', label: 'Proment', group: 'advanced', opener: 'proment', iconKey: 'magic-room-screen', fallbackIcon: svgIcon('P', '#f2efff', '#6c55b4'), enabled: () => !flags || flags.get('advancedApps') },
-        { id: 'regex', label: '正则', group: 'advanced', target: 'regex-filter-manager-screen', fallbackIcon: svgIcon('.*', '#f0f2f5', '#565d69'), enabled: () => !flags || flags.get('advancedApps') },
-        { id: 'cot', label: '思维链', group: 'advanced', target: 'cot-settings-screen', fallbackIcon: svgIcon('思', '#f4f0ff', '#7658aa'), enabled: () => !flags || flags.get('advancedApps') },
-        { id: 'status', label: '状态栏', group: 'advanced', target: 'status-bar-manager-screen', fallbackIcon: svgIcon('态', '#eef7ff', '#4a789c'), enabled: () => !flags || flags.get('advancedApps') }
+        { id: 'proment', label: 'Proment', group: 'advanced', placement: { home: 60 }, opener: 'proment', iconKey: 'magic-room-screen', fallbackIcon: svgIcon('P', '#f2efff', '#6c55b4'), enabled: () => !flags || flags.get('advancedApps') },
+        { id: 'regex', label: '正则', group: 'advanced', placement: {}, target: 'regex-filter-manager-screen', fallbackIcon: svgIcon('.*', '#f0f2f5', '#565d69'), enabled: () => !flags || flags.get('advancedApps') },
+        { id: 'cot', label: '思维链', group: 'advanced', placement: {}, target: 'cot-settings-screen', fallbackIcon: svgIcon('思', '#f4f0ff', '#7658aa'), enabled: () => !flags || flags.get('advancedApps') },
+        { id: 'status', label: '状态栏', group: 'advanced', placement: {}, target: 'status-bar-manager-screen', fallbackIcon: svgIcon('态', '#eef7ff', '#4a789c'), enabled: () => !flags || flags.get('advancedApps') }
     ]);
 
     function isEnabled(app) {
@@ -70,17 +70,16 @@
         return `<a href="#" class="app-icon ${extraClass || ''}" data-app-id="${app.id}" aria-label="${customName(app)}"><img src="${iconUrl(app)}" alt="" class="icon-img"><span class="app-name">${customName(app)}</span></a>`;
     }
 
-    const dockAppIds = Object.freeze(['chat', 'api', 'memory', 'settings']);
-
-    const homeAppIds = Object.freeze(['worldbook', 'theater', 'favorites', 'reminder', 'search', 'appearance', 'data']);
-
-    function appsByIds(ids) {
-        return ids.map(id => apps.find(app => app.id === id && isEnabled(app))).filter(Boolean);
+    function appsByPlacement(placement) {
+        return apps
+            .filter(app => isEnabled(app) && Number.isFinite(Number(app.placement?.[placement])))
+            .slice()
+            .sort((a, b) => Number(a.placement[placement]) - Number(b.placement[placement]) || a.id.localeCompare(b.id));
     }
 
     function renderLauncher() {
-        const dock = appsByIds(dockAppIds);
-        const homeApps = appsByIds(homeAppIds);
+        const dock = appsByPlacement('dock');
+        const homeApps = appsByPlacement('home');
         return `
             <div class="home-screen-swiper single-page-home phone-launcher">
                 <div class="home-screen-page phone-home-page">
@@ -269,13 +268,13 @@
 
     global.OvoAppRegistry = Object.freeze({
         list(group) {
-            if (group === 'dock') return appsByIds(dockAppIds).map(app => ({ ...app }));
-            return apps.filter(app => (!group || app.group === group) && isEnabled(app)).map(app => ({ ...app }));
+            if (group === 'home' || group === 'dock') return appsByPlacement(group).map(app => ({ ...app, placement: { ...(app.placement || {}) } }));
+            return apps.filter(app => (!group || app.group === group) && isEnabled(app)).map(app => ({ ...app, placement: { ...(app.placement || {}) } }));
         },
         renderLauncher,
         bindLauncher,
         openApp,
         pickCharacter: openCharacterPicker,
-        sections() { return [{ id: 'desktop', label: '桌面', appIds: [...homeAppIds] }]; }
+        sections() { return [{ id: 'desktop', label: '桌面', appIds: appsByPlacement('home').map(app => app.id) }]; }
     });
 })(window);

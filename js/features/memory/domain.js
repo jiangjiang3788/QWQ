@@ -12,6 +12,9 @@
     const MemoryFeedback = Kernel.get('feedback');
     const MemoryQuality = Kernel.get('quality');
     const FieldPolicy = Kernel.get('fieldPolicy');
+    const FieldSemantics = Kernel.get('fieldSemantics');
+    const MemoryDefaults = Kernel.get('memoryDefaults');
+    const Provenance = Kernel.get('provenanceService');
     const RecordIdentity = Kernel.get('recordIdentity') || Object.freeze({
         ensure() { return null; },
         touch() { return null; },
@@ -47,7 +50,8 @@
         if (chat.memoryTables.lastUpdateMsgTimestamp === undefined) chat.memoryTables.lastUpdateMsgTimestamp = null;
         if (!chat.memoryTables.autoUpdateState) chat.memoryTables.autoUpdateState = 'idle';
         if (chat.memoryTables.autoUpdatePending === undefined) chat.memoryTables.autoUpdatePending = false;
-        if (!chat.memoryTables.lifecycle || typeof chat.memoryTables.lifecycle !== 'object') chat.memoryTables.lifecycle = { schemaVersion: '2.5', lastMaintenanceAt: 0, lastMaintenanceReport: null };
+        if (!chat.memoryTables.lifecycle || typeof chat.memoryTables.lifecycle !== 'object') chat.memoryTables.lifecycle = { schemaVersion: '3.1', lastMaintenanceAt: 0, lastMaintenanceReport: null };
+        else if (!chat.memoryTables.lifecycle.schemaVersion || chat.memoryTables.lifecycle.schemaVersion === '2.5') chat.memoryTables.lifecycle.schemaVersion = '3.1';
         if (MemoryTasks) MemoryTasks.ensureState(chat);
         if (MemoryFeedback) MemoryFeedback.ensureState(chat);
         if (MemoryQuality) MemoryQuality.ensureState(chat);
@@ -157,6 +161,8 @@
             min: 0,
             max: 100,
             aiEditable: true,
+            semanticRole: 'custom',
+            identityRole: 'none',
             writePolicy: { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 },
             aiHint: '',
             displayFormat: '{value}',
@@ -204,6 +210,7 @@
             name: (rawTemplate.name || '').trim() || '未命名模板',
             description: typeof rawTemplate.description === 'string' ? rawTemplate.description : '',
             engineDefaults: MemoryPolicy ? MemoryPolicy.normalizeEngineSettings(rawTemplate.engineDefaults || {}) : (rawTemplate.engineDefaults || {}),
+            memoryDefaults: MemoryDefaults?.resolve ? MemoryDefaults.resolve(rawTemplate) : (rawTemplate.memoryDefaults || {}),
             tables: Array.isArray(rawTemplate.tables) ? rawTemplate.tables : []
         };
 
@@ -229,6 +236,9 @@
                     ? {
                         enabled: table.promotionPolicy.enabled !== false,
                         targetTableId: String(table.promotionPolicy.targetTableId || '').trim(),
+                        fieldMap: table.promotionPolicy.fieldMap && typeof table.promotionPolicy.fieldMap === 'object'
+                            ? Object.fromEntries(Object.entries(table.promotionPolicy.fieldMap).map(([sourceRole, targetRole]) => [String(sourceRole), Array.isArray(targetRole) ? targetRole.map(String).filter(Boolean) : String(targetRole)]).filter(([sourceRole, targetRole]) => sourceRole && (Array.isArray(targetRole) ? targetRole.length : targetRole)))
+                            : undefined,
                         migratedFromLegacy: table.promotionPolicy.migratedFromLegacy === true
                     }
                     : undefined,
@@ -257,6 +267,8 @@
                 min: typeof field.min === 'number' ? field.min : (normalizeFieldType(field.type) === 'progress' ? 0 : undefined),
                 max: typeof field.max === 'number' ? field.max : (normalizeFieldType(field.type) === 'progress' ? 100 : undefined),
                 aiEditable: field.aiEditable !== false,
+                semanticRole: FieldSemantics?.normalizeSemanticRole ? FieldSemantics.normalizeSemanticRole(field.semanticRole, field, normalizedTable) : (field.semanticRole || 'custom'),
+                identityRole: FieldSemantics?.normalizeIdentityRole ? FieldSemantics.normalizeIdentityRole(field.identityRole, field, normalizedTable) : (field.identityRole || 'none'),
                 writePolicy: FieldPolicy ? FieldPolicy.normalizeFieldPolicy(field, normalizedTable) : (field.writePolicy || { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 }),
                 aiHint: typeof field.aiHint === 'string' ? field.aiHint : '',
                 displayFormat: typeof field.displayFormat === 'string' ? field.displayFormat : '{value}',
@@ -406,7 +418,8 @@
                 workflow: rawMeta.workflow && typeof rawMeta.workflow === 'object' ? rawMeta.workflow : null,
                 identity: rawMeta.identity && typeof rawMeta.identity === 'object' ? deepClone(rawMeta.identity) : null,
                 recordKey: typeof rawMeta.recordKey === 'string' ? rawMeta.recordKey : '',
-                sourceFingerprint: typeof rawMeta.sourceFingerprint === 'string' ? rawMeta.sourceFingerprint : ''
+                sourceFingerprint: typeof rawMeta.sourceFingerprint === 'string' ? rawMeta.sourceFingerprint : '',
+                provenance: rawMeta.provenance && typeof rawMeta.provenance === 'object' ? deepClone(rawMeta.provenance) : null
             }
         };
         (table.columns || []).forEach(field => {
@@ -590,8 +603,14 @@
         RecordIdentity.ensureUnique?.(table, rows);
         if (MemoryLifecycle) {
             const sourceMap = { manual: 'manual', api: 'summary_api', review_v2_2: 'summary_api', candidate_approve_v2_1: 'manual', candidate_approve_v2_13_r5: 'manual', sidecar: 'assistant_inferred' };
+            const source = sourceMap[options.source] || (String(options.source || '').includes('review') ? 'summary_api' : 'manual');
             MemoryLifecycle.ensureRowMeta(row, table, getRowSearchText(table, row));
-            MemoryLifecycle.recordSource(row, sourceMap[options.source] || (String(options.source || '').includes('review') ? 'summary_api' : 'manual'), { type: options.sourceMessageId ? 'message' : 'manual', id: options.sourceMessageId || options.source || 'manual', at: Date.now() }, { userConfirmed: options.userConfirmed === true });
+            MemoryLifecycle.recordSource(row, source, { type: options.sourceMessageId ? 'message' : 'manual', id: options.sourceMessageId || options.source || 'manual', at: Date.now() }, {
+                userConfirmed: options.userConfirmed === true,
+                recordEvent: false,
+                transactionId: options.transactionId,
+                operationId: options.operationId
+            });
         }
         if (options.meta && typeof options.meta === 'object') {
             row.meta = { ...(row.meta || {}), ...deepClone(options.meta) };
@@ -602,6 +621,15 @@
             sourceMessageIds: options.sourceMessageIds,
             sourceRoundId: options.sourceRoundId,
             sourceCandidateId: options.sourceCandidateId || options.meta?.sourceCandidateId
+        });
+        Provenance?.record?.(row, 'create', {
+            actor: options.source === 'manual' ? 'user' : 'system',
+            source: String(options.source || 'manual').includes('review') ? 'review' : (options.source || 'manual'),
+            reason: options.reason || `新增到「${table.name || '记忆表'}」`,
+            fieldIds: (table.columns || []).filter(field => initialValues[field.id] !== undefined).map(field => field.id),
+            refs: row.meta?.evidence?.sourceRefs || [],
+            transactionId: options.transactionId,
+            operationId: options.operationId
         });
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         pushMemoryHistory(chat, (table.columns || []).map(field => ({
@@ -661,6 +689,14 @@
             sourceRoundId: options.sourceRoundId,
             sourceCandidateId: options.sourceCandidateId || options.meta?.sourceCandidateId
         });
+        if (changedFields.length) Provenance?.record?.(row, 'upsert_match', {
+            actor: options.source === 'manual' ? 'user' : 'system',
+            source: options.source || 'upsert',
+            reason: `按${RecordIdentity.describeMatch?.(match) || match.matchedBy || '稳定身份'}匹配原记录并更新`,
+            fieldIds: changedFields.map(item => item.fieldId),
+            transactionId: options.transactionId,
+            operationId: options.operationId
+        });
         if (changedFields.length && options.skipHistory !== true) pushMemoryHistory(chat, changedFields, { source: options.source || 'upsert_v2_14_r8', snapshot: options.snapshot });
         return { row, created: false, matched: true, matchedBy: match.matchedBy, confidence: match.confidence, changedFields };
     }
@@ -668,15 +704,22 @@
     function updateRowFieldValue(chat, templateId, table, rowId, field, value, options = {}) {
         const row = findRowById(chat, templateId, table, rowId);
         if (!row) return false;
-        const oldValue = row.cells[field.id];
+        const oldValue = deepClone(row.cells[field.id]);
         const normalized = normalizeFieldValue(field, value);
+        if (isSameMemoryValue(oldValue, normalized)) return false;
         row.cells[field.id] = normalized;
         row.meta ||= {};
         row.meta.updatedAt = Date.now();
         row.meta.lastMentionedAt = Date.now();
+        let source = 'manual';
         if (MemoryLifecycle) {
-            const source = options.source === 'manual' ? 'manual' : (String(options.source || '').includes('review') || options.source === 'api' ? 'summary_api' : 'manual');
-            MemoryLifecycle.recordSource(row, source, { type: 'manual', id: options.source || source, at: Date.now() }, { verified: options.source === 'manual' });
+            source = options.source === 'manual' ? 'manual' : (String(options.source || '').includes('review') || options.source === 'api' ? 'summary_api' : (String(options.source || '').includes('sidecar') ? 'assistant_inferred' : 'manual'));
+            MemoryLifecycle.recordSource(row, source, { type: options.sourceMessageId ? 'message' : 'manual', id: options.sourceMessageId || options.source || source, at: Date.now() }, {
+                verified: options.source === 'manual',
+                recordEvent: false,
+                transactionId: options.transactionId,
+                operationId: options.operationId
+            });
         }
         RecordIdentity.touch(table, row, {
             sourceMessageId: options.sourceMessageId,
@@ -684,10 +727,18 @@
             sourceRoundId: options.sourceRoundId,
             sourceCandidateId: options.sourceCandidateId
         });
+        Provenance?.record?.(row, 'update_field', {
+            actor: options.source === 'manual' ? 'user' : 'system',
+            source: String(options.source || '').includes('review') ? 'review' : (source || options.source || 'manual'),
+            reason: options.reason || `更新字段「${field.key || field.id}」`,
+            fieldIds: [field.id],
+            before: getFieldDisplayValue(field, oldValue),
+            after: getFieldDisplayValue(field, normalized),
+            refs: row.meta?.evidence?.sourceRefs?.slice(-4) || [],
+            transactionId: options.transactionId,
+            operationId: options.operationId
+        });
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        if (isSameMemoryValue(oldValue, normalized)) {
-            return false;
-        }
         pushMemoryHistory(chat, [{
             templateId,
             tableId: table.id,

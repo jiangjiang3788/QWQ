@@ -188,7 +188,7 @@
     }
 
     function commitLabel(policy) {
-        const labels = { direct: '直接生效', review: '先确认', candidate: '进入候选', manual_only: '仅人工', promotion: '批准后晋升' };
+        const labels = { direct: '自动生效', review: '待确认', candidate: '待确认', manual_only: '仅人工', promotion: '长期晋升' };
         return labels[policy?.mode] || '先确认';
     }
 

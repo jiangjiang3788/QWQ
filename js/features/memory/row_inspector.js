@@ -8,9 +8,11 @@
     const RelationService = Kernel.require('relationService');
     const TagVocabulary = Kernel.require('tagVocabulary');
     const Effects = Kernel.get('effects');
+    const Provenance = Kernel.get('provenanceService');
 
     const TABS = Object.freeze([
         { id: 'relations', label: '关联' },
+        { id: 'provenance', label: '来源与变化' },
         { id: 'tags', label: '标签' },
         { id: 'vocabulary', label: '词表' }
     ]);
@@ -131,7 +133,11 @@
         const hasRelations = ['supersedes', 'supersededBy', 'conflictsWith', 'relatedTo'].some(key => target.row.meta?.relations?.[key]?.length);
         const panel = activeTab === 'tags'
             ? tagSection(chat, target, bundle, inventory, busy)
-            : (activeTab === 'vocabulary' ? vocabularySection(chat) : relationSection(target, analysis, hasRelations));
+            : activeTab === 'vocabulary'
+                ? vocabularySection(chat)
+                : activeTab === 'provenance'
+                    ? (Provenance?.renderPanel?.(target) || '<p class="memory-row-inspector-empty">来源变化模块未加载。</p>')
+                    : relationSection(target, analysis, hasRelations);
         return `<button type="button" class="memory-row-inspector-backdrop visible" data-action="close-row-inspector" aria-label="关闭记忆详情"></button>
         <aside class="memory-row-inspector visible ${review ? 'is-review' : ''}" aria-label="记忆关联与标签">
             <header class="memory-row-inspector-head"><div><strong>${Core.escapeHtml(review ? '记忆审核' : target.table.name)}</strong><span>${Core.escapeHtml(review ? `${target.table.name} · 第 ${target.rowIndex + 1} 行` : `第 ${target.rowIndex + 1} 行 · ${target.template.name}`)}</span></div><button type="button" class="memory-row-inspector-close" data-action="close-row-inspector" aria-label="关闭">×</button></header>
@@ -142,5 +148,5 @@
         </aside>`;
     }
 
-    Kernel.register('rowInspector', Object.freeze({ VERSION: '2.11-R3.1', render }));
+    Kernel.register('rowInspector', Object.freeze({ VERSION: '2.14-R9', render }));
 })(window);

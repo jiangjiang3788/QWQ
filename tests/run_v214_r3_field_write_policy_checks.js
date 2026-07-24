@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(read('VERSION.txt').trim()));
 
 function createBox() {
   const box = {
@@ -18,14 +18,16 @@ function createBox() {
   box.window = box;
   vm.createContext(box);
   vm.runInContext(read('js/features/memory/kernel.js'), box, { filename: 'kernel.js' });
+  vm.runInContext(read('js/features/memory/memory_defaults.js'), box, { filename: 'memory_defaults.js' });
   vm.runInContext(read('js/modules/memory_table_policy.js'), box, { filename: 'memory_table_policy.js' });
+  vm.runInContext(read('js/features/memory/field_semantics.js'), box, { filename: 'field_semantics.js' });
   vm.runInContext(read('js/features/memory/field_policy.js'), box, { filename: 'field_policy.js' });
   return box;
 }
 
 const box = createBox();
 const FieldPolicy = box.OvoMemoryKernel.require('fieldPolicy');
-assert(['2.14-R3', '2.14-R8.1'].includes(FieldPolicy.VERSION));
+assert(['2.14-R3', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(FieldPolicy.VERSION));
 
 const directTable = {
   id: 'state', name: '当前状态', mode: 'keyValue', memoryLayer: 'short', systemRole: 'current_state',
@@ -96,7 +98,7 @@ assert(sidecar.includes("FieldPolicy.assess"));
 assert(sidecar.includes('flushFieldReviewBatches'));
 
 const contract = JSON.parse(read('architecture/memory_domains.json'));
-assert(['2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(contract.version));
+assert(['2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1', '2.14-R9', '2.15-R0A', '2.15-R0B'].includes(contract.version));
 assert(contract.publicFacades.memoryUpdateDomain.owns.includes('fieldPolicy'));
 
 console.log('V2.14-R3 FIELD WRITE POLICY CHECKS: PASS');
