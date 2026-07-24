@@ -13,9 +13,9 @@
     const MemoryUpdateDomain = Kernel.require('memoryUpdateDomain');
     const MemoryTablesDomain = Kernel.require('memoryTablesDomain');
     Kernel.require('memoryArchitecture').assertHealthy();
-
     const {
         policy: MemoryPolicy,
+        policyResolver: MemoryPolicyResolver,
         review: MemoryReview,
         retrieval: MemoryRetrieval,
         effects: MemoryEffects,
@@ -31,7 +31,11 @@
     const {
         api: MemoryApi,
         domain: MemoryDomain,
-        workspace: MemoryWorkspace
+        workspace: MemoryWorkspace,
+        packageAdapter: MemoryPackageAdapter,
+        packageOrchestrator: MemoryPackageOrchestratorFactory,
+        writeCoordinator: MemoryWriteCoordinator,
+        writeGateway: MemoryWriteGateway
     } = MemoryFoundationDomain;
     const {
         model: MemorySchemaModel,
@@ -39,6 +43,8 @@
     } = MemorySchemaDomain;
     const {
         candidate: MemoryCandidateService,
+        integrity: MemoryIntegrityDoctor,
+        reviewOrchestrator: MemoryReviewOrchestratorFactory,
         filter: MemoryTableFilter,
         queue: MemoryGovernanceQueue,
         controller: MemoryGovernanceController,
@@ -46,11 +52,12 @@
         inspector: MemoryRowInspector,
         inspectorController: MemoryRowInspectorController
     } = MemoryGovernanceDomain;
-    const { audit: MemoryRetrievalAudit } = MemoryRetrievalDomain;
+    const { audit: MemoryRetrievalAudit, maintenance: MemoryRetrievalMaintenance, orchestrator: MemoryRetrievalOrchestratorFactory } = MemoryRetrievalDomain;
     const {
         tags: MemoryTagService,
         context: MemoryContextAssembler,
-        update: MemoryUpdateService
+        update: MemoryUpdateService,
+        fieldPolicy: MemoryFieldPolicy
     } = MemoryUpdateDomain;
     const {
         grid: MemoryTableGrid,
@@ -69,7 +76,7 @@
         getBoundTemplates, isRowsTable, createEmptyRow, normalizeRowShape, ensureTemplateDataForChat, getRows,
         findRowById, normalizeFieldValue, clampFieldValue, getFieldValue, pushMemoryHistory, setFieldValue,
         isSameMemoryValue, addRow, updateRowFieldValue, deleteRow, moveRow, isFieldLocked,
-        toggleFieldLock, getFieldDisplayValue, isEmptyMemoryValue, getRowSearchText
+        toggleFieldLock, replaceFormalData, replaceTemplateData, setRowTagBundle, getFieldDisplayValue, isEmptyMemoryValue, getRowSearchText
     } = MemoryDomain;
     const deepClone = Core.clone;
     const createMemoryId = Core.createId;
@@ -91,6 +98,8 @@
         conversionState: null,
         schemaEditorTab: 'fields',
         schemaEditorTableIndex: 0,
+        schemaEditorPolicyScope: 'template',
+        policyOverrideDraft: null,
         viewMode: 'normal',
         activeTableId: null,
         editingRowId: null,
@@ -341,7 +350,7 @@
         retryBtn.style.background = hasFailed ? '#ffe7e7' : '';
         retryBtn.style.color = hasFailed ? '#c62828' : '';
         retryBtn.style.borderColor = hasFailed ? '#f2b8b5' : '';
-        latestBtn.textContent = isRunning ? '更新中...' : '更新所有到期表';
+        latestBtn.textContent = isRunning ? '整理中...' : '整理所有到期表';
         if (roundStatus) {
             const latestRound = runtime?.rounds?.[runtime.rounds.length - 1];
             roundStatus.textContent = `已记录 ${runtime?.rounds?.length || 0} 轮${latestRound ? ` · 最近一轮 ${latestRound.messageCount} 条` : ''}`;
@@ -349,8 +358,8 @@
         const pendingReviewCount = MemoryReview ? MemoryReview.getPendingCount(chat) : 0;
         const queuedTaskCount = taskCounts ? (taskCounts.queued + taskCounts.paused + taskCounts.running + taskCounts.failed) : 0;
         statusEl.textContent = hasTemplates
-            ? `自动更新：${toggle.checked ? '已开启' : '已关闭'} · 自动表 ${eligibleCount} 张 · 到期 ${dueCount} 张 · 队列 ${queuedTaskCount} 项 · 待审核 ${pendingReviewCount} 批 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息${toggle.checked && eligibleCount === 0 ? ' · 请把至少一张表设为“跟随全局”或“按表设置”' : ''}`
-            : '先绑定模板后才能使用更新调度';
+            ? `周期整理：${toggle.checked ? '已开启' : '已关闭'} · 可调度 ${eligibleCount} 张 · 到期 ${dueCount} 张 · 队列 ${queuedTaskCount} 项 · 待确认 ${pendingReviewCount} 批 · 最大未处理 ${totalUnsyncedRounds} 轮 / ${totalUnsyncedMessages} 条消息${toggle.checked && eligibleCount === 0 ? ' · 请在表结构中把至少一张表设为“周期整理”' : ''}`
+            : '先绑定模板后才能使用周期整理';
     }
     async function applyMemoryTableAutoUpdateToggle(chat, enabled) {
         if (!chat) return { status: 'noop' };
@@ -503,6 +512,7 @@
             if (view === 'sidecar') return MemorySidecar ? MemorySidecar.renderCandidatesView(chat) : '<div class="memory-review-empty"><p>短期候选模块未加载。</p></div>';
             if (view === 'reliability') return MemoryLifecycle ? MemoryLifecycle.renderReliabilityView(chat, boundTemplates) : '<div class="memory-review-empty"><p>可靠性模块未加载。</p></div>';
             if (view === 'tasks') return MemoryTasks ? MemoryTasks.renderView(chat) : '<div class="memory-review-empty"><p>任务队列模块未加载。</p></div>';
+            if (view === 'integrity') return MemoryIntegrityDoctor ? MemoryIntegrityDoctor.renderView(chat, boundTemplates) : '<div class="memory-review-empty"><p>完整性医生模块未加载。</p></div>';
             if (view === 'quality') return MemoryQuality ? MemoryQuality.renderView(chat) : '<div class="memory-review-empty"><p>质量评估模块未加载。</p></div>';
             if (view === 'history') {
                 empty.style.display = (chat.memoryTables.history || []).length === 0 ? 'block' : 'none';
@@ -557,13 +567,89 @@
         const activeTableId = uiState.activeTableId || MemoryPolicy?.ensureRuntimeState?.(chat)?.activeTableId;
         return bound.find(template => (template.tables || []).some(table => table.id === activeTableId)) || bound[0] || db.memoryTableTemplates[0] || null;
     }
+    function boundRoleConflictsForDraft(chat, draft) {
+        const conflicts = new Map();
+        if (!chat || !draft || !MemoryPolicy) return conflicts;
+        const uniqueRoles = new Set(['core_profile', 'current_state', 'tasks', 'recent_events', 'daily_observation', 'medium_summary', 'long_candidate', 'long_store']);
+        const roleTables = new Map();
+        getBoundTemplates(chat).map(template => template.id === draft.id ? draft : template).forEach(template => {
+            (template.tables || []).forEach(table => {
+                const role = MemoryPolicy.normalizeSystemRole(table.systemRole, table);
+                if (!uniqueRoles.has(role)) return;
+                if (!roleTables.has(role)) roleTables.set(role, []);
+                roleTables.get(role).push({ templateId: template.id, tableId: table.id, tableName: table.name || role });
+            });
+        });
+        roleTables.forEach((items, role) => {
+            if (items.length < 2) return;
+            items.filter(item => item.templateId === draft.id).forEach(item => conflicts.set(item.tableId, { role, count: items.length, tables: items }));
+        });
+        return conflicts;
+    }
+    function buildSchemaRuntimeByTableId(draft) {
+        const chat = getCurrentMemoryTableChat();
+        if (!chat || !draft || !MemoryPolicy) return {};
+        const bound = getBoundTemplates(chat).some(template => template.id === draft.id);
+        if (!bound) return {};
+        const liveTemplate = db.memoryTableTemplates.find(template => template.id === draft.id) || draft;
+        const labels = {
+            idle: '未运行',
+            success: '成功',
+            failed: '失败',
+            running: '运行中',
+            pending_review: '待确认',
+            review_rejected: '已拒绝',
+            skipped: '已跳过'
+        };
+        const runtimeByTableId = {};
+        const boundConflicts = boundRoleConflictsForDraft(chat, draft);
+        (draft.tables || []).forEach(draftTable => {
+            const liveTable = (liveTemplate.tables || []).find(table => table.id === draftTable.id) || draftTable;
+            const info = MemoryPolicy.getUnprocessedInfo(chat, draft.id, liveTable);
+            runtimeByTableId[draftTable.id] = {
+                unsyncedMessages: info.unsyncedMessages,
+                lastRunLabel: info.tableState.lastError
+                    ? `失败：${String(info.tableState.lastError).slice(0, 30)}`
+                    : (labels[info.tableState.lastRunStatus] || info.tableState.lastRunStatus || '未运行'),
+                pendingReview: !!info.tableState.pendingReviewBatchId,
+                cursorPosition: Math.max(0, info.cursorIndex + 1),
+                roleConflict: boundConflicts.get(draftTable.id) || null
+            };
+        });
+        return runtimeByTableId;
+    }
+    function buildSchemaEffectiveByTableId(draft) {
+        const chat = getCurrentMemoryTableChat();
+        const overrides = uiState.schemaEditorPolicyScope === 'role'
+            ? (uiState.policyOverrideDraft || {})
+            : undefined;
+        return Object.fromEntries((draft?.tables || []).map(table => [table.id,
+            MemoryPolicyResolver
+                ? MemoryPolicyResolver.resolve(chat, draft.id, table, { overrides })
+                : { effective: MemoryPolicy.normalizeTablePolicy(table), labels: {}, sourceSummary: {}, hasRoleOverride: false }
+        ]));
+    }
+
     function renderSchemaEditor() {
         const draft = uiState.templateDraft;
         const body = document.getElementById('memory-schema-editor-body');
         const title = document.getElementById('memory-schema-editor-title');
+        const saveButton = document.querySelector('#memory-schema-editor-modal [data-schema-action="save"]');
         if (!draft || !body || !title) return;
-        title.textContent = uiState.editingTemplateId ? '编辑表结构' : '新建表结构';
-        body.innerHTML = MemorySchemaEditor.render(draft, { activeTableIndex: uiState.schemaEditorTableIndex });
+        const chat = getCurrentMemoryTableChat();
+        const roleScopeAvailable = !!(chat && getBoundTemplates(chat).some(template => template.id === draft.id));
+        if (!roleScopeAvailable && uiState.schemaEditorPolicyScope === 'role') uiState.schemaEditorPolicyScope = 'template';
+        title.textContent = uiState.schemaEditorPolicyScope === 'role'
+            ? '当前角色记忆策略覆盖'
+            : (uiState.editingTemplateId ? '编辑表结构与模板策略' : '新建表结构与模板策略');
+        if (saveButton) saveButton.textContent = uiState.schemaEditorPolicyScope === 'role' ? '保存当前角色覆盖' : '保存结构与模板策略';
+        body.innerHTML = MemorySchemaEditor.render(draft, {
+            activeTableIndex: uiState.schemaEditorTableIndex,
+            policyScope: uiState.schemaEditorPolicyScope,
+            roleScopeAvailable,
+            runtimeByTableId: buildSchemaRuntimeByTableId(draft),
+            effectiveByTableId: buildSchemaEffectiveByTableId(draft)
+        });
     }
     function openSchemaEditor(template) {
         const modal = document.getElementById('memory-schema-editor-modal');
@@ -572,6 +658,11 @@
         uiState.templateDraft = MemorySchemaEditor.prepare(template || null);
         uiState.schemaEditorTab = 'fields';
         uiState.schemaEditorTableIndex = 0;
+        uiState.schemaEditorPolicyScope = 'template';
+        const chat = getCurrentMemoryTableChat();
+        uiState.policyOverrideDraft = template?.id && chat && MemoryPolicyResolver
+            ? MemoryPolicyResolver.cloneTemplateOverrides(chat, template.id)
+            : {};
         renderSchemaEditor();
         modal.classList.add('visible');
     }
@@ -582,22 +673,66 @@
         uiState.editingTemplateId = null;
         uiState.schemaEditorTab = 'fields';
         uiState.schemaEditorTableIndex = 0;
+        uiState.schemaEditorPolicyScope = 'template';
+        uiState.policyOverrideDraft = null;
     }
-    async function saveSchemaEditor() {
-        if (!uiState.templateDraft) return;
+    async function persistSchemaEditorDraft(options = {}) {
+        if (!uiState.templateDraft) return null;
         let normalized;
         try {
             normalized = MemorySchemaEditor.normalize(uiState.templateDraft, uiState.editingTemplateId || undefined);
+            const conflicts = MemorySchemaModel.roleConflicts ? MemorySchemaModel.roleConflicts(normalized) : new Map();
+            if (conflicts.size) throw new Error('当前模板存在重复的唯一表格职责，请先解决红色冲突行');
+            const chat = getCurrentMemoryTableChat();
+            if (chat && boundRoleConflictsForDraft(chat, normalized).size) throw new Error('当前角色绑定的模板之间存在重复职责，请先调整为每种唯一职责仅一张表');
         } catch (error) {
             showToast(error.message || '表结构不合法');
-            return;
+            return null;
+        }
+        if (uiState.schemaEditorPolicyScope === 'role') {
+            const chat = getCurrentMemoryTableChat();
+            if (!chat || !getBoundTemplates(chat).some(template => template.id === normalized.id)) {
+                showToast('当前模板没有绑定到这个角色，不能保存角色覆盖');
+                return null;
+            }
+            MemoryPolicyResolver.replaceTemplateOverrides(chat, normalized.id, uiState.policyOverrideDraft || {}, normalized);
+            MemoryPolicy.clearRetrievalCache(chat);
+            await saveCharacter(chat.id);
+            uiState.policyOverrideDraft = MemoryPolicyResolver.cloneTemplateOverrides(chat, normalized.id);
+            if (options.close !== false) closeSchemaEditor();
+            else renderSchemaEditor();
+            if (!options.silent) showToast('当前角色策略覆盖已保存');
+            return normalized;
         }
         await persistTemplateNormalized(normalized);
-        closeSchemaEditor();
-        showToast('表结构已保存');
+        uiState.editingTemplateId = normalized.id;
+        uiState.templateDraft = MemorySchemaEditor.prepare(normalized);
+        const chat = getCurrentMemoryTableChat();
+        uiState.policyOverrideDraft = chat && MemoryPolicyResolver
+            ? MemoryPolicyResolver.cloneTemplateOverrides(chat, normalized.id)
+            : {};
+        if (options.close !== false) closeSchemaEditor();
+        if (!options.silent) showToast(options.close === false ? '模板策略已保存' : '表结构与模板策略已保存');
+        return normalized;
+    }
+    async function saveSchemaEditor() {
+        return persistSchemaEditorDraft({ close: true });
     }
     function updateSchemaDraft(target) {
         if (!uiState.templateDraft || !target?.dataset) return false;
+        if (uiState.schemaEditorPolicyScope === 'role') {
+            const path = target.dataset.policyPath;
+            const tableIndex = target.dataset.tableIndex !== undefined ? Number(target.dataset.tableIndex) : -1;
+            const table = uiState.templateDraft.tables?.[tableIndex];
+            if (!path || !table || !MemoryPolicyResolver) return false;
+            uiState.policyOverrideDraft ||= {};
+            MemoryPolicyResolver.updateOverrideDraft(uiState.policyOverrideDraft, uiState.templateDraft, table.id, path, target.value);
+            if (path === 'commitPolicy.mode') {
+                MemoryPolicyResolver.updateOverrideDraft(uiState.policyOverrideDraft, uiState.templateDraft, table.id,
+                    'commitPolicy.requireUserConfirmation', ['review', 'promotion'].includes(target.value));
+            }
+            return true;
+        }
         if (MemorySchemaEditor.updateRole(uiState.templateDraft, target)) return true;
         if (MemorySchemaEditor.updatePath(uiState.templateDraft, target)) return true;
         return false;
@@ -654,7 +789,6 @@
             showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '整行保存失败')
         });
     }
-
     function getMemoryTableWorkspaceConfig(chat) {
         return {
             chat,
@@ -746,7 +880,17 @@
         });
         return groups;
     }
-    function getTableRuntimePolicy(table) {
+    function getTableRuntimePolicy(table, chat, templateId) {
+        const targetChat = chat || getCurrentMemoryTableChat();
+        let resolvedTemplateId = templateId || '';
+        if (!resolvedTemplateId && table?.id) {
+            resolvedTemplateId = getBoundTemplates(targetChat).find(template => (template.tables || []).some(item => item.id === table.id))?.id
+                || db.memoryTableTemplates.find(template => (template.tables || []).some(item => item.id === table.id))?.id
+                || '';
+        }
+        if (MemoryPolicyResolver && targetChat && resolvedTemplateId) {
+            return MemoryPolicyResolver.resolve(targetChat, resolvedTemplateId, table).effective;
+        }
         return MemoryPolicy
             ? MemoryPolicy.normalizeTablePolicy(table)
             : {
@@ -754,6 +898,13 @@
                 updatePolicy: table.updatePolicy || {},
                 injectionPolicy: table.injectionPolicy || { mode: 'always', budget: 1200 }
             };
+    }
+    function getEffectiveTableDescriptor(table, chat, templateId) {
+        const targetChat = chat || getCurrentMemoryTableChat();
+        if (MemoryPolicyResolver && targetChat && templateId && table) {
+            return MemoryPolicyResolver.materializeTable(targetChat, templateId, table);
+        }
+        return table;
     }
     function getRowTimestamp(table, row) {
         if (row?.meta?.lastMentionedAt || row?.meta?.updatedAt || row?.meta?.createdAt) {
@@ -768,284 +919,33 @@
         });
         return best;
     }
-    function getRowStatusText(table, row) {
-        return (table.columns || [])
-            .filter(field => /状态|进度|结果/.test(field.key || ''))
-            .map(field => getFieldDisplayValue(field, row.cells?.[field.id]))
-            .filter(Boolean)
-            .join(' ');
-    }
-    function rowToRetrievalItem(table, row, rowIndex) {
-        const searchText = getRowSearchText(table, row);
-        if (MemoryEffects) MemoryEffects.ensureRowMeta(row, table, searchText);
-        const statusText = getRowStatusText(table, row);
-        const expiresAt = Number(row?.meta?.expiresAt) || 0;
-        const expiredByMeta = expiresAt > 0 && expiresAt < Date.now();
-        const completed = MemoryPolicy ? MemoryPolicy.isCompletedText(statusText) : /已完成|已取消|已过期|已解决/.test(statusText);
-        return {
-            id: row.id,
-            row,
-            table,
-            rowIndex,
-            searchText,
-            text: searchText,
-            updatedAt: getRowTimestamp(table, row),
-            createdAt: Number(row?.meta?.createdAt) || 0,
-            importance: Number(row?.meta?.importance) || 50,
-            confidence: Number(row?.meta?.confidence) || 70,
-            pinned: !!row?.meta?.pinned,
-            completed,
-            active: !completed && !expiredByMeta,
-            expiredByMeta
-        };
-    }
-    function isKeyValueTableActive(chat, template, table, policy) {
-        if (!policy.maxAgeDays) return true;
-        let newest = 0;
-        let explicitExpiry = 0;
-        (table.columns || []).forEach(field => {
-            const value = getFieldValue(chat, template.id, table.id, field);
-            if (/有效期|过期/.test(field.key || '')) {
-                explicitExpiry = Math.max(explicitExpiry, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
-            }
-            if (/记录时间|更新时间|日期|时间/.test(field.key || '')) {
-                newest = Math.max(newest, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
-            }
-        });
-        if (explicitExpiry && explicitExpiry < Date.now()) return false;
-        if (!newest) return true;
-        return (Date.now() - newest) <= policy.maxAgeDays * 86400000;
-    }
-    function selectRowsForInjection(chat, template, table, queryText, forceFull) {
-        const rows = getRows(chat, template.id, table);
-        if (forceFull) return rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
-        const tablePolicy = getTableRuntimePolicy(table);
-        const policy = tablePolicy.injectionPolicy;
-        if (policy.mode === 'never') return [];
-        const items = rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
-        if (policy.mode === 'always') {
-            return policy.topK > 0 ? items.slice(-policy.topK).reverse() : items;
-        }
-        if (policy.mode === 'active') {
-            const active = items.filter(item => item.active || item.pinned);
-            active.sort((a, b) => {
-                if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-                if (b.importance !== a.importance) return b.importance - a.importance;
-                return (b.updatedAt || 0) - (a.updatedAt || 0);
-            });
-            return policy.topK > 0 ? active.slice(0, policy.topK) : active;
-        }
-        if (MemoryPolicy) {
-            const runtime = MemoryPolicy.ensureRuntimeState(chat);
-            const key = `${template.id}::${table.id}`;
-            const prepared = runtime?.preparedSelectionQuery === queryText
-                ? runtime.preparedSelections?.[key]
-                : null;
-            if (Array.isArray(prepared)) {
-                const byId = new Map(items.map(item => [item.id, item]));
-                return prepared.map(hit => {
-                    const item = byId.get(hit.id);
-                    return item ? {
-                        ...item,
-                        _score: Number(hit.score) || 0,
-                        _lexicalScore: Number(hit.lexicalScore) || 0,
-                        _semanticScore: Number(hit.semanticScore) || 0,
-                        _tagScore: Number(hit.tagScore) || 0,
-                        _reasons: Array.isArray(hit.reasons) ? hit.reasons : [],
-                        _effectMode: hit.effectMode || '',
-                        _tagBundle: hit.tags || null,
-                        _usePolicy: hit.usePolicy || null,
-                        _directive: hit.directive || ''
-                    } : null;
-                }).filter(Boolean);
-            }
-            return MemoryPolicy.selectRelevantItems(items, queryText, policy);
-        }
-        return items.slice(0, policy.topK || 5);
-    }
-
-    function buildSingleTableContext(chat, template, table, queryText, options = {}) {
-        const tablePolicy = getTableRuntimePolicy(table);
-        const injectionPolicy = tablePolicy.injectionPolicy;
-        const forceFull = !!options.forceFull;
-        if (!forceFull && injectionPolicy.mode === 'never') return '';
-
-        let text = `- ${table.name}\n`;
-        if (isRowsTable(table)) {
-            const selected = selectRowsForInjection(chat, template, table, queryText, forceFull);
-            if (!selected.length) return '';
-            selected.forEach((item, selectedIndex) => {
-                text += `  - 记录 ${selectedIndex + 1}`;
-                if (item._score !== undefined) text += `（相关度 ${item._score.toFixed(2)}）`;
-                text += `\n`;
-                (table.columns || []).filter(field => forceFull || field.important !== false).forEach(field => {
-                    const value = getFieldDisplayValue(field, item.row.cells?.[field.id]);
-                    if (isEmptyMemoryValue(field, item.row.cells?.[field.id])) return;
-                    text += `    - ${field.summaryLabel || field.key}: ${value}\n`;
-                });
-                if (!forceFull && MemoryEffects) {
-                    MemoryEffects.markInjected(chat, item);
-                    const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-                    if (runtime) runtime.effectsDirty = true;
-                }
-            });
-        } else {
-            if (!forceFull && injectionPolicy.mode === 'active' && !isKeyValueTableActive(chat, template, table, injectionPolicy)) return '';
-            const fields = (table.columns || []).filter(field => {
-                if (!forceFull && field.important === false) return false;
-                const value = getFieldValue(chat, template.id, table.id, field);
-                return !isEmptyMemoryValue(field, value);
-            });
-            if (!fields.length) return '';
-            if (!forceFull && injectionPolicy.mode === 'relevant' && MemoryPolicy) {
-                const aggregate = fields.map(field => `${field.key}: ${getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field))}`).join('\n');
-                const score = MemoryPolicy.computeLexicalScore(aggregate, queryText);
-                if (score < injectionPolicy.threshold) return '';
-            }
-            fields.forEach(field => {
-                const value = getFieldDisplayValue(field, getFieldValue(chat, template.id, table.id, field));
-                text += `  - ${field.summaryLabel || field.key}: ${value}\n`;
-            });
-        }
-        return MemoryPolicy ? MemoryPolicy.trimToBudget(text.trim(), injectionPolicy.budget, table.name) : text.trim();
-    }
-
-    function getMemoryContextBlock(chat, options = {}) {
-        ensureMemoryTableState(chat);
-        const allowInactiveMode = !!options.allowInactiveMode;
-        if (chat.memoryTables?.enabled === false) return '';
-        if (chat.memoryMode !== 'table' && !options.force && !allowInactiveMode) return '';
-        const templateIds = Array.isArray(options.templateIds) && options.templateIds.length > 0 ? options.templateIds : null;
-        const templates = getBoundTemplates(chat).filter(template => !templateIds || templateIds.includes(template.id));
-        if (templates.length === 0) return '';
-
-        const forceFull = !!options.force;
-        const queryText = options.queryText || (MemoryPolicy ? MemoryPolicy.buildQueryText(chat) : '');
-        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        if (!forceFull && runtime?.lastContextBlock && runtime.lastPreparedQuery === queryText) {
-            return runtime.lastContextBlock;
-        }
-
-        const sections = [];
-        templates.forEach(template => {
-            ensureTemplateDataForChat(chat, template);
-            const tableSections = (template.tables || [])
-                .filter(table => forceFull || !(MemorySidecar && MemorySidecar.isLiveTable(table)))
-                .map(table => buildSingleTableContext(chat, template, table, queryText, { forceFull }))
-                .filter(Boolean);
-            if (!tableSections.length) return;
-            sections.push(`《${template.name}》\n${tableSections.join('\n')}`);
-        });
-        if (!sections.length) return '';
-        const header = forceFull
-            ? '【结构化记忆完整档案】\n以下是选中模板的完整结构化数据，仅用于整理或转换。'
-            : '【结构化记忆·按需检索】\n以下内容由固定、有效或与当前话题相关的档案条目组成。未出现的内容不要擅自补全。';
-        let block = `${header}\n\n${sections.join('\n\n')}`.trim();
-        if (!forceFull && MemoryPolicy) {
-            block = MemoryPolicy.trimToBudget(block, runtime.engineSettings.globalInjectionBudget, '结构化记忆');
-            runtime.lastContextBlock = block;
-            runtime.lastPreparedQuery = queryText;
-            runtime.lastPreparedAt = Date.now();
-        }
-        return block;
-    }
-
-    async function prepareMemoryTableContext(chat, options = {}) {
-        ensureMemoryTableState(chat);
-        const allowInactiveMode = !!options.allowInactiveMode;
-        if (chat.memoryTables?.enabled === false) return '';
-        if (chat.memoryMode !== 'table' && !options.force && !options.preview && !allowInactiveMode) return '';
-        const queryText = options.queryText || (MemoryPolicy ? MemoryPolicy.buildQueryText(chat) : '');
-        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-
-        if (MemoryRetrieval && MemoryPolicy && queryText.trim()) {
-            const groups = [];
-            getBoundTemplates(chat).forEach(template => {
-                ensureTemplateDataForChat(chat, template);
-                (template.tables || []).forEach(table => {
-                    if (MemorySidecar && MemorySidecar.isLiveTable(table)) return;
-                    if (!isRowsTable(table)) return;
-                    const tablePolicy = getTableRuntimePolicy(table);
-                    if (tablePolicy.injectionPolicy.mode !== 'relevant') return;
-                    const items = getRows(chat, template.id, table).map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
-                    groups.push({
-                        key: `${template.id}::${table.id}`,
-                        templateName: template.name,
-                        tableName: table.name,
-                        policy: tablePolicy.injectionPolicy,
-                        items
-                    });
-                });
-            });
-            const prepared = await MemoryRetrieval.prepareGroups(chat, groups, queryText, runtime.engineSettings);
-            runtime.preparedSelections = prepared.selectedByTable || {};
-            runtime.preparedSelectionQuery = queryText;
-            runtime.lastRetrievalDiagnostic = prepared.diagnostic || null;
-            if (prepared.dirty && typeof saveCharacter === 'function') {
-                try { await saveCharacter(chat.id); } catch (error) { console.warn('[MemoryTable] failed to persist retrieval index:', error); }
-            }
-        }
-
-        const block = getMemoryContextBlock(chat, { ...options, queryText });
-        if (runtime?.lastRetrievalDiagnostic) {
-            runtime.lastRetrievalDiagnostic.finalBlock = block;
-            runtime.lastRetrievalDiagnostic.finalChars = String(block || '').length;
-            if (!options.preview && !options.force && MemoryFeedback) {
-                const feedbackSnapshot = MemoryFeedback.captureInjection(chat, runtime.lastRetrievalDiagnostic, {
-                    queryText,
-                    roundId: runtime.activeRound?.id || runtime.lastRoundId || '',
-                    finalBlock: block
-                });
-                if (feedbackSnapshot) runtime.feedbackDirty = true;
-            }
-        }
-        if ((runtime?.effectsDirty || runtime?.feedbackDirty) && typeof saveCharacter === 'function') {
-            runtime.effectsDirty = false;
-            runtime.feedbackDirty = false;
-            try { await saveCharacter(chat.id); } catch (error) { console.warn('[MemoryTable] failed to persist effect/feedback usage:', error); }
-        }
-        return block;
-    }
-
-    function clearMemoryTableRetrievalIndex(chat) {
-        if (!chat) return 0;
-        let cleared = 0;
-        getBoundTemplates(chat).forEach(template => {
-            ensureTemplateDataForChat(chat, template);
-            (template.tables || []).forEach(table => {
-                if (!isRowsTable(table)) return;
-                getRows(chat, template.id, table).forEach(row => {
-                    row.meta ||= {};
-                    if (Array.isArray(row.meta.retrievalVector) && row.meta.retrievalVector.length) cleared += 1;
-                    row.meta.retrievalVector = [];
-                    row.meta.retrievalVectorFingerprint = '';
-                    row.meta.retrievalIndexedAt = 0;
-                });
-            });
-        });
-        if (MemoryPolicy) {
-            const runtime = MemoryPolicy.ensureRuntimeState(chat);
-            MemoryPolicy.clearRetrievalCache(chat);
-            runtime.lastRetrievalDiagnostic = null;
-        }
-        return cleared;
-    }
-
-    async function rebuildMemoryTableRetrievalPreview(chat) {
-        if (!chat) return '';
-        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        const block = await prepareMemoryTableContext(chat, { preview: true });
-        await saveCharacter(chat.id);
-        selectMemoryView(chat, 'usage_audit');
-        renderMemoryTableScreen();
-        return block;
-    }
-
+    const MemoryRetrievalUseCases = MemoryRetrievalOrchestratorFactory.create({
+            MemoryFeedback,
+            MemoryPolicy,
+            MemoryRetrieval,
+            MemoryRetrievalMaintenance,
+            MemorySidecar,
+            ensureMemoryTableState,
+            getBoundTemplates,
+            getFieldDefaultValue,
+            getFieldDisplayValue,
+            getRowSearchText,
+            getRowTimestamp,
+            getTableRuntimePolicy,
+            isEmptyMemoryValue,
+            isRowsTable,
+            normalizeFieldValue,
+            renderMemoryTableScreen,
+            saveCharacter,
+            selectMemoryView
+    });
+    const {
+        rowToRetrievalItem, getMemoryContextBlock, collectRelevantRetrievalGroups, prepareMemoryTableContext,
+        clearMemoryTableRetrievalIndex, rebuildMemoryTableRetrievalPreview
+    } = MemoryRetrievalUseCases;
     function getJournalCandidates(chat) {
         return [...(chat.memoryJournals || [])].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
-
     function openConversionModal(direction) {
         const chat = getCurrentMemoryTableChat();
         const modal = document.getElementById('memory-conversion-modal');
@@ -1053,7 +953,6 @@
         ensureMemoryTableState(chat);
         const boundTemplates = getBoundTemplates(chat);
         const journals = getJournalCandidates(chat);
-
         uiState.conversionState = {
             direction,
             selectedJournalIds: direction === 'journalToTable'
@@ -1068,24 +967,20 @@
         renderConversionModal();
         modal.classList.add('visible');
     }
-
     function closeConversionModal() {
         const modal = document.getElementById('memory-conversion-modal');
         if (modal) modal.classList.remove('visible');
         uiState.conversionState = null;
     }
-
     function renderConversionModal() {
         const state = uiState.conversionState;
         const chat = getCurrentMemoryTableChat();
         const body = document.getElementById('memory-conversion-body');
         const title = document.getElementById('memory-conversion-title');
         if (!state || !chat || !body || !title) return;
-
         const journals = getJournalCandidates(chat);
         const templates = getBoundTemplates(chat);
         title.textContent = state.direction === 'journalToTable' ? '日记转表格' : '表格转日记';
-
         if (state.direction === 'journalToTable') {
             const selectedJournals = journals.filter(item => state.selectedJournalIds.includes(item.id));
             const selectedTemplates = templates.filter(item => state.selectedTemplateIds.includes(item.id));
@@ -1187,46 +1082,38 @@
             `;
         }
     }
-
     const collectMessagesForMemoryTable = MemoryUpdateService.collectMessages;
     const buildTemplateDefinitionForPrompt = MemoryUpdateService.buildTemplateDefinition;
     const buildHistoryTextForPrompt = MemoryUpdateService.buildHistoryText;
-
     async function updateMemoryTablesFromApi(options = {}) {
         const chat = options.chat || getCurrentMemoryTableChat();
         if (!chat) {
             showToast('请先进入一个角色聊天');
             return { status: 'noop', changedFields: [] };
         }
-
         const targetTableKeys = new Set(Array.isArray(options.targetTableKeys) ? options.targetTableKeys : []);
         const baseTemplates = (Array.isArray(options.templateIds) && options.templateIds.length > 0
             ? getBoundTemplates(chat).filter(item => options.templateIds.includes(item.id))
             : getBoundTemplates(chat));
         const templates = baseTemplates.map(template => {
-            if (targetTableKeys.size === 0) return template;
-            return {
-                ...template,
-                tables: (template.tables || []).filter(table => targetTableKeys.has(`${template.id}::${table.id}`))
-            };
+            const selectedTables = (template.tables || [])
+                .filter(table => targetTableKeys.size === 0 || targetTableKeys.has(`${template.id}::${table.id}`))
+                .filter(table => getTableRuntimePolicy(table, chat, template.id).commitPolicy?.mode !== 'manual_only');
+            return selectedTables.length === (template.tables || []).length ? template : { ...template, tables: selectedTables };
         }).filter(template => (template.tables || []).length > 0);
         if (templates.length === 0) {
-            showToast('请先绑定至少一个模板');
+            showToast(targetTableKeys.size ? '所选表仅允许人工编辑，不能由 AI 生成更新' : '没有可由 AI 整理的已绑定表格');
             return { status: 'noop', changedFields: [] };
         }
-
         const history = collectMessagesForMemoryTable(chat, {
             start: options.start,
             end: options.end
         });
-
         if (history.length === 0) {
             if (!options.silent) showToast('聊天记录不足，暂时无法提取');
             return { status: 'noop', changedFields: [] };
         }
-
         templates.forEach(template => ensureTemplateDataForChat(chat, template));
-
         const updatePrompt = MemoryUpdateService.buildUpdatePrompt({
             chat,
             templates,
@@ -1236,10 +1123,9 @@
         });
         const { prompt, historyText, templateText, related } = updatePrompt;
         const relatedContextSummary = { targetRole: related?.targetRole || '', tables: related?.tables || [], rowCount: related?.rowCount || 0, chars: related?.chars || 0 };
-
         try {
             const preferSummaryApi = templates.some(template => (template.tables || []).some(table => {
-                const policy = getTableRuntimePolicy(table);
+                const policy = getTableRuntimePolicy(table, chat, template.id);
                 return policy.updatePolicy.useSummaryApi !== false;
             }));
             const promptSources = [
@@ -1249,17 +1135,27 @@
             ];
             const rawContent = await requestMemoryContent(prompt, 0.2, preferSummaryApi, preferSummaryApi ? 'memory-table-summary-update' : 'memory-table-fast-update', { operationId: options.operationId || null, promptSources });
             const apiRoute = MemoryApi.getLastRoute() || { requestedMode: preferSummaryApi ? 'summary' : 'main', actualMode: preferSummaryApi ? 'summary' : 'main', fallback: false };
-            const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-            const requireReview = !!options.forceReview || (!!MemoryReview && MemoryReview.shouldRequireReview(runtime?.engineSettings || {}, {
-                preferSummaryApi,
-                isAutoUpdate: !!options.isAutoUpdate
-            }));
-            if (requireReview && MemoryReview) {
-                const firstTable = templates[0]?.tables?.[0];
-                const firstTemplate = templates[0];
-                const batch = buildMemoryReviewBatch(chat, rawContent, {
+            const descriptors = templates.flatMap(template => (template.tables || []).map(table => ({ template, table, key: `${template.id}::${table.id}`, policy: getTableRuntimePolicy(table, chat, template.id) })));
+            const processableTableKeys = descriptors
+                .filter(descriptor => (descriptor.policy.commitPolicy?.mode || 'review') !== 'manual_only')
+                .map(descriptor => descriptor.key);
+            const directTableKeys = options.forceReview ? [] : processableTableKeys.slice();
+            const reviewTableKeys = processableTableKeys.slice();
+            const transaction = await MemoryWriteGateway.run(chat, {
+                reason: 'api-memory-update',
+                writer: saveCharacter,
+                persistRollback: true
+            }, () => {
+                const changedFields = directTableKeys.length ? applyMemoryUpdatesFromXml(chat, rawContent, {
                     source: options.source || 'api',
-                    targetTableKeys: Array.from(targetTableKeys),
+                    targetTableKeys: directTableKeys,
+                    fieldPolicyRoutes: ['direct', 'runtime_only']
+                }) : [];
+                const batches = MemoryReview && reviewTableKeys.length ? buildMemoryReviewBatches(chat, rawContent, {
+                    source: options.source || 'api',
+                    targetTableKeys: reviewTableKeys,
+                    fieldPolicyRoutes: ['review', 'candidate', 'blocked'],
+                    forceReview: !!options.forceReview,
                     start: options.start || 1,
                     end: options.end || (Array.isArray(chat.history) ? chat.history.length : 0),
                     sourceMessageCount: history.length,
@@ -1269,54 +1165,56 @@
                     requestedApiMode: apiRoute.requestedMode || (preferSummaryApi ? 'summary' : 'main'),
                     apiFallback: !!apiRoute.fallback,
                     apiModel: apiRoute.model || '',
-                    memoryLayer: firstTable ? getTableRuntimePolicy(firstTable).memoryLayer : '',
                     relatedContext: relatedContextSummary
-                });
-                if (!batch) {
-                    if (MemoryPolicy && firstTemplate && firstTable) {
-                        MemoryPolicy.markTableProcessed(chat, firstTemplate.id, firstTable.id, options.end || (chat.history?.length || 0), 'success');
-                    }
-                    await saveCharacter(chat.id);
-                    if (!options.suppressSuccessToast) showToast('没有检测到可更新的字段');
-                    return { status: 'success', changedFields: [] };
-                }
-                const queued = MemoryReview.enqueueBatch(chat, batch);
+                }) : [];
+                const queuedBatches = batches.map(batch => MemoryReview.enqueueBatch(chat, batch));
                 if (MemoryPolicy) {
-                    const tableState = MemoryPolicy.ensureTableState(chat, queued.templateId, queued.tableId);
-                    tableState.pendingReviewBatchId = queued.id;
-                    tableState.lastRunStatus = 'pending_review';
-                    tableState.lastRunAt = Date.now();
+                    queuedBatches.forEach(queued => {
+                        const tableState = MemoryPolicy.ensureTableState(chat, queued.templateId, queued.tableId);
+                        tableState.pendingReviewBatchId = queued.id;
+                        tableState.lastRunStatus = 'pending_review';
+                        tableState.lastRunAt = Date.now();
+                    });
+                    const queuedKeys = new Set(queuedBatches.map(item => `${item.templateId}::${item.tableId}`));
+                    reviewTableKeys.filter(key => !queuedKeys.has(key)).forEach(key => {
+                        const descriptor = descriptors.find(item => item.key === key);
+                        if (descriptor) MemoryPolicy.markTableProcessed(chat, descriptor.template.id, descriptor.table.id, options.end || (chat.history?.length || 0), 'success');
+                    });
+                    MemoryPolicy.clearRetrievalCache(chat);
                 }
                 chat.memoryTables.autoUpdateState = 'idle';
-                await saveCharacter(chat.id);
-                if (!options.isAutoUpdate) selectMemoryView(chat, 'review');
-                if (!options.skipRender) renderMemoryTableScreen();
-                if (!options.suppressSuccessToast) showToast(`已生成 ${queued.proposals.length} 项更新草案，等待审核`);
-                return { status: 'pending_review', changedFields: [], batchId: queued.id, proposedCount: queued.proposals.length, relatedContext: relatedContextSummary };
-            }
-
-            const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
-                source: options.source || 'api',
-                targetTableKeys: Array.from(targetTableKeys)
-            });
-            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-            if (!options.isAutoUpdate && !options.skipCursorSync) {
-                const endIndex = options.end || (Array.isArray(chat.history) ? chat.history.length : 0);
-                if (endIndex > 0) {
-                    setMemoryTableAutoUpdateCursorByEndIndex(chat, endIndex);
-                    chat.memoryTables.autoUpdatePending = false;
+                if (!options.isAutoUpdate && !options.skipCursorSync && queuedBatches.length === 0) {
+                    const endIndex = options.end || (Array.isArray(chat.history) ? chat.history.length : 0);
+                    if (endIndex > 0) {
+                        setMemoryTableAutoUpdateCursorByEndIndex(chat, endIndex);
+                        chat.memoryTables.autoUpdatePending = false;
+                    }
                 }
-            }
-            await saveCharacter(chat.id);
-            if (!options.skipRender) {
-                renderMemoryTableScreen();
-            }
+                const reviewSummary = queuedBatches.reduce((result, batch) => {
+                    const summary = MemoryReview.getBatchChangeSummary(batch);
+                    result.records += summary.recordCount;
+                    result.fields += summary.fieldCount;
+                    return result;
+                }, { records: 0, fields: 0 });
+                return { changed: true, changedFields, queuedBatches, reviewSummary };
+            });
+            const { changedFields, queuedBatches, reviewSummary } = transaction;
+            if (queuedBatches.length && !options.isAutoUpdate) selectMemoryView(chat, 'review');
+            if (!options.skipRender) renderMemoryTableScreen();
             if (!options.suppressSuccessToast) {
-                showToast(changedFields.length > 0
-                    ? `表格已更新，变更 ${changedFields.length} 项`
-                    : '没有检测到可更新的字段');
+                if (queuedBatches.length) showToast(`已生成 ${reviewSummary.records} 条记忆审核草案（${reviewSummary.fields} 个字段）`);
+                else showToast(changedFields.length ? `表格已更新，变更 ${changedFields.length} 个字段` : '没有检测到可更新的字段');
             }
-            return { status: 'success', changedFields, relatedContext: relatedContextSummary };
+            return {
+                status: queuedBatches.length ? 'pending_review' : 'success',
+                changedFields,
+                batchId: queuedBatches[0]?.id || null,
+                batchIds: queuedBatches.map(item => item.id),
+                proposedCount: queuedBatches.reduce((sum, item) => sum + item.proposals.length, 0),
+                proposedRecordCount: reviewSummary.records,
+                relatedContext: relatedContextSummary,
+                transactionId: transaction.transactionId
+            };
         } catch (error) {
             console.error('[MemoryTable] update failed:', error);
             if (options.propagateError) throw error;
@@ -1325,7 +1223,6 @@
             return { status: 'failed', changedFields: [], error };
         }
     }
-
     async function updateSingleTableFromPolicy(chat, template, table, options = {}) {
         if (!MemoryPolicy) {
             return updateMemoryTablesFromApi({ chat, ...options });
@@ -1366,7 +1263,6 @@
             throw error;
         }
     }
-
     function estimateMemoryTaskInputChars(chat, template, table, range) {
         if (!chat || !template || !table || !range) return 0;
         const history = collectMessagesForMemoryTable(chat, { start: range.start, end: range.end });
@@ -1383,12 +1279,11 @@
         } catch (_) {}
         return historyText.length + definitionChars + relatedChars + 2600;
     }
-
     function enqueueMemoryTableUpdateTask(chat, template, table, options = {}) {
         if (!MemoryTasks || !MemoryPolicy) return null;
         const range = MemoryPolicy.getTableUpdateRange(chat, template.id, table, options);
         if (!range || range.end < range.start) return null;
-        const policy = getTableRuntimePolicy(table);
+        const policy = getTableRuntimePolicy(table, chat, template.id);
         const apiMode = policy.updatePolicy.useSummaryApi !== false ? 'summary' : 'main';
         const state = MemoryPolicy.ensureTableState(chat, template.id, table.id);
         const fingerprint = `${state.lastProcessedMsgId || ''}:${state.lastProcessedMsgTimestamp || ''}:${range.start}:${range.end}`;
@@ -1408,14 +1303,12 @@
         }, { force: !!options.force });
         return { ...result, range };
     }
-
     async function processMemoryTaskQueue(chat, options = {}) {
         if (!MemoryTasks) return { status: 'unsupported', processed: 0, results: [] };
         const result = await MemoryTasks.process(chat, options);
         if (!options.skipRender) renderMemoryTableScreen();
         return result;
     }
-
     function getDueMemoryTables(chat, options = {}) {
         const descriptors = getBoundTableDescriptors(chat);
         if (!MemoryPolicy) return descriptors;
@@ -1425,7 +1318,6 @@
         }
         return descriptors.filter(({ template, table }) => MemoryPolicy.isTableDue(chat, template.id, table));
     }
-
     async function processMemoryTableAutoUpdate(chat, options = {}) {
         if (!chat) return { status: 'noop', updatedCount: 0 };
         ensureMemoryTableAutoUpdateState(chat);
@@ -1446,7 +1338,6 @@
             if (options.showNoPendingToast) showToast('当前没有到期或待处理的表格');
             return { status: 'noop', updatedCount: 0 };
         }
-
         if (!MemoryTasks) {
             // 兼容：任务模块未加载时沿用 V2.5 顺序执行。
             const results = [];
@@ -1457,7 +1348,6 @@
             }
             return { status: 'success', updatedCount: results.length, results };
         }
-
         const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
         const maxRuns = options.processAllAvailable
             ? due.length
@@ -1479,7 +1369,6 @@
         chat.memoryTables.autoUpdatePending = enqueued > 0;
         await saveCharacter(chat.id);
         refreshMemoryTableAutoUpdateControls(chat, true);
-
         const processed = await processMemoryTaskQueue(chat, {
             maxTasks: options.processAllAvailable ? Math.max(1, maxRuns) : undefined,
             skipRender: true
@@ -1496,7 +1385,6 @@
         }
         return { status: 'success', updatedCount, enqueued, deduped, results: taskResults };
     }
-
     async function retryMemoryTableAutoUpdate(chat) {
         if (!chat) return { status: 'noop', updatedCount: 0 };
         ensureMemoryTableAutoUpdateState(chat);
@@ -1525,7 +1413,6 @@
             source: 'retry_v2_6'
         });
     }
-
     async function updateMemoryTableToLatest(chat) {
         return processMemoryTableAutoUpdate(chat, {
             force: true,
@@ -1536,7 +1423,6 @@
             source: 'manual_due_v2'
         });
     }
-
     async function updateSelectedMemoryTable(chat, templateId, tableId) {
         const template = getBoundTemplates(chat).find(item => item.id === templateId);
         const table = template?.tables?.find(item => item.id === tableId);
@@ -1568,14 +1454,11 @@
         else showToast(result.changedFields?.length ? `已更新 ${table.name}，变更 ${result.changedFields.length} 项` : `${table.name} 没有检测到变化`);
         return result;
     }
-
-
     function closeMemoryRangePreview() {
         const modal = document.getElementById('memory-range-preview-modal');
         if (modal) modal.classList.remove('visible');
         uiState.rangePreview = null;
     }
-
     function openMemoryRangePreview(chat, templateId, tableId) {
         if (!chat || !MemoryPolicy) return;
         const template = getBoundTemplates(chat).find(item => item.id === templateId);
@@ -1590,11 +1473,12 @@
             return;
         }
         const history = collectMessagesForMemoryTable(chat, { start: range.start, end: range.end });
-        const policy = getTableRuntimePolicy(table);
+        const policy = getTableRuntimePolicy(table, chat, template.id);
         const runtime = MemoryPolicy.ensureRuntimeState(chat);
         const requireReview = MemoryReview ? MemoryReview.shouldRequireReview(runtime.engineSettings, {
             preferSummaryApi: policy.updatePolicy.useSummaryApi !== false,
-            isAutoUpdate: false
+            isAutoUpdate: false,
+            commitMode: policy.commitPolicy?.mode
         }) : false;
         let apiDisplay = policy.updatePolicy.useSummaryApi !== false ? '总结 API' : '主聊天 API';
         try {
@@ -1627,7 +1511,6 @@
             </div>`;
         modal.classList.add('visible');
     }
-
     async function confirmMemoryRangePreview() {
         const preview = uiState.rangePreview;
         const chat = getCurrentMemoryTableChat();
@@ -1661,8 +1544,6 @@
         else if (task.status === 'failed') showToast('生成草案失败，任务已保留可重试');
         else showToast('范围内没有检测到变化');
     }
-
-
     async function checkAndTriggerAutoTableUpdate(chat, options = {}) {
         const runtime = window.OVOOperationRuntime;
         const shouldTrack = !!(runtime && (options.parentOperationId || options.trackOperation));
@@ -1674,7 +1555,6 @@
             stage: '检查结构化档案开关与表格游标'
         }) : null;
         const reviewBatchIdsBefore = new Set((MemoryReview && chat ? MemoryReview.getPendingBatches(chat) : []).map(item => item?.id).filter(Boolean));
-
         if (!chat || !chat.memoryTables) {
             if (operation) runtime.skip(operation.id, '当前角色没有结构化档案配置');
             return { status: 'disabled', updatedCount: 0 };
@@ -1722,7 +1602,6 @@
         }
         return result;
     }
-
     async function convertJournalsToTables() {
         const chat = getCurrentMemoryTableChat();
         if (!chat) {
@@ -1731,7 +1610,6 @@
         }
         openConversionModal('journalToTable');
     }
-
     async function convertTablesToJournal() {
         const chat = getCurrentMemoryTableChat();
         if (!chat) {
@@ -1740,12 +1618,10 @@
         }
         openConversionModal('tableToJournal');
     }
-
     async function executeConversionFromModal() {
         const state = uiState.conversionState;
         const chat = getCurrentMemoryTableChat();
         if (!state || !chat) return;
-
         if (state.direction === 'journalToTable') {
             const templates = getBoundTemplates(chat).filter(item => state.selectedTemplateIds.includes(item.id));
             const journals = getJournalCandidates(chat).filter(item => state.selectedJournalIds.includes(item.id));
@@ -1757,13 +1633,10 @@
                 showToast('请至少选择一篇日记');
                 return;
             }
-
             templates.forEach(template => ensureTemplateDataForChat(chat, template));
             const templateText = buildTemplateDefinitionForPrompt(chat, templates);
-
             const journalText = journals.map(item => `标题：${item.title}\n内容：${item.content}`).join('\n\n---\n\n');
             const prompt = `请把下面这些“已确认长期记忆”的日记，抽取进结构化记忆表。只更新发生变化的字段，只能依据给定日记内容，不要编造。
-
 输出格式必须严格是：
 <memory_updates>
   <memory_update templateId="模板ID" tableId="表格ID">
@@ -1777,20 +1650,15 @@
     <row op="delete" rowId="现有行ID"></row>
   </memory_update>
 </memory_updates>
-
 如果没有变化，输出 <memory_updates></memory_updates>。
 rows 表请使用 row 节点，不要把 rows 表伪装成普通 field。
-
 角色信息：
 - 角色名：${chat.realName || ''}
 - 用户称呼：${chat.myName || ''}
-
 模板定义：
 ${templateText}
-
 日记内容：
 ${journalText}`;
-
             try {
                 const rawContent = await requestSummaryContent(prompt, 0.2);
                 const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
@@ -1824,16 +1692,13 @@ ${journalText}`;
   <title>标题</title>
   <content>正文</content>
 </journal>
-
 要求：
 1. 语气客观，不要像聊天。
 2. 可以按时间线整理，但不要凭空补完。
 3. 标题简洁。
 4. ${styleInstruction}
-
 结构化记忆如下：
 ${tableContext}`;
-
             try {
                 const rawContent = await requestSummaryContent(prompt, 0.5);
                 const parser = new DOMParser();
@@ -1870,548 +1735,61 @@ ${tableContext}`;
             }
         }
     }
-
-
-    function getReviewRiskLevel(table, operation) {
-        const policy = getTableRuntimePolicy(table);
-        if (operation === 'delete') return 'high';
-        if (policy.memoryLayer === 'core') return 'high';
-        if (policy.memoryLayer === 'long' || policy.memoryLayer === 'review') return operation === 'add' ? 'high' : 'medium';
-        if (policy.memoryLayer === 'medium') return 'medium';
-        return 'low';
-    }
-
-    function summarizeRowForReview(table, row) {
-        if (!row) return '';
-        return (table.columns || [])
-            .map(field => `${field.key}: ${getFieldDisplayValue(field, row.cells?.[field.id]) || '空'}`)
-            .filter(Boolean)
-            .join('\n');
-    }
-
-    function findDuplicateSuggestionForReview(chat, template, table, proposedDisplay) {
-        if (!MemoryRetrieval || !isRowsTable(table)) return null;
-        const proposedText = Object.entries(proposedDisplay || {}).map(([key, value]) => `${key}: ${value}`).join('\n');
-        const items = getRows(chat, template.id, table).map((row, index) => rowToRetrievalItem(table, row, index));
-        const match = MemoryRetrieval.findMostSimilar(items, proposedText, 0.34);
-        if (!match?.item?.row) return null;
-        return {
-            rowId: match.item.row.id,
-            score: match.score,
-            summary: summarizeRowForReview(table, match.item.row)
-        };
-    }
-
-    function buildMemoryReviewBatch(chat, rawContent, options = {}) {
-        if (!MemoryReview) return null;
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(`<root>${rawContent || ''}</root>`, 'text/xml');
-        if (xmlDoc.querySelector('parsererror')) throw new Error('结构化记忆返回格式解析失败');
-        const proposals = [];
-        const targetTableKeys = new Set(Array.isArray(options.targetTableKeys) ? options.targetTableKeys : []);
-        const updates = Array.from(xmlDoc.querySelectorAll('memory_update'));
-
-        updates.forEach(updateNode => {
-            const templateId = updateNode.getAttribute('templateId');
-            const tableId = updateNode.getAttribute('tableId');
-            if (targetTableKeys.size && !targetTableKeys.has(`${templateId}::${tableId}`)) return;
-            const template = db.memoryTableTemplates.find(item => item.id === templateId);
-            const table = template?.tables?.find(item => item.id === tableId);
-            if (!template || !table) return;
-            const policy = getTableRuntimePolicy(table);
-            ensureTemplateDataForChat(chat, template);
-
-            if (isRowsTable(table)) {
-                Array.from(updateNode.querySelectorAll('row')).forEach(rowNode => {
-                    const op = (rowNode.getAttribute('op') || 'update').trim().toLowerCase();
-                    const rowId = rowNode.getAttribute('rowId') || '';
-                    if (op === 'delete') {
-                        const existingRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
-                        proposals.push({
-                            id: createMemoryId('proposal'), kind: 'row_delete', actionLabel: '删除整行',
-                            templateId, tableId, templateName: template.name, tableName: table.name, rowId,
-                            label: `${table.name} / 删除记录`, oldValue: summarizeRowForReview(table, existingRow), newValue: '',
-                            valid: !!existingRow && policy.updatePolicy.allowDelete === true,
-                            error: !existingRow ? '目标行不存在' : (policy.updatePolicy.allowDelete === true ? '' : '该表禁止 AI 删除记录'),
-                            risk: 'high', editable: false
-                        });
-                        return;
-                    }
-                    if (op === 'add') {
-                        const values = {};
-                        const display = {};
-                        Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
-                            const fieldId = fieldNode.getAttribute('fieldId');
-                            const field = (table.columns || []).find(item => item.id === fieldId);
-                            if (!field || field.aiEditable === false || isFieldLocked(chat, templateId, tableId, fieldId)) return;
-                            const value = normalizeFieldValue(field, fieldNode.textContent || '');
-                            values[fieldId] = value;
-                            display[field.key] = getFieldDisplayValue(field, value);
-                        });
-                        if (!Object.keys(values).length) return;
-                        const duplicateSuggestion = findDuplicateSuggestionForReview(chat, template, table, display);
-                        const tagBundle = MemoryTagService.parseRowNode(rowNode);
-                        proposals.push({
-                            id: createMemoryId('proposal'), kind: 'row_add', actionLabel: '新增记录',
-                            templateId, tableId, templateName: template.name, tableName: table.name,
-                            label: `${table.name} / 新增记录`, oldValue: '', newValue: display, fieldValues: values, tagBundle,
-                            valid: policy.updatePolicy.allowAdd !== false,
-                            error: policy.updatePolicy.allowAdd === false ? '该表禁止 AI 新增记录' : '',
-                            risk: getReviewRiskLevel(table, 'add'), editable: false,
-                            duplicateSuggestion,
-                            mergeTargetRowId: null
-                        });
-                        return;
-                    }
-                    const targetRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
-                    Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
-                        const fieldId = fieldNode.getAttribute('fieldId');
-                        const field = (table.columns || []).find(item => item.id === fieldId);
-                        if (!field) return;
-                        const oldValue = targetRow?.cells?.[fieldId];
-                        const newValue = normalizeFieldValue(field, fieldNode.textContent || '');
-                        if (targetRow && isSameMemoryValue(oldValue, newValue)) return;
-                        const blockedReason = !targetRow ? '目标行不存在'
-                            : policy.updatePolicy.allowUpdate === false ? '该表禁止 AI 修改记录'
-                            : field.aiEditable === false ? '字段禁止 AI 编辑'
-                            : isFieldLocked(chat, templateId, tableId, fieldId) ? '字段已锁定' : '';
-                        proposals.push({
-                            id: createMemoryId('proposal'), kind: 'row_update_field', actionLabel: '修改字段',
-                            templateId, tableId, templateName: template.name, tableName: table.name, rowId, fieldId,
-                            label: `${table.name} / ${field.key}`, oldValue, newValue,
-                            valid: !blockedReason, error: blockedReason,
-                            risk: getReviewRiskLevel(table, 'update'), editable: true, fieldType: field.type
-                        });
-                    });
-                    const tagBundle = MemoryTagService.parseRowNode(rowNode);
-                    if (tagBundle && (!targetRow || !MemoryTagService.equals(targetRow.meta?.tagBundle, tagBundle))) {
-                        proposals.push({
-                            id: createMemoryId('proposal'), kind: 'row_tags', actionLabel: '更新标签',
-                            templateId, tableId, templateName: template.name, tableName: table.name, rowId,
-                            label: `${table.name} / 模型标签`, oldValue: targetRow?.meta?.tagBundle || {}, newValue: tagBundle, tagBundle,
-                            valid: !!targetRow && policy.updatePolicy.allowUpdate !== false && !MemoryTagService.isLocked(targetRow),
-                            error: !targetRow ? '目标行不存在' : (policy.updatePolicy.allowUpdate === false ? '该表禁止 AI 修改记录' : (MemoryTagService.isLocked(targetRow) ? '标签已锁定，不接受模型覆盖' : '')),
-                            risk: 'low', editable: false
-                        });
-                    }
-                });
-                return;
-            }
-
-            Array.from(updateNode.children).filter(node => node.tagName === 'field').forEach(fieldNode => {
-                const fieldId = fieldNode.getAttribute('fieldId');
-                const field = (table.columns || []).find(item => item.id === fieldId);
-                if (!field) return;
-                const oldValue = getFieldValue(chat, templateId, tableId, field);
-                const newValue = normalizeFieldValue(field, fieldNode.textContent || '');
-                if (isSameMemoryValue(oldValue, newValue)) return;
-                const blockedReason = policy.updatePolicy.allowUpdate === false ? '该表禁止 AI 修改'
-                    : field.aiEditable === false ? '字段禁止 AI 编辑'
-                    : isFieldLocked(chat, templateId, tableId, fieldId) ? '字段已锁定' : '';
-                proposals.push({
-                    id: createMemoryId('proposal'), kind: 'field', actionLabel: '更新字段',
-                    templateId, tableId, templateName: template.name, tableName: table.name, fieldId,
-                    label: `${table.name} / ${field.key}`, oldValue, newValue,
-                    valid: !blockedReason, error: blockedReason,
-                    risk: getReviewRiskLevel(table, 'update'), editable: true, fieldType: field.type
-                });
-            });
-        });
-
-        if (!proposals.length) return null;
-        const first = proposals[0];
-        const tableState = MemoryPolicy ? MemoryPolicy.ensureTableState(chat, first.templateId, first.tableId) : null;
-        return {
-            id: createMemoryId('memory_review'),
-            templateId: first.templateId,
-            tableId: first.tableId,
-            templateName: first.templateName,
-            tableName: first.tableName,
-            memoryLayer: options.memoryLayer || '',
-            range: { start: options.start || 1, end: options.end || (chat.history?.length || 0) },
-            source: options.source || 'api',
-            apiMode: options.apiMode || 'summary',
-            sourceMessageCount: options.sourceMessageCount || 0,
-            historyPreview: options.historyPreview || '',
-            beforeTableState: tableState ? deepClone(tableState) : null,
-            rawContent: rawContent || '',
-            relatedContext: options.relatedContext || null,
-            proposals
-        };
-    }
-
-    function applyAcceptedReviewProposals(chat, batch) {
-        const accepted = (batch.proposals || []).filter(item => item.decision === 'accepted' && item.valid !== false);
-        const changedFields = [];
-        accepted.forEach(proposal => {
-            const template = db.memoryTableTemplates.find(item => item.id === proposal.templateId);
-            const table = template?.tables?.find(item => item.id === proposal.tableId);
-            if (!template || !table) return;
-            const policy = getTableRuntimePolicy(table).updatePolicy;
-            if (proposal.kind === 'row_add') {
-                if (proposal.mergeTargetRowId) {
-                    if (policy.allowUpdate === false) return;
-                    const target = findRowById(chat, template.id, table, proposal.mergeTargetRowId);
-                    if (!target) return;
-                    (table.columns || []).forEach(field => {
-                        if (proposal.fieldValues?.[field.id] === undefined || field.aiEditable === false || isFieldLocked(chat, template.id, table.id, field.id)) return;
-                        const nextValue = normalizeFieldValue(field, proposal.fieldValues[field.id]);
-                        const oldValue = target.cells[field.id];
-                        if (isSameMemoryValue(oldValue, nextValue)) return;
-                        target.cells[field.id] = nextValue;
-                        changedFields.push({ templateId: template.id, tableId: table.id, rowId: target.id, fieldId: field.id, label: `${table.name} / ${field.key}（审核合并）`, oldValue, newValue: nextValue });
-                    });
-                    target.meta ||= {};
-                    target.meta.updatedAt = Date.now();
-                    target.meta.lastMentionedAt = Date.now();
-                    target.meta.retrievalVector = [];
-                    target.meta.retrievalVectorFingerprint = '';
-                    if (proposal.tagBundle) {
-                        const tagChange = MemoryTagService.applyToRow(target, proposal.tagBundle, { chat, source: 'review_v2_11_r1' });
-                        if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: target.id, fieldId: '__tags__', label: `${table.name} / 模型标签（审核合并）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
-                    }
-                    if (MemoryLifecycle) MemoryLifecycle.recordSource(target, 'summary_api', { type: 'review_batch', id: batch.id, at: Date.now() });
-                    return;
-                }
-                if (policy.allowAdd === false) return;
-                const added = addRow(chat, template.id, table, proposal.fieldValues || {}, { source: 'review_v2_2', skipHistory: true });
-                (table.columns || []).forEach(field => {
-                    if (proposal.fieldValues?.[field.id] === undefined) return;
-                    changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: field.id, label: `${table.name} / ${field.key}（审核新增）`, oldValue: '', newValue: added.cells[field.id] });
-                });
-                if (proposal.tagBundle) {
-                    const tagChange = MemoryTagService.applyToRow(added, proposal.tagBundle, { chat, source: 'review_v2_11_r1' });
-                    if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: '__tags__', label: `${table.name} / 模型标签（审核新增）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
-                }
-                return;
-            }
-            if (proposal.kind === 'row_delete') {
-                if (policy.allowDelete !== true) return;
-                const row = findRowById(chat, template.id, table, proposal.rowId);
-                if (!row) return;
-                (table.columns || []).forEach(field => changedFields.push({ templateId: template.id, tableId: table.id, rowId: proposal.rowId, fieldId: field.id, label: `${table.name} / ${field.key}（审核删除）`, oldValue: row.cells[field.id], newValue: '' }));
-                deleteRow(chat, template.id, table, proposal.rowId, { source: 'review_v2_1', skipHistory: true });
-                return;
-            }
-            if (proposal.kind === 'row_tags') {
-                if (policy.allowUpdate === false) return;
-                const row = findRowById(chat, template.id, table, proposal.rowId);
-                if (!row) return;
-                const tagChange = MemoryTagService.applyToRow(row, proposal.tagBundle || proposal.newValue, { chat, source: 'review_v2_11_r1' });
-                if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: row.id, fieldId: '__tags__', label: `${table.name} / 模型标签`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
-                return;
-            }
-            const field = (table.columns || []).find(item => item.id === proposal.fieldId);
-            if (!field || field.aiEditable === false || isFieldLocked(chat, template.id, table.id, field.id) || policy.allowUpdate === false) return;
-            const nextValue = normalizeFieldValue(field, proposal.editedValue !== undefined ? proposal.editedValue : proposal.newValue);
-            if (proposal.kind === 'row_update_field') {
-                const row = findRowById(chat, template.id, table, proposal.rowId);
-                if (!row) return;
-                const oldValue = row.cells[field.id];
-                if (isSameMemoryValue(oldValue, nextValue)) return;
-                row.cells[field.id] = nextValue;
-                row.meta ||= {};
-                row.meta.updatedAt = Date.now();
-                row.meta.lastMentionedAt = Date.now();
-                changedFields.push({ templateId: template.id, tableId: table.id, rowId: row.id, fieldId: field.id, label: `${table.name} / ${field.key}`, oldValue, newValue: nextValue });
-                return;
-            }
-            const oldValue = getFieldValue(chat, template.id, table.id, field);
-            if (isSameMemoryValue(oldValue, nextValue)) return;
-            if (!chat.memoryTables.data[template.id]) chat.memoryTables.data[template.id] = {};
-            if (!chat.memoryTables.data[template.id][table.id]) chat.memoryTables.data[template.id][table.id] = {};
-            chat.memoryTables.data[template.id][table.id][field.id] = nextValue;
-            changedFields.push({ templateId: template.id, tableId: table.id, fieldId: field.id, label: `${table.name} / ${field.key}`, oldValue, newValue: nextValue });
-        });
-        return changedFields;
-    }
-
-    function recordMemoryChangedFields(operationId, changedFields, options = {}) {
-        const runtime = window.OVOOperationRuntime;
-        if (!runtime?.recordMutations || !operationId) return [];
-        return runtime.recordMutations(operationId, (Array.isArray(changedFields) ? changedFields : []).slice(0, 80).map(change => {
-            const stringifyMutationValue = value => {
-                if (value == null) return '';
-                if (typeof value === 'object') { try { return JSON.stringify(value); } catch (_) {} }
-                return String(value);
-            };
-            const oldText = stringifyMutationValue(change?.oldValue);
-            const newText = stringifyMutationValue(change?.newValue);
-            const action = !oldText && newText ? 'create' : (oldText && !newText ? 'delete' : 'update');
-            return {
-                action,
-                entityType: 'structured_memory',
-                entityId: change?.rowId || `${change?.templateId || ''}:${change?.tableId || ''}:${change?.fieldId || ''}`,
-                title: change?.label || options.title || '结构化档案变化',
-                summary: action === 'create' ? '新增档案内容' : action === 'delete' ? '删除档案内容' : '更新档案内容',
-                before: change?.oldValue,
-                after: change?.newValue,
-                fields: change?.fieldId ? [change.fieldId] : [],
-                meta: { characterId: options.characterId || null, templateId: change?.templateId || null, tableId: change?.tableId || null, rowId: change?.rowId || null, fieldId: change?.fieldId || null, batchId: options.batchId || null }
-            };
-        }));
-    }
-
-    function recordPendingReviewBatch(operationId, batch, characterId) {
-        if (!window.OVOOperationRuntime?.recordMutation || !operationId || !batch) return null;
-        const proposalCount = Array.isArray(batch.proposals) ? batch.proposals.length : 0;
-        return window.OVOOperationRuntime.recordMutation(operationId, {
-            action: 'pending',
-            entityType: 'memory_review',
-            entityId: batch.id,
-            title: `${batch.tableName || '结构化档案'}待审核草案`,
-            summary: `${proposalCount} 项建议等待用户确认`,
-            status: 'pending',
-            count: Math.max(1, proposalCount),
-            meta: { characterId, templateId: batch.templateId || null, tableId: batch.tableId || null, range: batch.range || null, proposalCount }
-        });
-    }
-
-    async function finalizeMemoryReviewBatch(chat, batchId, options = {}) {
-        if (!chat || !MemoryReview) return { status: 'noop', changedFields: [] };
-        const batch = MemoryReview.getPendingBatches(chat).find(item => item.id === batchId);
-        if (!batch) throw new Error('找不到待审核草案');
-        const beforeSnapshot = deepClone(chat.memoryTables.data || {});
-        if (options.rejectAll) MemoryReview.setAllDecisions(chat, batchId, 'rejected');
-        const changedFields = options.rejectAll ? [] : applyAcceptedReviewProposals(chat, batch);
-        if (changedFields.length) pushMemoryHistory(chat, changedFields, { source: 'review_v2_1' });
-        if (MemoryPolicy) {
-            MemoryPolicy.markTableProcessed(chat, batch.templateId, batch.tableId, batch.range?.end || 0, options.rejectAll ? 'review_rejected' : 'success');
-            MemoryPolicy.clearRetrievalCache(chat);
-        }
-        setMemoryTableAutoUpdateCursorByEndIndex(chat, batch.range?.end || 0);
-        const tableState = MemoryPolicy ? MemoryPolicy.ensureTableState(chat, batch.templateId, batch.tableId) : null;
-        const afterSnapshot = deepClone(chat.memoryTables.data || {});
-        MemoryReview.completeBatch(chat, batchId, {
-            status: options.rejectAll ? 'rejected' : 'applied',
-            appliedCount: changedFields.length,
-            beforeSnapshot,
-            afterSignature: MemoryReview.dataSignature(afterSnapshot),
-            afterTableState: tableState ? deepClone(tableState) : null,
-            changedFields
-        });
-        if (MemoryTasks) MemoryTasks.resolveReviewBatch(chat, batchId, options.rejectAll ? 'rejected' : 'applied');
-        await saveCharacter(chat.id);
-        selectMemoryView(chat, 'review');
-        renderMemoryTableScreen();
-        showToast(options.rejectAll ? '已拒绝整批建议并推进游标' : `已应用 ${changedFields.length} 项审核结果`);
-        return { status: options.rejectAll ? 'rejected' : 'applied', changedFields };
-    }
-
-    async function cancelMemoryReviewBatch(chat, batchId) {
-        if (!chat || !MemoryReview) return;
-        const batch = MemoryReview.removePendingBatch(chat, batchId);
-        if (!batch) return;
-        if (MemoryPolicy) {
-            const state = MemoryPolicy.ensureTableState(chat, batch.templateId, batch.tableId);
-            if (state.pendingReviewBatchId === batch.id) state.pendingReviewBatchId = null;
-            state.lastRunStatus = 'idle';
-            state.lastError = '';
-        }
-        if (MemoryTasks) MemoryTasks.resolveReviewBatch(chat, batchId, 'cancelled');
-        await saveCharacter(chat.id);
-        renderMemoryTableScreen();
-        showToast('已取消草案；表格游标未推进');
-    }
-
-    async function rollbackMemoryReviewBatch(chat, batchId) {
-        if (!chat || !MemoryReview) return;
-        const batch = MemoryReview.getCompletedBatches(chat).find(item => item.id === batchId);
-        if (!batch || batch.status !== 'applied' || batch.rolledBack || !batch.beforeSnapshot) return;
-        const currentSignature = MemoryReview.dataSignature(chat.memoryTables.data || {});
-        const state = MemoryPolicy ? MemoryPolicy.ensureTableState(chat, batch.templateId, batch.tableId) : null;
-        const cursorMatches = !state || !batch.afterTableState || state.lastProcessedMsgId === batch.afterTableState.lastProcessedMsgId;
-        if (currentSignature !== batch.afterSignature || !cursorMatches) {
-            showToast('之后已有新的档案变更或游标变化，无法安全整批回滚');
-            return;
-        }
-        chat.memoryTables.data = deepClone(batch.beforeSnapshot);
-        if (MemoryPolicy && batch.beforeTableState) {
-            const runtime = MemoryPolicy.ensureRuntimeState(chat);
-            runtime.tableStates[batch.templateId] ||= {};
-            runtime.tableStates[batch.templateId][batch.tableId] = deepClone(batch.beforeTableState);
-            MemoryPolicy.clearRetrievalCache(chat);
-        }
-        batch.rolledBack = true;
-        batch.rolledBackAt = Date.now();
-        await saveCharacter(chat.id);
-        renderMemoryTableScreen();
-        showToast('已安全回滚该审核批次');
-    }
-
-    function applyMemoryUpdatesFromXml(chat, rawContent, options = {}) {
-        ensureMemoryTableState(chat);
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(`<root>${rawContent || ''}</root>`, 'text/xml');
-        if (xmlDoc.querySelector('parsererror')) {
-            throw new Error('结构化记忆返回格式解析失败');
-        }
-
-        const updates = Array.from(xmlDoc.querySelectorAll('memory_update'));
-        if (updates.length === 0) {
-            chat.memoryTables.lastChangedFieldPaths = [];
-            return [];
-        }
-
-        const changedFields = [];
-        updates.forEach(updateNode => {
-            const templateId = updateNode.getAttribute('templateId');
-            const tableId = updateNode.getAttribute('tableId');
-            if (Array.isArray(options.targetTemplateIds) && options.targetTemplateIds.length > 0 && !options.targetTemplateIds.includes(templateId)) {
-                return;
-            }
-            const template = db.memoryTableTemplates.find(item => item.id === templateId);
-            const table = template ? (template.tables || []).find(item => item.id === tableId) : null;
-            if (!template || !table) return;
-            if (Array.isArray(options.targetTableKeys) && options.targetTableKeys.length > 0 && !options.targetTableKeys.includes(`${templateId}::${tableId}`)) return;
-            const updatePolicy = getTableRuntimePolicy(table).updatePolicy;
-            ensureTemplateDataForChat(chat, template);
-
-            if (isRowsTable(table)) {
-                Array.from(updateNode.querySelectorAll('row')).forEach(rowNode => {
-                    const op = (rowNode.getAttribute('op') || 'update').trim().toLowerCase();
-                    const rowId = rowNode.getAttribute('rowId') || '';
-                    if (op === 'delete') {
-                        if (updatePolicy.allowDelete !== true) return;
-                        const existingRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
-                        if (!existingRow) return;
-                        (table.columns || []).forEach(field => {
-                            changedFields.push({
-                                templateId,
-                                tableId,
-                                rowId,
-                                fieldId: field.id,
-                                label: `${table.name} / ${field.key}（删除行）`,
-                                oldValue: existingRow.cells[field.id],
-                                newValue: ''
-                            });
-                        });
-                        deleteRow(chat, templateId, table, rowId, { source: options.source || 'api', skipHistory: true });
-                        return;
-                    }
-
-                    if (op === 'add') {
-                        if (updatePolicy.allowAdd === false) return;
-                        const initialValues = {};
-                        Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
-                            const fieldId = fieldNode.getAttribute('fieldId');
-                            const field = (table.columns || []).find(item => item.id === fieldId);
-                            if (!field || field.aiEditable === false || isFieldLocked(chat, templateId, tableId, fieldId)) return;
-                            initialValues[fieldId] = fieldNode.textContent || '';
-                        });
-                        if (Object.keys(initialValues).length === 0) return;
-                        const addedRow = addRow(chat, templateId, table, initialValues, { source: options.source || 'api', skipHistory: true });
-                        (table.columns || []).forEach(field => {
-                            if (initialValues[field.id] === undefined) return;
-                            changedFields.push({
-                                templateId,
-                                tableId,
-                                rowId: addedRow.id,
-                                fieldId: field.id,
-                                label: `${table.name} / ${field.key}（新增行）`,
-                                oldValue: '',
-                                newValue: addedRow.cells[field.id]
-                            });
-                        });
-                        const tagBundle = MemoryTagService.parseRowNode(rowNode);
-                        if (tagBundle) {
-                            const tagChange = MemoryTagService.applyToRow(addedRow, tagBundle, { chat, source: options.source || 'api' });
-                            if (tagChange.changed) changedFields.push({ templateId, tableId, rowId: addedRow.id, fieldId: '__tags__', label: `${table.name} / 模型标签（新增行）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
-                        }
-                        return;
-                    }
-
-                    if (updatePolicy.allowUpdate === false) return;
-                    const targetRow = rowId ? findRowById(chat, templateId, table, rowId) : null;
-                    if (!targetRow) return;
-                    let rowChanged = false;
-                    Array.from(rowNode.querySelectorAll('field')).forEach(fieldNode => {
-                        const fieldId = fieldNode.getAttribute('fieldId');
-                        const field = (table.columns || []).find(item => item.id === fieldId);
-                        if (!field || field.aiEditable === false || isFieldLocked(chat, templateId, tableId, fieldId)) return;
-                        const oldValue = targetRow.cells[field.id];
-                        if (options.strategy === 'fill_empty' && !isEmptyMemoryValue(field, oldValue)) return;
-                        const newValue = normalizeFieldValue(field, fieldNode.textContent || '');
-                        if (isSameMemoryValue(oldValue, newValue)) return;
-                        targetRow.cells[field.id] = newValue;
-                        targetRow.meta ||= {};
-                        targetRow.meta.updatedAt = Date.now();
-                        targetRow.meta.lastMentionedAt = Date.now();
-                        rowChanged = true;
-                        changedFields.push({
-                            templateId,
-                            tableId,
-                            rowId,
-                            fieldId,
-                            label: `${table.name} / ${field.key}`,
-                            oldValue,
-                            newValue
-                        });
-                    });
-                    const tagBundle = MemoryTagService.parseRowNode(rowNode);
-                    if (tagBundle) {
-                        const tagChange = MemoryTagService.applyToRow(targetRow, tagBundle, { chat, source: options.source || 'api' });
-                        if (tagChange.changed) {
-                            rowChanged = true;
-                            changedFields.push({ templateId, tableId, rowId, fieldId: '__tags__', label: `${table.name} / 模型标签`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
-                        }
-                    }
-                    if (rowChanged && MemoryLifecycle) MemoryLifecycle.recordSource(targetRow, options.source === 'manual' ? 'manual' : 'summary_api', { type: options.source === 'manual' ? 'manual' : 'review_batch', id: options.source || 'api', at: Date.now() }, { verified: options.source === 'manual' });
-                });
-                return;
-            }
-
-            if (updatePolicy.allowUpdate === false) return;
-            Array.from(updateNode.children)
-                .filter(node => node.tagName === 'field')
-                .forEach(fieldNode => {
-                    const fieldId = fieldNode.getAttribute('fieldId');
-                    const field = (table.columns || []).find(item => item.id === fieldId);
-                    if (!field) return;
-                    if (field.aiEditable === false) return;
-                    if (isFieldLocked(chat, templateId, tableId, fieldId)) return;
-
-                    const oldValue = getFieldValue(chat, templateId, tableId, field);
-                    if (options.strategy === 'fill_empty' && !isEmptyMemoryValue(field, oldValue)) return;
-                    const newValue = normalizeFieldValue(field, fieldNode.textContent || '');
-                    if (isSameMemoryValue(oldValue, newValue)) return;
-
-                    if (!chat.memoryTables.data[templateId]) chat.memoryTables.data[templateId] = {};
-                    if (!chat.memoryTables.data[templateId][tableId]) chat.memoryTables.data[templateId][tableId] = {};
-                    chat.memoryTables.data[templateId][tableId][fieldId] = newValue;
-                    changedFields.push({
-                        templateId,
-                        tableId,
-                        fieldId,
-                        label: field.key,
-                        oldValue,
-                        newValue
-                    });
-                });
-        });
-
-        pushMemoryHistory(chat, changedFields, {
-            source: options.source || 'api'
-        });
-        if (changedFields.length && MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        return changedFields;
-    }
-
-
-
+    const MemoryReviewUseCases = MemoryReviewOrchestratorFactory.create({
+            MemoryFieldPolicy,
+            MemoryLifecycle,
+            MemoryPolicy,
+            MemoryRetrieval,
+            MemoryReview,
+            MemoryTagService,
+            MemoryTasks,
+            MemoryUpdateActivity,
+            MemoryWriteCoordinator,
+            MemoryWriteGateway,
+            addRow,
+            createMemoryId,
+            db,
+            deepClone,
+            deleteRow,
+            ensureMemoryTableState,
+            ensureTemplateDataForChat,
+            findRowById,
+            getEffectiveTableDescriptor,
+            getFieldDisplayValue,
+            getFieldValue,
+            getRows,
+            getTableRuntimePolicy,
+            isEmptyMemoryValue,
+            isFieldLocked,
+            isRowsTable,
+            isSameMemoryValue,
+            normalizeFieldValue,
+            pushMemoryHistory,
+            renderMemoryTableScreen,
+            replaceFormalData,
+            rowToRetrievalItem,
+            saveCharacter,
+            selectMemoryView,
+            setFieldValue,
+            setMemoryTableAutoUpdateCursorByEndIndex,
+            showToast,
+            updateRowFieldValue
+    });
+    const {
+        buildMemoryReviewBatches, buildMemoryReviewBatch, recordMemoryChangedFields, recordPendingReviewBatch,
+        finalizeMemoryReviewBatch, cancelMemoryReviewBatch, rollbackMemoryReviewBatch, applyMemoryUpdatesFromXml
+    } = MemoryReviewUseCases;
     async function restoreHistoryEntry(historyId) {
         const chat = getCurrentMemoryTableChat();
         if (!chat) return;
         const entry = (chat.memoryTables.history || []).find(item => item.id === historyId);
         if (!entry) return;
-
-        chat.memoryTables.data = deepClone(entry.snapshot || {});
+        replaceFormalData(chat, entry.snapshot || {}, { source: 'history-restore', skipHistory: true });
         chat.memoryTables.lastChangedFieldPaths = [];
         await saveCharacter(chat.id);
         renderMemoryTableScreen();
         showToast('已恢复到该历史快照');
     }
-
     async function persistTemplateNormalized(normalized) {
         const existingIndex = db.memoryTableTemplates.findIndex(item => item.id === normalized.id);
         if (existingIndex >= 0) {
@@ -2419,18 +1797,15 @@ ${tableContext}`;
         } else {
             db.memoryTableTemplates.unshift(normalized);
         }
-
         db.characters.forEach(chat => {
             ensureMemoryTableState(chat);
             if (chat.memoryTables.boundTemplateIds.includes(normalized.id)) {
                 ensureTemplateDataForChat(chat, normalized);
             }
         });
-
         await saveData();
         renderMemoryTableScreen();
     }
-
     function clearReviewBatchesForTemplate(chat, templateId) {
         if (!MemoryReview || !chat) return;
         const state = MemoryReview.ensureState(chat);
@@ -2447,7 +1822,6 @@ ${tableContext}`;
             });
         }
     }
-
     async function bindTemplateToChat(chat, templateId, shouldBind) {
         ensureMemoryTableState(chat);
         if (shouldBind) {
@@ -2463,11 +1837,9 @@ ${tableContext}`;
         await saveCharacter(chat.id);
         renderMemoryTableScreen();
     }
-
     async function deleteTemplate(templateId) {
         const ok = confirm('删除后会解除所有角色对该模板的绑定，确定继续吗？');
         if (!ok) return;
-
         db.memoryTableTemplates = (db.memoryTableTemplates || []).filter(item => item.id !== templateId);
         db.characters.forEach(chat => {
             ensureMemoryTableState(chat);
@@ -2480,292 +1852,31 @@ ${tableContext}`;
         renderMemoryTableScreen();
         showToast('模板已删除');
     }
-
-    function exportTemplate(templateId) {
-        const template = db.memoryTableTemplates.find(item => item.id === templateId);
-        if (!template) return;
-        downloadJson(template, `${template.name || 'memory-template'}.json`);
-    }
-
-    function cloneTemplateWithFreshIds(template) {
-        const working = deepClone(normalizeTemplate(template));
-        const idMap = {
-            templateId: { [working.id]: createMemoryId('memory_tpl') },
-            tableIds: {},
-            fieldIds: {}
-        };
-        const originalTemplateId = working.id;
-        working.id = idMap.templateId[originalTemplateId];
-        working.tables = (working.tables || []).map(table => {
-            const oldTableId = table.id;
-            const newTableId = createMemoryId('memory_table');
-            idMap.tableIds[oldTableId] = newTableId;
-            table.id = newTableId;
-            table.columns = (table.columns || []).map(field => {
-                const oldFieldId = field.id;
-                const newFieldId = createMemoryId('memory_field');
-                idMap.fieldIds[`${oldTableId}::${oldFieldId}`] = newFieldId;
-                field.id = newFieldId;
-                return field;
-            });
-            return table;
-        });
-        return { template: working, idMap, originalTemplateId };
-    }
-
-    function remapTableDataForImport(template, idMap, binding = {}) {
-        const oldTemplateId = Object.keys(idMap.templateId)[0];
-        const sourceData = binding.data?.[oldTemplateId] || {};
-        const sourceLocks = binding.lockedFields?.[oldTemplateId] || {};
-        const nextData = {};
-        const nextLocks = {};
-
-        (template.tables || []).forEach(table => {
-            const oldTableId = Object.keys(idMap.tableIds).find(key => idMap.tableIds[key] === table.id);
-            const oldTableData = sourceData?.[oldTableId];
-            const oldLocked = sourceLocks?.[oldTableId] || [];
-
-            if (isRowsTable(table)) {
-                const rows = Array.isArray(oldTableData?.__rows) ? oldTableData.__rows : [];
-                const rowIdMap = {};
-                rows.forEach(oldRow => { rowIdMap[oldRow?.id || createMemoryId('legacy_row')] = createMemoryId('memory_row'); });
-                nextData[table.id] = {
-                    __rows: rows.map(oldRow => {
-                        const oldRowId = oldRow?.id || '';
-                        const row = { id: rowIdMap[oldRowId] || createMemoryId('memory_row'), cells: {}, meta: deepClone(oldRow?.meta || {}) };
-                        (table.columns || []).forEach(field => {
-                            const sourceFieldId = Object.keys(idMap.fieldIds).find(key => idMap.fieldIds[key] === field.id)?.split('::')[1];
-                            const raw = oldRow?.cells?.[sourceFieldId] !== undefined ? oldRow.cells[sourceFieldId] : oldRow?.[sourceFieldId];
-                            row.cells[field.id] = raw === undefined ? getFieldDefaultValue(field) : normalizeFieldValue(field, raw);
-                        });
-                        if (row.meta?.relations && typeof row.meta.relations === 'object') {
-                            ['supersedes', 'supersededBy', 'conflictsWith', 'relatedTo'].forEach(key => {
-                                row.meta.relations[key] = (Array.isArray(row.meta.relations[key]) ? row.meta.relations[key] : []).map(id => rowIdMap[id]).filter(Boolean);
-                            });
-                        }
-                        if (Array.isArray(row.meta?.versionLog)) row.meta.versionLog = row.meta.versionLog.slice(-40);
-                        return row;
-                    })
-                };
-            } else {
-                nextData[table.id] = {};
-                (table.columns || []).forEach(field => {
-                    const sourceFieldId = Object.keys(idMap.fieldIds).find(key => idMap.fieldIds[key] === field.id)?.split('::')[1];
-                    const raw = oldTableData?.[sourceFieldId];
-                    nextData[table.id][field.id] = raw === undefined ? getFieldDefaultValue(field) : normalizeFieldValue(field, raw);
-                });
-            }
-
-            nextLocks[table.id] = oldLocked.map(fieldId => {
-                const mappedKey = `${oldTableId}::${fieldId}`;
-                return idMap.fieldIds[mappedKey];
-            }).filter(Boolean);
-        });
-
-        return {
-            data: nextData,
-            lockedFields: nextLocks
-        };
-    }
-
-    function stripRetrievalVectorsFromData(data) {
-        const cloned = deepClone(data || {});
-        Object.values(cloned).forEach(tableData => {
-            if (!tableData || !Array.isArray(tableData.__rows)) return;
-            tableData.__rows.forEach(row => {
-                if (!row?.meta) return;
-                delete row.meta.retrievalVector;
-                delete row.meta.retrievalVectorFingerprint;
-                delete row.meta.retrievalIndexedAt;
-            });
-        });
-        return cloned;
-    }
-
-    function buildMemoryPackagePayload(templateIds) {
-        const chat = getCurrentMemoryTableChat();
-        if (!chat) return null;
-        ensureMemoryTableState(chat);
-        const boundTemplates = getBoundTemplates(chat).filter(template => templateIds.includes(template.id));
-        if (boundTemplates.length === 0) return null;
-        const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-        const binding = {
-            memoryMode: chat.memoryMode,
-            autoUpdateEnabled: !!chat.memoryTables.autoUpdateEnabled,
-            autoUpdateInterval: chat.memoryTables.autoUpdateInterval || 140,
-            engineSettings: deepClone(runtime?.engineSettings || {}),
-            viewMode: runtime?.viewMode || 'normal',
-            tableStates: {},
-            data: {},
-            lockedFields: {},
-            sidecar: deepClone(chat.memoryTables.sidecar || {}),
-            lifecycle: deepClone(chat.memoryTables.lifecycle || {}),
-            taskQueue: MemoryTasks ? { settings: deepClone(MemoryTasks.ensureState(chat).settings) } : null,
-            feedback: MemoryFeedback ? { settings: deepClone(MemoryFeedback.ensureState(chat).settings) } : null,
-            quality: MemoryQuality ? { settings: deepClone(MemoryQuality.ensureState(chat).settings), testCases: deepClone(MemoryQuality.ensureState(chat).testCases) } : null
-        };
-
-        boundTemplates.forEach(template => {
-            ensureTemplateDataForChat(chat, template);
-            binding.data[template.id] = stripRetrievalVectorsFromData(chat.memoryTables.data?.[template.id] || {});
-            binding.lockedFields[template.id] = deepClone(chat.memoryTables.lockedFields?.[template.id] || {});
-            binding.tableStates[template.id] = deepClone(runtime?.tableStates?.[template.id] || {});
-            Object.values(binding.tableStates[template.id] || {}).forEach(state => {
-                state.pendingReviewBatchId = null;
-                if (state.lastRunStatus === 'pending_review') state.lastRunStatus = 'idle';
-            });
-        });
-
-        return {
-            type: 'memory_table_package',
-            version: 2,
-            schemaVersion: '2.8',
-            templates: deepClone(boundTemplates),
-            binding
-        };
-    }
-
-    function exportTemplatePackage(templateId) {
-        const template = db.memoryTableTemplates.find(item => item.id === templateId);
-        if (!template) return;
-        const payload = buildMemoryPackagePayload([templateId]) || {
-            type: 'memory_table_package',
-            version: 2,
-            templates: [deepClone(template)],
-            binding: null
-        };
-        downloadJson(payload, `${template.name || 'memory-package'}_package.json`);
-    }
-
-    function exportCurrentMemoryPackage() {
-        const chat = getCurrentMemoryTableChat();
-        if (!chat) {
-            showToast('请先进入一个角色聊天');
-            return;
-        }
-        const boundTemplates = getBoundTemplates(chat);
-        if (boundTemplates.length === 0) {
-            showToast('当前没有可导出的结构记忆模板');
-            return;
-        }
-        const payload = buildMemoryPackagePayload(boundTemplates.map(item => item.id));
-        downloadJson(payload, `${chat.remarkName || chat.realName || 'memory'}_memory_package.json`);
-    }
-
-    function exportAllTemplates() {
-        downloadJson(db.memoryTableTemplates || [], 'memory-table-templates.json');
-    }
-
-    function downloadJson(data, filename) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-    }
-
-    async function importTemplatesFromFile(file) {
-        if (!file) return;
-        const text = await file.text();
-        let parsed;
-        try {
-            parsed = JSON.parse(text);
-        } catch (error) {
-            showToast('导入失败：JSON 无法解析');
-            return;
-        }
-
-        ensureMemoryTemplateStore();
-        const isPackage = parsed && typeof parsed === 'object' && parsed.type === 'memory_table_package';
-        const list = isPackage
-            ? (Array.isArray(parsed.templates) ? parsed.templates : [])
-            : (Array.isArray(parsed) ? parsed : [parsed]);
-        const importedTemplates = [];
-        const importedMappings = [];
-
-        list.forEach(item => {
-            const cloned = cloneTemplateWithFreshIds(item);
-            importedTemplates.push(cloned.template);
-            importedMappings.push(cloned);
-            db.memoryTableTemplates.unshift(cloned.template);
-        });
-
-        const chat = getCurrentMemoryTableChat();
-        if (isPackage && parsed.binding && chat && importedMappings.length > 0) {
-            const shouldApply = window.confirm('检测到记忆包。是否把模板和已填好的表格数据一起导入到当前角色？');
-            if (shouldApply) {
-                ensureMemoryTableState(chat);
-                const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : null;
-                importedMappings.forEach(({ template, idMap, originalTemplateId }) => {
-                    if (!chat.memoryTables.boundTemplateIds.includes(template.id)) {
-                        chat.memoryTables.boundTemplateIds.push(template.id);
-                    }
-                    const remapped = remapTableDataForImport(template, idMap, parsed.binding);
-                    chat.memoryTables.data[template.id] = remapped.data;
-                    chat.memoryTables.lockedFields[template.id] = remapped.lockedFields;
-                    if (runtime) {
-                        runtime.tableStates[template.id] = {};
-                        const sourceStates = parsed.binding.tableStates?.[originalTemplateId] || {};
-                        Object.entries(idMap.tableIds || {}).forEach(([oldTableId, newTableId]) => {
-                            if (sourceStates[oldTableId]) {
-                                const importedState = deepClone(sourceStates[oldTableId]);
-                                importedState.pendingReviewBatchId = null;
-                                if (importedState.lastRunStatus === 'pending_review') importedState.lastRunStatus = 'idle';
-                                runtime.tableStates[template.id][newTableId] = importedState;
-                            } else MemoryPolicy.ensureTableState(chat, template.id, newTableId);
-                        });
-                    }
-                });
-                if (parsed.binding.memoryMode) {
-                    chat.memoryMode = parsed.binding.memoryMode;
-                }
-                chat.memoryTables.autoUpdateEnabled = parsed.binding.autoUpdateEnabled !== false;
-                chat.memoryTables.autoUpdateInterval = Math.max(10, parseInt(parsed.binding.autoUpdateInterval, 10) || 140);
-                if (MemoryPolicy) {
-                    const runtime = MemoryPolicy.ensureRuntimeState(chat);
-                    runtime.engineSettings = MemoryPolicy.normalizeEngineSettings(parsed.binding.engineSettings || {
-                        messageInterval: chat.memoryTables.autoUpdateInterval
-                    });
-                    runtime.viewMode = 'normal';
-                }
-                if (parsed.binding.sidecar && typeof parsed.binding.sidecar === 'object') {
-                    chat.memoryTables.sidecar = deepClone(parsed.binding.sidecar);
-                    chat.memoryTables.sidecar.statusMeta = {};
-                    chat.memoryTables.sidecar.history = Array.isArray(chat.memoryTables.sidecar.history) ? chat.memoryTables.sidecar.history.slice(-120) : [];
-                    chat.memoryTables.sidecar.candidates = Array.isArray(chat.memoryTables.sidecar.candidates) ? chat.memoryTables.sidecar.candidates.slice(-200) : [];
-                }
-                chat.memoryTables.lifecycle = parsed.binding.lifecycle && typeof parsed.binding.lifecycle === 'object'
-                    ? deepClone(parsed.binding.lifecycle)
-                    : { schemaVersion: '2.5', lastMaintenanceAt: 0, lastMaintenanceReport: null };
-                if (MemoryTasks) {
-                    const importedTaskSettings = parsed.binding.taskQueue?.settings;
-                    chat.memoryTables.taskQueue = { schemaVersion: '2.6', settings: importedTaskSettings ? deepClone(importedTaskSettings) : undefined, tasks: [], history: [], stats: {} };
-                    MemoryTasks.ensureState(chat);
-                }
-                if (MemoryFeedback) {
-                    const importedFeedbackSettings = parsed.binding.feedback?.settings;
-                    chat.memoryTables.feedback = { schemaVersion: '2.7', settings: importedFeedbackSettings ? deepClone(importedFeedbackSettings) : undefined, rounds: [], events: [], stats: {} };
-                    MemoryFeedback.ensureState(chat);
-                }
-                if (MemoryQuality) {
-                    const importedQuality = parsed.binding.quality || {};
-                    chat.memoryTables.quality = { schemaVersion: '2.8', settings: importedQuality.settings ? deepClone(importedQuality.settings) : undefined, testCases: Array.isArray(importedQuality.testCases) ? deepClone(importedQuality.testCases) : undefined, runs: [], baselineRunId: '' };
-                    MemoryQuality.ensureState(chat);
-                }
-                if (MemorySidecar) MemorySidecar.ensureState(chat);
-                await saveCharacter(chat.id);
-            }
-        }
-
-        await saveData();
-        renderMemoryTableScreen();
-        showToast(isPackage ? `已导入 ${importedTemplates.length} 个模板/记忆包` : `已导入 ${importedTemplates.length} 个模板`);
-    }
-
+    const MemoryPackageUseCases = MemoryPackageOrchestratorFactory.create({
+            MemoryFeedback,
+            MemoryPackageAdapter,
+            MemoryPolicy,
+            MemoryQuality,
+            MemoryReview,
+            MemorySidecar,
+            MemoryTasks,
+            db,
+            deepClone,
+            ensureMemoryTableState,
+            ensureMemoryTemplateStore,
+            ensureTemplateDataForChat,
+            getBoundTemplates,
+            getCurrentMemoryTableChat,
+            renderMemoryTableScreen,
+            replaceTemplateData,
+            saveCharacter,
+            saveData,
+            showToast
+    });
+    const {
+        exportTemplate, exportTemplatePackage, exportCurrentMemoryPackage, exportAllTemplates,
+        downloadJson, importTemplatesFromFile
+    } = MemoryPackageUseCases;
     async function handleFieldInputChange(target) {
         return MemoryTableEditController.handleFieldInput(target, {
             getChat: getCurrentMemoryTableChat,
@@ -2774,7 +1885,6 @@ ${tableContext}`;
             gridRoot: () => document.querySelector('[data-memory-table-grid]')
         });
     }
-
     function bindMemoryWorkspaceNavigation(screen) {
         if (!screen || screen.dataset.memoryWorkspaceNavigationBound === '1') return;
         screen.dataset.memoryWorkspaceNavigationBound = '1';
@@ -2813,7 +1923,6 @@ ${tableContext}`;
             }
         });
     }
-
     function setupMemoryTableScreen() {
         ensureMemoryTemplateStore();
         const screen = document.getElementById('memory-table-screen');
@@ -2821,7 +1930,6 @@ ${tableContext}`;
         if (screen?.dataset.memoryTableScreenBound === '1') return void renderMemoryTableScreen();
         if (screen) screen.dataset.memoryTableScreenBound = '1';
         MemoryRowEditController?.bind?.();
-
         const searchInput = document.getElementById('memory-table-search-input');
         if (searchInput) {
             searchInput.addEventListener('input', () => {
@@ -2830,7 +1938,6 @@ ${tableContext}`;
                 else renderMemoryTableScreen();
             });
         }
-
         const sortSelect = document.getElementById('memory-table-sort-select');
         if (sortSelect) {
             sortSelect.addEventListener('change', () => {
@@ -2838,7 +1945,6 @@ ${tableContext}`;
                 renderMemoryTableScreen();
             });
         }
-
         const tabButtons = document.querySelectorAll('.memory-table-tab-btn');
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
@@ -2846,7 +1952,6 @@ ${tableContext}`;
                 selectMemoryWorkspace(MemoryWorkspace.getWorkspaceForView(view), view);
             });
         });
-
         const updateBtn = document.getElementById('memory-table-update-btn');
         if (updateBtn) {
             updateBtn.addEventListener('click', async () => {
@@ -2875,7 +1980,6 @@ ${tableContext}`;
             const chat = getCurrentMemoryTableChat();
             openSchemaEditor(chat ? activeTemplateForSchema(chat) : null);
         });
-
         const persistEngineControls = async () => {
             const chat = getCurrentMemoryTableChat();
             if (!chat) return null;
@@ -2914,7 +2018,6 @@ ${tableContext}`;
             refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
             return chat;
         };
-
         const autoUpdateToggle = document.getElementById('memory-table-auto-update-toggle');
         if (autoUpdateToggle) {
             autoUpdateToggle.addEventListener('change', async () => {
@@ -2924,7 +2027,6 @@ ${tableContext}`;
                 renderMemoryTableScreen();
             });
         }
-
         const scheduleControlIds = new Set(['memory-table-trigger-mode', 'memory-table-round-interval', 'memory-table-auto-update-interval', 'memory-table-max-source-messages']);
         ['memory-table-trigger-mode', 'memory-table-round-interval', 'memory-table-auto-update-interval', 'memory-table-max-source-messages', 'memory-table-review-mode', 'memory-table-retrieval-mode', 'memory-table-semantic-weight', 'memory-table-tag-weight', 'memory-table-embedding-candidate-limit', 'memory-table-scene-routing-toggle', 'memory-table-side-effect-guard-toggle'].forEach(id => {
             const control = document.getElementById(id);
@@ -2936,7 +2038,6 @@ ${tableContext}`;
                 }
             });
         });
-
         const cursorSelect = document.getElementById('memory-table-cursor-table-select');
         const cursorInput = document.getElementById('memory-table-cursor-position');
         const parseCursorKey = () => {
@@ -2954,7 +2055,6 @@ ${tableContext}`;
             cursorInput.value = String(Math.max(0, info.cursorIndex + 1));
         };
         if (cursorSelect) cursorSelect.addEventListener('change', syncCursorInput);
-
         const saveCursorAt = async position => {
             const chat = getCurrentMemoryTableChat();
             if (!chat || !MemoryPolicy) return;
@@ -2983,7 +2083,6 @@ ${tableContext}`;
                 await updateSelectedMemoryTable(chat, templateId, tableId);
             });
         }
-
         const previewRangeBtn = document.getElementById('memory-table-preview-range-btn');
         if (previewRangeBtn) {
             previewRangeBtn.addEventListener('click', () => {
@@ -3001,7 +2100,6 @@ ${tableContext}`;
         if (rangePreviewModal) rangePreviewModal.addEventListener('click', event => {
             if (event.target === rangePreviewModal) closeMemoryRangePreview();
         });
-
         const updateLatestBtn = document.getElementById('memory-table-update-latest-btn');
         if (updateLatestBtn) {
             updateLatestBtn.addEventListener('click', async () => {
@@ -3010,7 +2108,6 @@ ${tableContext}`;
                 await updateMemoryTableToLatest(chat);
             });
         }
-
         const retryBtn = document.getElementById('memory-table-retry-btn');
         if (retryBtn) {
             retryBtn.addEventListener('click', async () => {
@@ -3019,10 +2116,8 @@ ${tableContext}`;
                 await retryMemoryTableAutoUpdate(chat);
             });
         }
-
         const createTemplateBtn = document.getElementById('memory-table-create-template-btn');
         if (createTemplateBtn) createTemplateBtn.addEventListener('click', () => openSchemaEditor(null));
-
         const importBtn = document.getElementById('memory-table-import-btn');
         const importInput = document.getElementById('memory-table-import-input');
         if (importBtn && importInput) {
@@ -3032,19 +2127,14 @@ ${tableContext}`;
                 importInput.value = '';
             });
         }
-
         const exportAllBtn = document.getElementById('memory-table-export-all-btn');
         if (exportAllBtn) exportAllBtn.addEventListener('click', exportAllTemplates);
-
         const exportPackageBtn = document.getElementById('memory-table-export-package-btn');
         if (exportPackageBtn) exportPackageBtn.addEventListener('click', exportCurrentMemoryPackage);
-
         const fromJournalBtn = document.getElementById('memory-table-from-journal-btn');
         if (fromJournalBtn) fromJournalBtn.addEventListener('click', convertJournalsToTables);
-
         const toJournalBtn = document.getElementById('memory-table-to-journal-btn');
         if (toJournalBtn) toJournalBtn.addEventListener('click', convertTablesToJournal);
-
         const modeButtons = document.querySelectorAll('[data-memory-mode-switch]');
         modeButtons.forEach(button => {
             button.addEventListener('click', async () => {
@@ -3059,7 +2149,6 @@ ${tableContext}`;
                     : (chat.memoryMode === 'vector' ? '已使用：结构化档案 + 向量补充' : '已使用：结构化档案 + 日记补充'));
             });
         });
-
         if (screen) {
             screen.addEventListener('click', async (event) => {
                 const feedbackEl = event.target.closest('[data-feedback-action]');
@@ -3183,6 +2272,13 @@ ${tableContext}`;
                         render: renderMemoryTableScreen, toast: showToast,
                         showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '操作失败')
                     });
+                } else if (action === 'integrity-rescan') {
+                    renderMemoryTableScreen();
+                } else if (action === 'integrity-export') {
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat || !MemoryIntegrityDoctor) return;
+                    downloadJson(MemoryIntegrityDoctor.scan(chat, getBoundTemplates(chat)), `${chat.remarkName || chat.realName || 'memory'}_integrity_report.json`);
+                    showToast('完整性报告已导出');
                 } else if (action === 'quality-run') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat || !MemoryQuality) return;
@@ -3314,10 +2410,10 @@ ${tableContext}`;
                             const queued = MemoryTasks.enqueueRetrievalRebuild(chat, getMemoryContextBlock(chat, { force: true }).length);
                             await saveCharacter(chat.id);
                             const result = await processMemoryTaskQueue(chat, { taskId: queued.task.id, maxTasks: 1, force: true, ignoreRoundLimit: true });
-                            showToast(result.processed ? '已通过任务队列重建检索快照' : '检索重建任务已存在');
+                            showToast(result.processed ? '已通过任务队列更新索引并重建检索快照' : '检索维护任务已存在');
                         } else {
-                            await rebuildMemoryTableRetrievalPreview(chat);
-                            showToast('已重建检索快照');
+                            const rebuilt = await rebuildMemoryTableRetrievalPreview(chat);
+                            showToast(rebuilt.indexReport?.ok === false ? '索引更新失败，已使用关键词重建快照' : '已更新索引并重建检索快照');
                         }
                     } catch (error) {
                         if (typeof showApiError === 'function') showApiError(error);
@@ -3347,6 +2443,15 @@ ${tableContext}`;
                     MemoryReview.setProposalMergeTarget(chat, actionEl.dataset.batchId, actionEl.dataset.proposalId, nextTarget);
                     await saveCharacter(chat.id);
                     renderMemoryTableScreen();
+                } else if (action === 'review-record-accept' || action === 'review-record-reject' || action === 'review-record-reset') {
+                    event.preventDefault();
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat || !MemoryReview) return;
+                    const decision = action === 'review-record-accept' ? 'accepted' : (action === 'review-record-reject' ? 'rejected' : 'pending');
+                    const changed = MemoryReview.setRecordDecision(chat, actionEl.dataset.batchId, actionEl.dataset.recordKey, decision);
+                    if (!changed) return void showToast('该条记忆当前不能修改');
+                    await saveCharacter(chat.id);
+                    renderMemoryTableScreen();
                 } else if (action === 'review-accept' || action === 'review-reject' || action === 'review-reset') {
                     event.preventDefault();
                     const chat = getCurrentMemoryTableChat();
@@ -3373,7 +2478,8 @@ ${tableContext}`;
                     if (!chat || !MemoryReview) return;
                     const batch = MemoryReview.getPendingBatches(chat).find(item => item.id === actionEl.dataset.batchId);
                     const acceptedCount = (batch?.proposals || []).filter(item => item.decision === 'accepted' && item.valid !== false).length;
-                    if (!acceptedCount) return void showToast('还没有选中要接受的项目');
+                    const acceptedRecordCount = MemoryReview.groupProposalsByRecord(batch).filter(record => record.proposals.some(item => item.decision === 'accepted' && item.valid !== false)).length;
+                    if (!acceptedCount) return void showToast('还没有选中要接受的记忆');
                     actionEl.disabled = true;
                     actionEl.textContent = '正在保存…';
                     const runtime = window.OVOOperationRuntime;
@@ -3388,8 +2494,8 @@ ${tableContext}`;
                         if (reviewOperation) {
                             recordMemoryChangedFields(reviewOperation.id, applyResult.changedFields || [], { characterId: chat.id, batchId: actionEl.dataset.batchId });
                             runtime.complete(reviewOperation.id, {
-                                summary: `已保存 ${applyResult.changedFields?.length || 0} 项结构化档案变化`,
-                                result: { batchId: actionEl.dataset.batchId, changedFieldCount: applyResult.changedFields?.length || 0 }
+                                summary: `已保存 ${applyResult.appliedRecordCount || 0} 条记忆（${applyResult.appliedFieldCount || 0} 个字段）`,
+                                result: { batchId: actionEl.dataset.batchId, changedRecordCount: applyResult.appliedRecordCount || 0, changedFieldCount: applyResult.appliedFieldCount || 0 }
                             });
                         }
                     } catch (error) {
@@ -3397,7 +2503,7 @@ ${tableContext}`;
                         console.error('[MemoryReview] apply failed:', error);
                         showToast(error.message || '审核结果保存失败');
                         actionEl.disabled = false;
-                        actionEl.textContent = `保存已接受项（${acceptedCount}）`;
+                        actionEl.textContent = `保存已接受记忆（${acceptedRecordCount}）`;
                     }
                 } else if (action === 'review-reject-batch') {
                     event.preventDefault();
@@ -3414,7 +2520,7 @@ ${tableContext}`;
                 } else if (action === 'review-cancel-batch') {
                     const chat = getCurrentMemoryTableChat();
                     if (!chat) return;
-                    if (!window.confirm('取消草案后不会推进游标，之后可以重新生成。确定取消吗？')) return;
+                    if (!window.confirm('取消后不会推进游标，也不会跳过这段消息；之后仍可重新生成同一范围。确定取消吗？')) return;
                     await cancelMemoryReviewBatch(chat, actionEl.dataset.batchId);
                 } else if (action === 'review-rollback') {
                     const chat = getCurrentMemoryTableChat();
@@ -3428,8 +2534,10 @@ ${tableContext}`;
                     const table = template?.tables?.find(item => item.id === actionEl.dataset.tableId);
                     const row = table ? findRowById(chat, template.id, table, actionEl.dataset.rowId) : null;
                     if (!template || !table || !row) return;
-                    const result = MemoryCandidateService.approve(chat, { template, table }, row);
-                    if (result.changed) await saveCharacter(chat.id);
+                    const result = await MemoryCandidateService.approveAtomic(chat, { template, table }, row, {
+                        persist: currentChat => saveCharacter(currentChat.id),
+                        source: 'candidate_approve_v2_14_r1'
+                    });
                     renderMemoryTableScreen();
                     showToast(result.changed ? (result.duplicate ? '长期库已有相同记录，候选已标记为批准' : '候选已批准并晋升到稳定长期特征库') : (result.reason || '候选未改变'));
                 } else if (action === 'reject-long-candidate' || action === 'more-evidence-candidate') {
@@ -3527,7 +2635,6 @@ ${tableContext}`;
                     await restoreHistoryEntry(actionEl.dataset.historyId);
                 }
             });
-
             screen.addEventListener('submit', async (event) => {
                 const form = event.target.closest('[data-row-tag-form]');
                 if (!form) return;
@@ -3538,19 +2645,16 @@ ${tableContext}`;
                     showError: error => typeof showApiError === 'function' ? showApiError(error) : showToast(error.message || '操作失败')
                 });
             });
-
             screen.addEventListener('input', event => {
                 const target = event.target;
                 if (target.matches('[data-governance-search]')) MemoryGovernanceQueue.setQuery(target.value || '');
             });
-
             screen.addEventListener('click', event => {
                 const filter = event.target.closest('[data-memory-row-filter]');
                 if (filter) MemoryTableInteraction.handleFilterClick(filter, { state: uiState, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable });
                 const sortClear = event.target.closest('[data-memory-sort-clear]');
                 if (sortClear) MemoryTableInteraction.handleSortClear(sortClear, { state: uiState, render: renderMemoryTableScreen, refreshGrid: refreshActiveMemoryTable });
             });
-
             screen.addEventListener('change', async (event) => {
                 const target = event.target;
                 if (target.matches('[data-governance-search]')) {
@@ -3578,7 +2682,20 @@ ${tableContext}`;
                     const template = db.memoryTableTemplates.find(item => item.id === target.dataset.templateId);
                     const table = template?.tables?.find(item => item.id === target.dataset.tableId);
                     if (!chat || !template || !table) return;
-                    MemoryPolicy.setAutomationMode(chat, template.id, table, target.value);
+                    if (MemoryPolicyResolver) {
+                        const overrides = MemoryPolicyResolver.cloneTemplateOverrides(chat, template.id);
+                        const mode = target.value;
+                        const currentPolicy = getTableRuntimePolicy(table, chat, template.id);
+                        const captureMode = mode === 'sidecar' ? 'sidecar' : (mode === 'manual' ? 'manual' : 'scheduled');
+                        const frequencySource = mode === 'engine' ? 'global' : 'table';
+                        const apiMode = mode === 'sidecar' ? 'none' : (currentPolicy.updatePolicy?.useSummaryApi === false ? 'main' : 'summary');
+                        MemoryPolicyResolver.updateOverrideDraft(overrides, template, table.id, 'capturePolicy.mode', captureMode);
+                        MemoryPolicyResolver.updateOverrideDraft(overrides, template, table.id, 'capturePolicy.frequencySource', frequencySource);
+                        MemoryPolicyResolver.updateOverrideDraft(overrides, template, table.id, 'capturePolicy.apiMode', apiMode);
+                        MemoryPolicyResolver.replaceTemplateOverrides(chat, template.id, overrides, template);
+                    } else {
+                        MemoryPolicy.setAutomationMode(chat, template.id, table, target.value);
+                    }
                     await saveCharacter(chat.id);
                     refreshMemoryTableAutoUpdateControls(chat, getBoundTemplates(chat).length > 0);
                     if (chat.memoryTables.autoUpdateEnabled && ['engine', 'table'].includes(target.value)) {
@@ -3653,7 +2770,6 @@ ${tableContext}`;
                 }
             });
         }
-
         const openFromSettingsBtn = document.getElementById('setting-open-memory-table-btn');
         if (openFromSettingsBtn) {
             openFromSettingsBtn.addEventListener('click', () => {
@@ -3661,7 +2777,6 @@ ${tableContext}`;
                 switchScreen('memory-table-screen');
             });
         }
-
         const schemaModal = document.getElementById('memory-schema-editor-modal');
         if (schemaModal) {
             schemaModal.addEventListener('click', async event => {
@@ -3688,11 +2803,36 @@ ${tableContext}`;
                     await saveSchemaEditor();
                     return;
                 }
+                if (action === 'policy-scope-template') {
+                    uiState.schemaEditorPolicyScope = 'template';
+                    renderSchemaEditor();
+                    return;
+                }
+                if (action === 'policy-scope-role') {
+                    const chat = getCurrentMemoryTableChat();
+                    if (!chat || !uiState.templateDraft || !getBoundTemplates(chat).some(template => template.id === uiState.templateDraft.id)) {
+                        showToast('请先把模板绑定到当前角色');
+                        return;
+                    }
+                    uiState.schemaEditorPolicyScope = 'role';
+                    uiState.policyOverrideDraft ||= MemoryPolicyResolver.cloneTemplateOverrides(chat, uiState.templateDraft.id);
+                    renderSchemaEditor();
+                    return;
+                }
+                if (action === 'reset-role-override') {
+                    const table = uiState.templateDraft?.tables?.[tableIndex];
+                    if (table && MemoryPolicyResolver?.resetTableOverrideDraft(uiState.policyOverrideDraft, table.id)) {
+                        renderSchemaEditor();
+                    }
+                    return;
+                }
                 if (action === 'starter') {
                     uiState.editingTemplateId = null;
                     uiState.templateDraft = MemorySchemaEditor.prepare(null);
                     uiState.schemaEditorTab = 'fields';
                     uiState.schemaEditorTableIndex = 0;
+                    uiState.schemaEditorPolicyScope = 'template';
+                    uiState.policyOverrideDraft = {};
                     renderSchemaEditor();
                     return;
                 }
@@ -3725,6 +2865,39 @@ ${tableContext}`;
                     }
                     return;
                 }
+                if (['run-table-update', 'cursor-start', 'cursor-latest'].includes(action)) {
+                    const normalized = await persistSchemaEditorDraft({ close: false, silent: true });
+                    const chat = getCurrentMemoryTableChat();
+                    const table = normalized?.tables?.[tableIndex];
+                    if (!normalized || !chat || !table || !MemoryPolicy) {
+                        showToast('当前模板未绑定到私聊角色，无法执行运行操作');
+                        renderSchemaEditor();
+                        return;
+                    }
+                    if (!getBoundTemplates(chat).some(template => template.id === normalized.id)) {
+                        showToast('请先把这个模板绑定到当前角色');
+                        renderSchemaEditor();
+                        return;
+                    }
+                    try {
+                        if (action === 'run-table-update') {
+                            await updateSelectedMemoryTable(chat, normalized.id, table.id);
+                            showToast(`已执行：${table.name}`);
+                        } else {
+                            const position = action === 'cursor-latest'
+                                ? (Array.isArray(chat.history) ? chat.history.length : 0)
+                                : 0;
+                            MemoryPolicy.setTableCursorByPosition(chat, normalized.id, table.id, position);
+                            await saveCharacter(chat.id);
+                            showToast(action === 'cursor-latest' ? '该表游标已跳到最新' : '该表游标已回到开头');
+                        }
+                    } catch (error) {
+                        showToast(error.message || '表格运行操作失败');
+                    }
+                    renderSchemaEditor();
+                    return;
+                }
+                if (uiState.schemaEditorPolicyScope === 'role' && ['add-table', 'remove-table', 'move-table-up', 'move-table-down', 'add-field', 'remove-field', 'move-field-up', 'move-field-down'].includes(action)) return;
                 if (MemorySchemaEditor.mutate(uiState.templateDraft, action, tableIndex, fieldIndex)) {
                     if (action === 'add-table') uiState.schemaEditorTableIndex = Math.max(0, uiState.templateDraft.tables.length - 1);
                     else if (action === 'remove-table') uiState.schemaEditorTableIndex = Math.min(uiState.schemaEditorTableIndex, Math.max(0, uiState.templateDraft.tables.length - 1));
@@ -3739,10 +2912,9 @@ ${tableContext}`;
             });
             schemaModal.addEventListener('change', event => {
                 if (!updateSchemaDraft(event.target)) return;
-                if (['field-group', 'table-name', 'table-memory-layer'].includes(event.target.dataset.schemaRole)) renderSchemaEditor();
+                if (['field-group', 'table-name', 'table-memory-layer', 'table-system-role', 'table-capture-mode', 'table-frequency-source', 'table-api-mode', 'table-commit-mode'].includes(event.target.dataset.schemaRole)) renderSchemaEditor();
             });
         }
-
         const conversionModal = document.getElementById('memory-conversion-modal');
         if (conversionModal) {
             conversionModal.addEventListener('click', async event => {
@@ -3820,19 +2992,16 @@ ${tableContext}`;
             });
         }
     }
-
     function exportMemoryTableContext(chat, options = {}) {
         if (!chat) return '';
         ensureMemoryTableState(chat);
         return getMemoryContextBlock(chat, { force: true, templateIds: options.templateIds });
     }
-
     function getBoundMemoryTableTemplateIds(chat) {
         if (!chat) return [];
         ensureMemoryTableState(chat);
         return getBoundTemplates(chat).map(item => item.id);
     }
-
     async function convertTextToMemoryTable(chat, text, options = {}) {
         if (!chat) throw new Error('请先进入一个角色聊天');
         ensureMemoryTableState(chat);
@@ -3846,7 +3015,6 @@ ${tableContext}`;
         templates.forEach(template => ensureTemplateDataForChat(chat, template));
         const templateText = buildTemplateDefinitionForPrompt(chat, templates);
         const prompt = `请把下面这些“已确认长期记忆”的内容，抽取进结构化记忆表。只更新发生变化的字段，只能依据给定内容，不要编造。
-
 输出格式必须严格是：
 <memory_updates>
   <memory_update templateId="模板ID" tableId="表格ID">
@@ -3860,29 +3028,30 @@ ${tableContext}`;
     <row op="delete" rowId="现有行ID"></row>
   </memory_update>
 </memory_updates>
-
 如果没有变化，输出 <memory_updates></memory_updates>。
 rows 表请使用 row 节点，不要把 rows 表伪装成普通 field。
-
 角色信息：
 - 角色名：${chat.realName || ''}
 - 用户称呼：${chat.myName || ''}
-
 模板定义：
 ${templateText}
-
 长期记忆内容：
 ${text}`;
         const rawContent = await requestSummaryContent(prompt, 0.2);
-        const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
-            source: options.source || 'api',
-            targetTemplateIds
+        const transaction = await MemoryWriteGateway.run(chat, {
+            reason: 'confirmed-text-import',
+            writer: saveCharacter,
+            persistRollback: true
+        }, () => {
+            const changedFields = applyMemoryUpdatesFromXml(chat, rawContent, {
+                source: options.source || 'api_v2_14_r1',
+                targetTemplateIds
+            });
+            return { changed: changedFields.length > 0, changedFields };
         });
-        await saveCharacter(chat.id);
         renderMemoryTableScreen();
-        return changedFields.length;
+        return transaction.changedFields.length;
     }
-
     if (MemoryTasks) {
         MemoryTasks.registerExecutor('table_update', async (chat, payload) => {
             const template = getBoundTemplates(chat).find(item => item.id === payload.templateId)
@@ -3900,8 +3069,9 @@ ${text}`;
         });
         MemoryTasks.registerExecutor('retrieval_rebuild', async chat => {
             if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+            const indexReport = await MemoryRetrievalMaintenance?.rebuildIndex?.(chat, collectRelevantRetrievalGroups(chat));
             const block = await prepareMemoryTableContext(chat, { preview: true });
-            return { status: 'success', chars: String(block || '').length };
+            return { status: 'success', chars: String(block || '').length, indexReport };
         });
         MemoryTasks.registerExecutor('lifecycle_maintenance', async chat => {
             if (!MemoryLifecycle) throw new Error('生命周期模块未加载');
@@ -3910,8 +3080,6 @@ ${text}`;
             return { status: 'success', report };
         });
     }
-
-
     let resumeQueuedMemoryTasksPromise = null;
     async function resumeQueuedMemoryTasks(options = {}) {
         if (!MemoryTasks) return { chats: 0, processed: 0 };
@@ -3934,12 +3102,10 @@ ${text}`;
         finally { resumeQueuedMemoryTasksPromise = null; }
     }
     window.resumeQueuedMemoryTasks = resumeQueuedMemoryTasks;
-
     function openMemoryFeedbackTab() {
         selectMemoryWorkspace('manage', 'usage_audit');
         if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
     }
-
     Kernel.register('controller', {
         VERSION: '2.9-R2',
         ensureState: ensureMemoryTableState,

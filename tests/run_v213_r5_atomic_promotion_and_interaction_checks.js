@@ -39,6 +39,7 @@ function memorySandbox() {
     migrateRows() { return 0; }
   });
   vm.runInContext(read('js/features/memory/domain.js'), sandbox);
+  vm.runInContext(read('js/features/memory/write_coordinator.js'), sandbox);
   vm.runInContext(read('js/features/memory/candidate_service.js'), sandbox);
   return { sandbox, Kernel, db, operations };
 }

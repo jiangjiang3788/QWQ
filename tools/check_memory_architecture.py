@@ -100,6 +100,36 @@ positions = [index.find(f'src="{rel}"') for rel in required_order]
 if any(pos < 0 for pos in positions) or positions != sorted(positions):
     errors.append(f'invalid memory architecture script order: {positions}')
 
+
+# V2.14-R2 formal write gate: committed memory data must pass through Domain + writeGateway.
+gate = CONTRACT.get('formalWriteGate', {})
+allowed_direct = set(gate.get('allowedDirectWriters', []))
+gateway_clients = list(gate.get('gatewayClients', []))
+formal_patterns = [
+    re.compile(r"chat\.memoryTables\.data(?:\[[^\]]+\])*\s*="),
+    re.compile(r"(?:target|row|winner\.row)\.cells\[[^\]]+\]\s*=")
+]
+for path in sorted((ROOT / 'js').rglob('*.js')):
+    rel = path.relative_to(ROOT).as_posix()
+    if rel in allowed_direct:
+        continue
+    text = path.read_text(encoding='utf-8', errors='ignore')
+    for pattern in formal_patterns:
+        match = pattern.search(text)
+        if match:
+            line = text.count('\n', 0, match.start()) + 1
+            errors.append(f'formal memory write bypasses gate: {rel}:{line}')
+            break
+for rel in gateway_clients:
+    text = read(rel)
+    if 'writeGateway' not in text and "Kernel.require('writeGateway')" not in text and 'MemoryWriteGateway' not in text:
+        errors.append(f'formal write client missing writeGateway: {rel}')
+    if rel != 'js/modules/memory_table_sidecar.js' and re.search(r"(?:MemoryWriteCoordinator|WriteCoordinator)\.run\(", text):
+        errors.append(f'formal write client still calls coordinator directly: {rel}')
+sidecar_text = read('js/modules/memory_table_sidecar.js')
+if "Kernel?.get?.('writeGateway')" not in sidecar_text or '记忆正式写入门禁未加载' not in sidecar_text:
+    errors.append('sidecar transformer is not protected by writeGateway')
+
 floating = read('js/modules/floating_ball.js')
 for retired in ('renderTools(', 'renderPromentStatus(', "action === 'open-tools'", "action === 'open-proment'"):
     if retired in floating:

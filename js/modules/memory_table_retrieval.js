@@ -8,8 +8,10 @@
     const escapeHtml = Core.escapeHtml;
     const clamp = Core.clamp;
     const hashText = Core.hashFingerprint;
+    const clone = Core.clone;
+    const Maintenance = Kernel?.get('retrievalMaintenance') || null;
 
-    const RETRIEVAL_VERSION = '2.7';
+    const RETRIEVAL_VERSION = '2.14-R4';
 
     function hasExplicitVectorApi() {
         return !!window.OVOApiServiceRegistry?.isReady('vector');
@@ -76,31 +78,51 @@
         return reasons.length ? reasons : ['综合评分入选'];
     }
 
+    function makeReadItem(item, groupKey, usageSnapshot) {
+        const row = clone(item?.row || {});
+        row.meta ||= {};
+        const [templateId = '', tableId = ''] = String(groupKey || '').split('::');
+        const usageKey = Maintenance?.makeKey?.(templateId, tableId, item?.id) || `${templateId}::${tableId}::${item?.id || ''}`;
+        if (usageSnapshot?.[usageKey]) row.meta.usage = { ...(row.meta.usage || {}), ...clone(usageSnapshot[usageKey]) };
+        return { ...item, row, _usageKey: usageKey };
+    }
+
+    function resolveIndexVector(indexSnapshot, groupKey, item) {
+        const [templateId = '', tableId = ''] = String(groupKey || '').split('::');
+        const key = Maintenance?.makeKey?.(templateId, tableId, item?.id) || `${templateId}::${tableId}::${item?.id || ''}`;
+        const entry = indexSnapshot?.[key];
+        const fingerprint = hashText(item?.searchText || item?.text || '');
+        if (!entry || entry.fingerprint !== fingerprint || !Array.isArray(entry.vector) || !entry.vector.length) return { key, vector: [], indexed: false };
+        return { key, vector: entry.vector, indexed: true };
+    }
+
     async function prepareGroups(chat, groups, queryText, engineSettings, options = {}) {
         const mode = resolveMode(engineSettings || {});
         const effects = window.MemoryTableEffects || null;
         const feedback = window.MemoryTableFeedback || null;
+        const readChat = clone(chat || {});
+        const indexSnapshot = options.indexSnapshot || Maintenance?.getIndexSnapshot?.(chat) || {};
+        const usageSnapshot = options.usageSnapshot || Maintenance?.getUsageSnapshot?.(chat) || {};
         const queryContext = effects ? effects.classifyQuery(queryText) : { text: queryText, topic: [], scene: [], entity: [] };
         const semanticWeight = clamp(engineSettings?.semanticWeight, 0.55, 0, 1);
         const tagWeight = clamp(engineSettings?.tagWeight, 0.35, 0, 0.8);
         const candidateLimit = Math.round(clamp(engineSettings?.embeddingCandidateLimit, 32, 4, 200));
         const selectedByTable = {};
         const diagnostics = [];
-        let dirty = false;
         let fallbackError = '';
 
         const prepared = (groups || []).map(group => {
             const topK = Math.max(1, Number(group.policy?.topK) || 5);
             const localLimit = Math.max(topK * 5, Math.min(candidateLimit, 28));
-            const lexical = lexicalCandidates(group.items, queryText, group.policy, localLimit);
+            const readItems = (group.items || []).map(item => makeReadItem(item, group.key, usageSnapshot));
+            const lexical = lexicalCandidates(readItems, queryText, group.policy, localLimit);
             const byId = new Map();
             const blockedCounts = new Map();
             const evalById = new Map();
             const feedbackEvalById = new Map();
-            (group.items || []).forEach(item => {
-                const evalResult = effects ? effects.evaluateItem(chat, item, queryContext) : null;
-                const feedbackResult = feedback ? feedback.evaluateItem(chat, item, queryContext) : null;
-                if (evalResult?.lifecycleEval?.changed) dirty = true;
+            readItems.forEach(item => {
+                const evalResult = effects ? effects.evaluateItem(readChat, item, queryContext) : null;
+                const feedbackResult = feedback ? feedback.evaluateItem(readChat, item, queryContext) : null;
                 evalById.set(item.id, evalResult);
                 feedbackEvalById.set(item.id, feedbackResult);
                 if (engineSettings?.sideEffectGuardEnabled !== false && evalResult && !evalResult.allowed) {
@@ -115,73 +137,57 @@
                 if (engineSettings?.sideEffectGuardEnabled !== false && effectEval && !effectEval.allowed) return;
                 if (feedbackEval && !feedbackEval.allowed) return;
                 const current = byId.get(item.id);
-                const candidate = { ...item, _effectEval: effectEval || null, _feedbackEval: feedbackEval || null };
+                const indexInfo = resolveIndexVector(indexSnapshot, group.key, item);
+                const candidate = { ...item, _effectEval: effectEval || null, _feedbackEval: feedbackEval || null, _retrievalVector: indexInfo.vector, _indexed: indexInfo.indexed };
                 if (!current || Number(candidate._score || 0) > Number(current._score || 0)) byId.set(item.id, candidate);
             };
             lexical.forEach(item => addCandidate(item, evalById.get(item.id) || null, feedbackEvalById.get(item.id) || null));
             if (effects && engineSettings?.sceneRoutingEnabled !== false) {
-                (group.items || []).forEach(item => {
-                    const evalResult = evalById.get(item.id) || effects.evaluateItem(chat, item, queryContext);
+                readItems.forEach(item => {
+                    const evalResult = evalById.get(item.id) || effects.evaluateItem(readChat, item, queryContext);
                     if (!evalResult.allowed || evalResult.tagScore <= 0) return;
                     addCandidate({ ...item, _score: Math.max(Number(item._score) || 0, evalResult.tagScore) }, evalResult, feedbackEvalById.get(item.id) || null);
                 });
             }
-            const candidates = Array.from(byId.values())
-                .sort((a, b) => {
-                    const at = Number(a._effectEval?.tagScore) || 0;
-                    const bt = Number(b._effectEval?.tagScore) || 0;
-                    if (bt !== at) return bt - at;
-                    return (Number(b._score) || 0) - (Number(a._score) || 0);
-                })
-                .slice(0, localLimit);
-            return { ...group, topK, candidates, blockedCounts: Array.from(blockedCounts.entries()).map(([reason, count]) => ({ reason, count })) };
+            const candidates = Array.from(byId.values()).sort((a, b) => {
+                const at = Number(a._effectEval?.tagScore) || 0;
+                const bt = Number(b._effectEval?.tagScore) || 0;
+                if (bt !== at) return bt - at;
+                return (Number(b._score) || 0) - (Number(a._score) || 0);
+            }).slice(0, localLimit);
+            return { ...group, topK, candidates, candidateTotal: readItems.length, blockedCounts: Array.from(blockedCounts.entries()).map(([reason, count]) => ({ reason, count })) };
         });
 
+        const coverage = prepared.reduce((summary, group) => {
+            group.candidates.forEach(item => { summary.candidates += 1; item._indexed ? summary.indexed += 1 : summary.missing += 1; });
+            return summary;
+        }, { candidates: 0, indexed: 0, missing: 0 });
+
         let queryVector = [];
-        if (mode.actual === 'hybrid' && queryText.trim()) {
+        if (mode.actual === 'hybrid' && !coverage.indexed) {
+            mode.actual = 'keyword';
+            mode.reason = '检索索引尚未建立，当前使用关键词；可点击“更新索引并预览”。';
+        } else if (mode.actual === 'hybrid' && queryText.trim()) {
             try {
                 queryVector = (await fetchEmbeddings([queryText]))[0] || [];
-                const allCandidates = prepared.flatMap(group => group.candidates.map(item => ({ group, item })))
-                    .sort((a, b) => (b.item._score || 0) - (a.item._score || 0))
-                    .slice(0, candidateLimit);
-                const missing = allCandidates.filter(({ item }) => {
-                    const fingerprint = hashText(item.searchText || item.text || '');
-                    return !Array.isArray(item.row?.meta?.retrievalVector)
-                        || !item.row.meta.retrievalVector.length
-                        || item.row.meta.retrievalVectorFingerprint !== fingerprint;
-                });
-                if (missing.length) {
-                    const vectors = await fetchEmbeddings(missing.map(({ item }) => item.searchText || item.text || ''));
-                    missing.forEach(({ item }, index) => {
-                        item.row.meta ||= {};
-                        item.row.meta.retrievalVector = Array.isArray(vectors[index]) ? vectors[index] : [];
-                        item.row.meta.retrievalVectorFingerprint = hashText(item.searchText || item.text || '');
-                        item.row.meta.retrievalIndexedAt = Date.now();
-                        dirty = true;
-                    });
-                }
             } catch (error) {
                 fallbackError = error?.message || String(error);
                 mode.actual = 'keyword';
-                mode.reason = `向量检索失败，回退关键词：${fallbackError}`;
+                mode.reason = `查询向量生成失败，回退关键词：${fallbackError}`;
                 queryVector = [];
             }
         }
 
         prepared.forEach(group => {
             const scored = group.candidates.map(item => {
-                const effectEval = item._effectEval || (effects ? effects.evaluateItem(chat, item, queryContext) : null);
-                const feedbackEval = item._feedbackEval || (feedback ? feedback.evaluateItem(chat, item, queryContext) : null);
+                const effectEval = item._effectEval || (effects ? effects.evaluateItem(readChat, item, queryContext) : null);
+                const feedbackEval = item._feedbackEval || (feedback ? feedback.evaluateItem(readChat, item, queryContext) : null);
                 if (engineSettings?.sideEffectGuardEnabled !== false && effectEval && !effectEval.allowed) return null;
                 if (feedbackEval && !feedbackEval.allowed) return null;
                 const lexical = Math.max(0, Math.min(1, Number(item._score) || 0));
-                const semanticRaw = mode.actual === 'hybrid'
-                    ? cosineSimilarity(queryVector, item.row?.meta?.retrievalVector || [])
-                    : 0;
+                const semanticRaw = mode.actual === 'hybrid' && item._indexed ? cosineSimilarity(queryVector, item._retrievalVector || []) : 0;
                 const semantic = Math.max(0, Math.min(1, semanticRaw));
-                const similarity = mode.actual === 'hybrid'
-                    ? semantic * semanticWeight + lexical * (1 - semanticWeight)
-                    : lexical;
+                const similarity = mode.actual === 'hybrid' && item._indexed ? semantic * semanticWeight + lexical * (1 - semanticWeight) : lexical;
                 const tagScore = engineSettings?.sceneRoutingEnabled === false ? 0 : Math.max(0, Math.min(1, Number(effectEval?.tagScore) || 0));
                 let score = similarity * (1 - tagWeight) + tagScore * tagWeight;
                 const effectiveConfidence = Number(effectEval?.lifecycleEval?.effectiveConfidence);
@@ -189,59 +195,28 @@
                 if (item.pinned) score += 0.18;
                 score += Number(feedbackEval?.adjustment) || 0;
                 score = Math.max(0, Math.min(1.5, score));
-                return {
-                    ...item,
-                    _score: score,
-                    _lexicalScore: lexical,
-                    _semanticScore: semantic,
-                    _tagScore: tagScore,
-                    _effectEval: effectEval,
-                    _feedbackEval: feedbackEval,
-                    _reasons: [
-                        ...buildReasons(item, lexical, semantic, mode.actual, engineSettings?.sceneRoutingEnabled === false ? null : effectEval),
-                        ...(feedbackEval?.reasons || [])
-                    ]
-                };
+                return { ...item, _score: score, _lexicalScore: lexical, _semanticScore: semantic, _tagScore: tagScore, _effectEval: effectEval, _feedbackEval: feedbackEval, _reasons: [
+                    ...buildReasons(item, lexical, semantic, mode.actual, engineSettings?.sceneRoutingEnabled === false ? null : effectEval),
+                    ...(feedbackEval?.reasons || [])
+                ] };
             }).filter(Boolean)
                 .filter(item => item.pinned || item._score >= Number(group.policy?.threshold || 0))
-                .sort((a, b) => {
-                    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-                    if (b._score !== a._score) return b._score - a._score;
-                    return (b.updatedAt || 0) - (a.updatedAt || 0);
-                })
+                .sort((a, b) => !!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : (b._score !== a._score ? b._score - a._score : (b.updatedAt || 0) - (a.updatedAt || 0)))
                 .slice(0, group.topK);
 
-            if (!options.dryRun) scored.forEach(item => effects?.markRetrieved(item));
             selectedByTable[group.key] = scored.map(item => ({
-                id: item.id,
-                score: item._score,
-                lexicalScore: item._lexicalScore,
-                semanticScore: item._semanticScore,
-                tagScore: item._tagScore,
-                feedbackAdjustment: Number(item._feedbackEval?.adjustment) || 0,
-                reasons: item._reasons,
-                effectMode: item._effectEval?.effectMode || '',
-                tags: item._effectEval?.tags || null,
-                usePolicy: item._effectEval?.usePolicy || null,
+                id: item.id, score: item._score, lexicalScore: item._lexicalScore, semanticScore: item._semanticScore,
+                tagScore: item._tagScore, feedbackAdjustment: Number(item._feedbackEval?.adjustment) || 0, reasons: item._reasons,
+                effectMode: item._effectEval?.effectMode || '', tags: item._effectEval?.tags || null, usePolicy: item._effectEval?.usePolicy || null,
                 directive: effects ? effects.getPromptDirective(item._effectEval?.effectMode, item._effectEval?.usePolicy, item.row, item.table) : ''
             }));
             diagnostics.push({
-                key: group.key,
-                templateName: group.templateName,
-                tableName: group.tableName,
-                mode: group.policy?.mode || 'relevant',
-                candidateCount: group.items?.length || 0,
-                blocked: group.blockedCounts || [],
-                selected: scored.map(item => ({
-                    id: item.id,
-                    score: item._score,
-                    lexicalScore: item._lexicalScore,
-                    semanticScore: item._semanticScore,
-                    tagScore: item._tagScore,
-                    feedbackAdjustment: Number(item._feedbackEval?.adjustment) || 0,
-                    reasons: item._reasons,
-                    tags: item._effectEval?.tags || null,
-                    effectMode: item._effectEval?.effectMode || '',
+                key: group.key, templateName: group.templateName, tableName: group.tableName, mode: group.policy?.mode || 'relevant',
+                candidateCount: group.candidateTotal || 0, indexedCandidateCount: group.candidates.filter(item => item._indexed).length,
+                blocked: group.blockedCounts || [], selected: scored.map(item => ({
+                    id: item.id, score: item._score, lexicalScore: item._lexicalScore, semanticScore: item._semanticScore,
+                    tagScore: item._tagScore, feedbackAdjustment: Number(item._feedbackEval?.adjustment) || 0, reasons: item._reasons,
+                    tags: item._effectEval?.tags || null, effectMode: item._effectEval?.effectMode || '',
                     directive: effects ? effects.getPromptDirective(item._effectEval?.effectMode, item._effectEval?.usePolicy, item.row, item.table) : '',
                     text: String(item.searchText || item.text || '').slice(0, 500)
                 }))
@@ -250,25 +225,14 @@
 
         return {
             selectedByTable,
-            dirty,
+            dirty: false,
             diagnostic: {
-                version: RETRIEVAL_VERSION,
-                preparedAt: Date.now(),
-                queryText,
-                queryContext,
-                requestedMode: mode.requested,
-                actualMode: mode.actual,
-                modeReason: mode.reason,
-                semanticWeight,
-                tagWeight,
-                candidateLimit,
+                version: RETRIEVAL_VERSION, preparedAt: Date.now(), pureRead: true, queryText, queryContext,
+                requestedMode: mode.requested, actualMode: mode.actual, modeReason: mode.reason,
+                semanticWeight, tagWeight, candidateLimit, indexCoverage: coverage,
                 sceneRoutingEnabled: engineSettings?.sceneRoutingEnabled !== false,
                 sideEffectGuardEnabled: engineSettings?.sideEffectGuardEnabled !== false,
-                vectorApiConfigured: hasExplicitVectorApi(),
-                fallbackError,
-                tables: diagnostics,
-                finalBlock: '',
-                finalChars: 0
+                vectorApiConfigured: hasExplicitVectorApi(), fallbackError, tables: diagnostics, finalBlock: '', finalChars: 0
             }
         };
     }
@@ -288,21 +252,21 @@
         const runtime = window.MemoryTablePolicy ? MemoryTablePolicy.ensureRuntimeState(chat) : null;
         const diagnostic = runtime?.lastRetrievalDiagnostic;
         if (!diagnostic) {
-            return `<div class="memory-retrieval-empty"><h3>还没有检索快照</h3><p>发送一次聊天，或点击“重建并预览”，这里会显示实际查询、命中条目、召回原因和最终注入文本。</p><button class="btn btn-primary" data-action="retrieval-rebuild">重建并预览</button></div>`;
+            return `<div class="memory-retrieval-empty"><h3>还没有检索快照</h3><p>发送一次聊天，或点击“更新索引并预览”，这里会显示实际查询、命中条目、召回原因和最终注入文本。</p><button class="btn btn-primary" data-action="retrieval-rebuild">更新索引并预览</button></div>`;
         }
         const modeLabel = diagnostic.actualMode === 'hybrid' ? '混合检索' : '关键词检索';
         return `<div class="memory-retrieval-page">
             <div class="memory-retrieval-head">
                 <div><h2>检索与 Prompt 注入诊断</h2><p>这是最近一次结构化记忆在聊天发送前的真实召回快照。</p></div>
-                <div class="memory-retrieval-actions"><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">重建并预览</button><button class="btn btn-small btn-secondary" data-action="retrieval-clear-index">清除向量索引</button><button class="btn btn-small btn-neutral" data-action="retrieval-clear-diagnostic">清除快照</button></div>
+                <div class="memory-retrieval-actions"><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">更新索引并预览</button><button class="btn btn-small btn-secondary" data-action="retrieval-clear-index">清除向量索引</button><button class="btn btn-small btn-neutral" data-action="retrieval-clear-diagnostic">清除快照</button></div>
             </div>
             <div class="memory-retrieval-summary">
                 <div><b>实际模式</b><span>${escapeHtml(modeLabel)}</span></div>
                 <div><b>向量 API</b><span>${diagnostic.vectorApiConfigured ? '已配置' : '未配置'}</span></div>
                 <div><b>语义 / 标签</b><span>${Number(diagnostic.semanticWeight || 0).toFixed(2)} / ${Number(diagnostic.tagWeight || 0).toFixed(2)}</span></div>
-                <div><b>最终注入</b><span>${diagnostic.finalChars || 0} 字符</span></div>
+                <div><b>索引覆盖</b><span>${diagnostic.indexCoverage?.indexed || 0} / ${diagnostic.indexCoverage?.candidates || 0}</span></div><div><b>最终注入</b><span>${diagnostic.finalChars || 0} 字符</span></div>
             </div>
-            <div class="memory-retrieval-note">${escapeHtml(diagnostic.modeReason || '')}</div>
+            <div class="memory-retrieval-note">${diagnostic.pureRead ? '纯读取召回 · ' : ''}${escapeHtml(diagnostic.modeReason || '')}</div>
             <details open class="memory-retrieval-query"><summary>本次检索线索与场景标签</summary><pre>${escapeHtml(diagnostic.queryText || '（空）')}
 
 主题：${escapeHtml((diagnostic.queryContext?.topic || []).join('、') || '未识别')}

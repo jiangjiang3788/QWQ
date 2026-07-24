@@ -6,6 +6,7 @@
     const Core = Kernel.core;
     const Domain = Kernel.require('domain');
     const Policy = Kernel.get('policy');
+    const FieldPolicy = Kernel.get('fieldPolicy');
 
     const clone = Core.clone;
     const moveArrayItem = Core.moveArrayItem;
@@ -15,10 +16,25 @@
         draft.tables = Array.isArray(draft.tables) && draft.tables.length ? draft.tables : [Domain.createEmptyTableDraft()];
         draft.tables.forEach(table => {
             table.columns = Array.isArray(table.columns) && table.columns.length ? table.columns : [Domain.createEmptyFieldDraft()];
-            const layer = Policy ? Policy.normalizeLayer(table.memoryLayer, table.name) : (table.memoryLayer || 'short');
-            table.memoryLayer = layer;
-            table.updatePolicy = Policy ? Policy.normalizeUpdatePolicy(table.updatePolicy || {}, layer) : (table.updatePolicy || {});
-            table.injectionPolicy = Policy ? Policy.normalizeInjectionPolicy(table.injectionPolicy || {}, layer) : (table.injectionPolicy || {});
+            const tablePolicy = Policy?.normalizeTablePolicy
+                ? Policy.normalizeTablePolicy(table)
+                : {
+                    memoryLayer: table.memoryLayer || 'short',
+                    systemRole: table.systemRole || 'general',
+                    capturePolicy: table.capturePolicy || { mode: 'manual', frequencySource: 'table', apiMode: 'summary' },
+                    commitPolicy: table.commitPolicy || { mode: 'review', requireUserConfirmation: true },
+                    updatePolicy: table.updatePolicy || {},
+                    injectionPolicy: table.injectionPolicy || {}
+                };
+            table.memoryLayer = tablePolicy.memoryLayer;
+            table.systemRole = tablePolicy.systemRole;
+            table.capturePolicy = tablePolicy.capturePolicy;
+            table.commitPolicy = tablePolicy.commitPolicy;
+            table.updatePolicy = tablePolicy.updatePolicy;
+            table.injectionPolicy = tablePolicy.injectionPolicy;
+            table.columns.forEach(field => {
+                field.writePolicy = FieldPolicy ? FieldPolicy.normalizeFieldPolicy(field, table) : (field.writePolicy || { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 });
+            });
         });
         return draft;
     }
@@ -33,6 +49,23 @@
         const groups = new Set();
         tables.forEach(table => (table.columns || []).forEach(field => groups.add(`${table.id || table.name}::${String(field.group || '未分组').trim() || '未分组'}`)));
         return { tableCount: tables.length, fieldCount, groupCount: groups.size };
+    }
+
+    function roleConflicts(draft) {
+        const uniqueRoles = new Set(['core_profile', 'current_state', 'tasks', 'recent_events', 'daily_observation', 'medium_summary', 'long_candidate', 'long_store']);
+        const groups = new Map();
+        (draft?.tables || []).forEach((table, tableIndex) => {
+            const role = Policy?.normalizeSystemRole ? Policy.normalizeSystemRole(table.systemRole, table) : (table.systemRole || 'general');
+            if (!uniqueRoles.has(role)) return;
+            if (!groups.has(role)) groups.set(role, []);
+            groups.get(role).push(tableIndex);
+        });
+        const conflicts = new Map();
+        groups.forEach((indexes, role) => {
+            if (indexes.length < 2) return;
+            indexes.forEach(index => conflicts.set(index, { role, count: indexes.length }));
+        });
+        return conflicts;
     }
 
     function fieldGroups(table) {
@@ -103,6 +136,11 @@
                 makeRow(section, '表格名称', `${base}.name`, 'text', table.name || ''),
                 makeRow(section, '模式', `${base}.mode`, 'text', table.mode || 'keyValue', { choices: ['keyValue', 'rows'] }),
                 makeRow(section, '记忆层级', `${base}.memoryLayer`, 'text', table.memoryLayer || 'short', { choices: ['core', 'short', 'medium', 'long', 'review'] }),
+                makeRow(section, '表格职责', `${base}.systemRole`, 'text', table.systemRole || 'general'),
+                makeRow(section, '信息来源', `${base}.capturePolicy.mode`, 'text', table.capturePolicy?.mode || 'manual'),
+                makeRow(section, '频率来源', `${base}.capturePolicy.frequencySource`, 'text', table.capturePolicy?.frequencySource || 'table'),
+                makeRow(section, '调用 API', `${base}.capturePolicy.apiMode`, 'text', table.capturePolicy?.apiMode || 'summary'),
+                makeRow(section, '写入方式', `${base}.commitPolicy.mode`, 'text', table.commitPolicy?.mode || 'review'),
                 makeRow(section, '提取规则', `${base}.extractPrompt`, 'text', table.extractPrompt || '', { multiline: true }),
                 makeRow(section, '自动更新', `${base}.updatePolicy.enabled`, 'boolean', update.enabled !== false),
                 makeRow(section, '触发方式', `${base}.updatePolicy.triggerMode`, 'text', update.triggerMode || 'manual', { choices: ['rounds', 'messages', 'either', 'manual'] }),
@@ -128,6 +166,10 @@
                     makeRow(fieldSection, '默认值', `${fieldBase}.default`, Array.isArray(field.default) ? 'array' : (typeof field.default === 'number' ? 'number' : 'text'), Array.isArray(field.default) ? field.default.join(', ') : (field.default ?? '')),
                     makeRow(fieldSection, '选项', `${fieldBase}.options`, 'array', (field.options || []).join(', ')),
                     makeRow(fieldSection, 'AI 可编辑', `${fieldBase}.aiEditable`, 'boolean', field.aiEditable !== false),
+                    makeRow(fieldSection, '信息主体', `${fieldBase}.writePolicy.subject`, 'text', field.writePolicy?.subject || 'user', { choices: ['user', 'assistant', 'relationship', 'system'] }),
+                    makeRow(fieldSection, '证据要求', `${fieldBase}.writePolicy.evidence`, 'text', field.writePolicy?.evidence || 'explicit', { choices: ['explicit', 'inferred', 'manual'] }),
+                    makeRow(fieldSection, '字段写入方式', `${fieldBase}.writePolicy.commitMode`, 'text', field.writePolicy?.commitMode || 'inherit', { choices: ['inherit', 'direct', 'review', 'candidate', 'runtime_only', 'manual_only'] }),
+                    makeRow(fieldSection, '最低置信度', `${fieldBase}.writePolicy.minConfidence`, 'number', field.writePolicy?.minConfidence ?? 60),
                     makeRow(fieldSection, '普通模式显示', `${fieldBase}.important`, 'boolean', field.important !== false),
                     makeRow(fieldSection, '摘要标签', `${fieldBase}.summaryLabel`, 'text', field.summaryLabel || ''),
                     makeRow(fieldSection, '最小值', `${fieldBase}.min`, 'number', field.min ?? ''),
@@ -161,10 +203,11 @@
     }
 
     Kernel.register('schemaModel', Object.freeze({
-        VERSION: '2.12-R3',
+        VERSION: '2.14-R3',
         prepare,
         normalize,
         summarize,
+        roleConflicts,
         fieldGroups,
         getPath,
         setPath,

@@ -8,21 +8,34 @@
     const Domain = Kernel.require('domain');
     const FieldWidth = Kernel.require('fieldWidth');
     const Policy = Kernel.get('policy');
+    const FieldPolicy = Kernel.get('fieldPolicy');
 
     const escapeHtml = Core.escapeHtml;
     const escapeAttribute = Core.escapeAttribute;
 
     const FIELD_TYPES = [
-        ['text', '短文本'],
-        ['longtext', '长文本'],
-        ['number', '数字'],
-        ['enum', '单选'],
-        ['tags', '标签'],
-        ['progress', '进度'],
-        ['date', '日期'],
-        ['boolean', '开关']
+        ['text', '短文本'], ['longtext', '长文本'], ['number', '数字'], ['enum', '单选'],
+        ['tags', '标签'], ['progress', '进度'], ['date', '日期'], ['boolean', '开关']
     ];
     const LAYERS = [['core', '核心'], ['short', '短期'], ['medium', '中期'], ['long', '长期'], ['review', '审核队列']];
+    const SYSTEM_ROLES = [
+        ['general', '普通记忆表'], ['core_profile', '核心档案'], ['current_state', '当前状态'],
+        ['tasks', '待办事项'], ['recent_events', '近期经历'], ['daily_observation', '日常观察'],
+        ['medium_summary', '中期总结'], ['long_candidate', '长期候选'], ['long_store', '稳定长期库']
+    ];
+    const CAPTURE_MODES = [
+        ['sidecar', '聊天同请求'], ['scheduled', '周期整理'], ['manual', '手动整理'], ['disabled', '关闭']
+    ];
+    const COMMIT_MODES = [
+        ['direct', '直接生效'], ['review', '先确认再生效'], ['candidate', '进入候选'],
+        ['manual_only', '仅人工编辑'], ['promotion', '批准后晋升']
+    ];
+    const API_MODES = [['none', '不额外调用'], ['main', '主聊天 API'], ['summary', '总结 API']];
+    const FREQUENCY_SOURCES = [['global', '使用全局默认'], ['table', '本表自定义']];
+
+    const FIELD_SUBJECTS = [['user', '用户'], ['assistant', '角色'], ['relationship', '双方关系'], ['system', '系统运行']];
+    const FIELD_EVIDENCE = [['explicit', '用户明确表达'], ['inferred', '允许推断'], ['manual', '仅人工确认']];
+    const FIELD_COMMIT_MODES = [['inherit', '继承表格'], ['direct', '直接生效'], ['review', '先确认'], ['candidate', '进入候选'], ['runtime_only', '仅运行态'], ['manual_only', '仅人工编辑']];
 
     function selected(value, expected) { return String(value) === String(expected) ? 'selected' : ''; }
 
@@ -51,6 +64,7 @@
             options.title ? `title="${escapeAttribute(options.title)}"` : '',
             options.placeholder ? `placeholder="${escapeAttribute(options.placeholder)}"` : '',
             options.className ? `class="${escapeAttribute(options.className)}"` : '',
+            options.policyPath ? `data-policy-path="${escapeAttribute(options.policyPath)}"` : '',
             options.disabled ? 'disabled' : ''
         ].filter(Boolean).join(' ');
         if (options.choices) return `<select ${attrs}>${options.choices.map(item => {
@@ -63,52 +77,127 @@
         return `<input type="${type}" ${attrs}${extra} value="${escapeAttribute(value ?? '')}">`;
     }
 
-    function renderSummary(draft) {
+    function renderSummary(draft, state = {}) {
         const summary = Model.summarize(draft);
+        const roleScope = state.policyScope === 'role';
         return `<section class="memory-schema-summary" aria-label="模板设置">
-            <label><span>模板名称</span>${renderInput('template-name', draft.name || '')}</label>
-            <label class="memory-schema-description"><span>模板描述</span>${renderInput('template-description', draft.description || '', { multiline: true, rows: 2 })}</label>
+            <label><span>模板名称</span>${renderInput('template-name', draft.name || '', { disabled: roleScope })}</label>
+            <label class="memory-schema-description"><span>模板描述</span>${renderInput('template-description', draft.description || '', { multiline: true, rows: 2, disabled: roleScope })}</label>
             <div class="memory-schema-counts"><b>${summary.tableCount}</b><span>张表</span><b>${summary.fieldCount}</b><span>字段</span><b>${summary.groupCount}</b><span>分组</span></div>
         </section>`;
     }
 
+    function runtimeCell(runtime, key, fallback = '—') {
+        const value = runtime?.[key];
+        return value === undefined || value === null || value === '' ? fallback : escapeHtml(String(value));
+    }
+
+    function sourceBadge(source) {
+        const label = stateSourceLabel(source);
+        return `<span class="memory-schema-source-badge source-${escapeAttribute(source || 'system')}">${escapeHtml(label)}</span>`;
+    }
+
+    function stateSourceLabel(source) {
+        return ({ role: '当前角色', template: '模板', global: '全局', system: '系统' })[source] || '系统';
+    }
+
+    function renderPolicyScope(state) {
+        const roleAvailable = state.roleScopeAvailable !== false;
+        const roleScope = state.policyScope === 'role';
+        return `<section class="memory-schema-policy-scope" aria-label="策略设置范围">
+            <div><strong>设置范围</strong><span>${roleScope ? '只影响当前角色；没有覆盖的项目继续继承模板或全局默认。' : '修改模板默认；所有绑定此模板的角色都会继承，已有角色覆盖不受影响。'}</span></div>
+            <div class="memory-schema-scope-actions">
+                <button type="button" class="${roleScope ? '' : 'active'}" data-schema-action="policy-scope-template">模板默认</button>
+                <button type="button" class="${roleScope ? 'active' : ''}" data-schema-action="policy-scope-role" ${roleAvailable ? '' : 'disabled'}>当前角色覆盖</button>
+            </div>
+        </section>`;
+    }
+
+    function renderEffectiveSummary(resolution) {
+        if (!resolution) return '<span class="memory-schema-effective-empty">保存后计算</span>';
+        const labels = resolution.labels || {};
+        return `<div class="memory-schema-effective-summary"><strong>${escapeHtml(labels.capture || '')}</strong><span>${escapeHtml(labels.commit || '')}</span><span>${escapeHtml(labels.schedule || '')}</span><span>${escapeHtml(labels.injection || '')}</span></div>`;
+    }
+
+    function renderSourceSummary(resolution) {
+        if (!resolution) return '—';
+        const sources = resolution.sourceSummary || {};
+        return `<div class="memory-schema-source-summary"><label>采集${sourceBadge(sources.capture)}</label><label>写入${sourceBadge(sources.commit)}</label><label>周期${sourceBadge(sources.schedule)}</label><label>召回${sourceBadge(sources.injection)}</label></div>`;
+    }
+
     function renderTableSettings(draft, state) {
+        const conflicts = Model.roleConflicts(draft);
+        const runtimeByTableId = state.runtimeByTableId || {};
+        const effectiveByTableId = state.effectiveByTableId || {};
+        const roleScope = state.policyScope === 'role';
+        const policy = (role, path, value, options = {}) => renderInput(role, value, { ...options, policyPath: path });
         return `<section class="memory-schema-unified-section" aria-label="表格设置">
-            <div class="memory-schema-section-head"><div><strong>表格设置</strong><small>基础设置、自动更新和注入设置已经合并为一张表；点击“编辑字段”切换下方字段表。</small></div><button type="button" class="btn btn-small btn-primary" data-schema-action="add-table">新增表格</button></div>
+            <div class="memory-schema-section-head"><div><strong>表格策略与结构</strong><small>“当前生效”是系统实际使用的结果；来源会标明当前角色、模板、全局或系统默认。</small></div><button type="button" class="btn btn-small btn-primary" data-schema-action="add-table" ${roleScope ? 'disabled' : ''}>新增表格</button></div>
+            <div class="memory-schema-column-legend"><span>基础</span><span>采集与写入</span><span>周期</span><span>召回</span><span>有效值与来源</span><span>运行状态</span></div>
             <div class="memory-schema-grid-wrap memory-schema-wide-grid-wrap"><table class="memory-schema-grid memory-schema-tables-grid memory-schema-unified-table-grid">
                 <thead><tr>
-                    <th>表格名称</th><th>模式</th><th>层级</th><th>自动更新</th><th>触发方式</th><th>每几轮</th><th>每几条消息</th><th>读取上限</th><th>重叠消息</th><th>更新 API</th><th>允许新增</th><th>允许修改</th><th>允许删除</th><th>注入方式</th><th>Top-K</th><th>阈值</th><th>字符预算</th><th>有效期（天）</th><th>包含置顶</th><th>包含完成</th><th>提取规则</th><th>更新附加规则</th><th>注入附加规则</th><th>字段</th><th>操作</th>
+                    <th>表格名称</th><th>表格职责</th><th>形态</th><th>层级</th>
+                    <th>信息来源</th><th>写入方式</th><th>调用 API</th><th>频率来源</th>
+                    <th>触发</th><th>轮数</th><th>消息数</th><th>读取上限</th><th>重叠消息</th>
+                    <th>新增</th><th>修改</th><th>删除</th>
+                    <th>注入</th><th>Top-K</th><th>阈值</th><th>预算</th><th>有效期</th><th>置顶</th><th>已完成</th>
+                    <th>提取规则</th><th>更新规则</th><th>注入规则</th><th>字段</th>
+                    <th>当前生效</th><th>来源</th>
+                    <th>未处理</th><th>上次运行</th><th>待确认</th><th>游标</th><th>运行</th><th>操作</th>
                 </tr></thead>
                 <tbody>${draft.tables.map((table, tableIndex) => {
-                    const layer = Policy ? Policy.normalizeLayer(table.memoryLayer, table.name) : (table.memoryLayer || 'short');
-                    const update = Policy ? Policy.normalizeUpdatePolicy(table.updatePolicy || {}, layer) : (table.updatePolicy || {});
-                    const inject = Policy ? Policy.normalizeInjectionPolicy(table.injectionPolicy || {}, layer) : (table.injectionPolicy || {});
-                    return `<tr class="${tableIndex === state.activeTableIndex ? 'active' : ''}" data-schema-table-row="${tableIndex}">
-                        <td class="memory-schema-sticky-name">${renderInput('table-name', table.name || '', { tableIndex, title: table.name || '' })}<small class="memory-schema-id">${escapeHtml(table.id || '')}</small></td>
-                        <td>${renderInput('table-mode', table.mode || 'keyValue', { tableIndex, choices: [['keyValue', '键值表'], ['rows', '多行表']] })}</td>
-                        <td>${renderInput('table-memory-layer', layer, { tableIndex, choices: LAYERS })}</td>
-                        <td>${renderInput('table-update-enabled', update.enabled ? 'true' : 'false', { tableIndex, choices: [['true', '开启'], ['false', '手动']] })}</td>
-                        <td>${renderInput('table-trigger-mode', update.triggerMode || 'manual', { tableIndex, choices: [['rounds', '按轮'], ['messages', '按消息'], ['either', '先到者'], ['manual', '仅手动']] })}</td>
-                        <td>${renderInput('table-round-interval', update.roundInterval ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-message-interval', update.messageInterval ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-max-source-messages', update.maxSourceMessages ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-overlap-messages', update.overlapMessages ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-use-summary-api', update.useSummaryApi !== false ? 'true' : 'false', { tableIndex, choices: [['false', '主聊天 API'], ['true', '总结 API']] })}</td>
-                        <td>${renderInput('table-allow-add', update.allowAdd !== false ? 'true' : 'false', { tableIndex, choices: [['true', '允许'], ['false', '禁止']] })}</td>
-                        <td>${renderInput('table-allow-update', update.allowUpdate !== false ? 'true' : 'false', { tableIndex, choices: [['true', '允许'], ['false', '禁止']] })}</td>
-                        <td>${renderInput('table-allow-delete', update.allowDelete ? 'true' : 'false', { tableIndex, choices: [['false', '禁止'], ['true', '允许']] })}</td>
-                        <td>${renderInput('table-injection-mode', inject.mode || 'never', { tableIndex, choices: [['always', '始终'], ['active', '有效项'], ['relevant', '相关检索'], ['never', '不注入']] })}</td>
-                        <td>${renderInput('table-injection-top-k', inject.topK ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-injection-threshold', inject.threshold ?? '', { tableIndex, type: 'number', step: '0.01', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-injection-budget', inject.budget ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-max-age-days', inject.maxAgeDays ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
-                        <td>${renderInput('table-include-pinned', inject.includePinned !== false ? 'true' : 'false', { tableIndex, choices: [['true', '包含'], ['false', '排除']] })}</td>
-                        <td>${renderInput('table-include-completed', inject.includeCompleted ? 'true' : 'false', { tableIndex, choices: [['false', '排除'], ['true', '包含']] })}</td>
-                        <td class="memory-schema-long-cell">${renderInput('table-extract-prompt', table.extractPrompt || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空' })}</td>
-                        <td class="memory-schema-long-cell">${renderInput('table-update-instructions', update.instructions || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空' })}</td>
-                        <td class="memory-schema-long-cell">${renderInput('table-injection-instructions', inject.instructions || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空' })}</td>
-                        <td><button type="button" class="memory-schema-field-count ${tableIndex === state.activeTableIndex ? 'active' : ''}" data-schema-action="select-fields" data-table-index="${tableIndex}">编辑 ${(table.columns || []).length} 个字段</button></td>
-                        <td><div class="memory-schema-row-actions"><button type="button" data-schema-action="move-table-up" data-table-index="${tableIndex}" aria-label="上移">↑</button><button type="button" data-schema-action="move-table-down" data-table-index="${tableIndex}" aria-label="下移">↓</button><button type="button" class="danger" data-schema-action="remove-table" data-table-index="${tableIndex}" aria-label="删除">×</button></div></td>
+                    const resolution = effectiveByTableId[table.id] || null;
+                    const normalized = roleScope && resolution?.effective
+                        ? resolution.effective
+                        : (Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(table) : table);
+                    const layer = normalized.memoryLayer || table.memoryLayer || 'short';
+                    const role = normalized.systemRole || table.systemRole || 'general';
+                    const capture = normalized.capturePolicy || table.capturePolicy || { mode: 'manual', frequencySource: 'table', apiMode: 'summary' };
+                    const commit = normalized.commitPolicy || table.commitPolicy || { mode: 'review' };
+                    const update = normalized.updatePolicy || table.updatePolicy || {};
+                    const inject = normalized.injectionPolicy || table.injectionPolicy || {};
+                    const scheduled = capture.mode === 'scheduled';
+                    const ownSchedule = scheduled && capture.frequencySource === 'table';
+                    const runtime = runtimeByTableId[table.id];
+                    const conflict = conflicts.get(tableIndex) || runtime?.roleConflict;
+                    return `<tr class="${tableIndex === state.activeTableIndex ? 'active' : ''} ${conflict ? 'has-role-conflict' : ''}" data-schema-table-row="${tableIndex}">
+                        <td class="memory-schema-sticky-name">${renderInput('table-name', table.name || '', { tableIndex, title: table.name || '', disabled: roleScope })}</td>
+                        <td class="memory-schema-role-cell">${renderInput('table-system-role', role, { tableIndex, choices: SYSTEM_ROLES, disabled: roleScope })}${conflict ? `<small class="memory-schema-conflict">同一职责重复 ${conflict.count} 次</small>` : ''}</td>
+                        <td>${renderInput('table-mode', table.mode || 'keyValue', { tableIndex, choices: [['keyValue', 'KV'], ['rows', '多行']], disabled: roleScope })}</td>
+                        <td>${renderInput('table-memory-layer', layer, { tableIndex, choices: LAYERS, disabled: roleScope })}</td>
+                        <td>${policy('table-capture-mode', 'capturePolicy.mode', capture.mode, { tableIndex, choices: CAPTURE_MODES })}</td>
+                        <td>${policy('table-commit-mode', 'commitPolicy.mode', commit.mode, { tableIndex, choices: COMMIT_MODES })}</td>
+                        <td>${policy('table-api-mode', 'capturePolicy.apiMode', capture.apiMode, { tableIndex, choices: API_MODES, disabled: capture.mode === 'sidecar' || capture.mode === 'disabled' })}</td>
+                        <td>${policy('table-frequency-source', 'capturePolicy.frequencySource', capture.frequencySource, { tableIndex, choices: FREQUENCY_SOURCES, disabled: !scheduled })}</td>
+                        <td>${policy('table-trigger-mode', 'updatePolicy.triggerMode', update.triggerMode || 'manual', { tableIndex, choices: [['rounds', '按轮'], ['messages', '按消息'], ['either', '先到者'], ['manual', '仅手动']], disabled: !ownSchedule })}</td>
+                        <td>${policy('table-round-interval', 'updatePolicy.roundInterval', update.roundInterval ?? '', { tableIndex, type: 'number', placeholder: '默认', disabled: !ownSchedule })}</td>
+                        <td>${policy('table-message-interval', 'updatePolicy.messageInterval', update.messageInterval ?? '', { tableIndex, type: 'number', placeholder: '默认', disabled: !ownSchedule })}</td>
+                        <td>${policy('table-max-source-messages', 'updatePolicy.maxSourceMessages', update.maxSourceMessages ?? '', { tableIndex, type: 'number', placeholder: '默认', disabled: !ownSchedule })}</td>
+                        <td>${policy('table-overlap-messages', 'updatePolicy.overlapMessages', update.overlapMessages ?? '', { tableIndex, type: 'number', placeholder: '默认', disabled: !ownSchedule })}</td>
+                        <td>${policy('table-allow-add', 'updatePolicy.allowAdd', update.allowAdd !== false ? 'true' : 'false', { tableIndex, choices: [['true', '允许'], ['false', '禁止']] })}</td>
+                        <td>${policy('table-allow-update', 'updatePolicy.allowUpdate', update.allowUpdate !== false ? 'true' : 'false', { tableIndex, choices: [['true', '允许'], ['false', '禁止']] })}</td>
+                        <td>${policy('table-allow-delete', 'updatePolicy.allowDelete', update.allowDelete ? 'true' : 'false', { tableIndex, choices: [['false', '禁止'], ['true', '允许']] })}</td>
+                        <td>${policy('table-injection-mode', 'injectionPolicy.mode', inject.mode || 'never', { tableIndex, choices: [['always', '始终'], ['active', '有效项'], ['relevant', '相关'], ['never', '从不']] })}</td>
+                        <td>${policy('table-injection-top-k', 'injectionPolicy.topK', inject.topK ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
+                        <td>${policy('table-injection-threshold', 'injectionPolicy.threshold', inject.threshold ?? '', { tableIndex, type: 'number', step: '0.01', placeholder: '可空' })}</td>
+                        <td>${policy('table-injection-budget', 'injectionPolicy.budget', inject.budget ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
+                        <td>${policy('table-max-age-days', 'injectionPolicy.maxAgeDays', inject.maxAgeDays ?? '', { tableIndex, type: 'number', placeholder: '可空' })}</td>
+                        <td>${policy('table-include-pinned', 'injectionPolicy.includePinned', inject.includePinned !== false ? 'true' : 'false', { tableIndex, choices: [['true', '包含'], ['false', '排除']] })}</td>
+                        <td>${policy('table-include-completed', 'injectionPolicy.includeCompleted', inject.includeCompleted ? 'true' : 'false', { tableIndex, choices: [['false', '排除'], ['true', '包含']] })}</td>
+                        <td class="memory-schema-long-cell">${renderInput('table-extract-prompt', table.extractPrompt || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空', disabled: roleScope })}</td>
+                        <td class="memory-schema-long-cell">${policy('table-update-instructions', 'updatePolicy.instructions', update.instructions || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空' })}</td>
+                        <td class="memory-schema-long-cell">${policy('table-injection-instructions', 'injectionPolicy.instructions', inject.instructions || '', { tableIndex, multiline: true, rows: 3, placeholder: '可空' })}</td>
+                        <td><button type="button" class="memory-schema-field-count ${tableIndex === state.activeTableIndex ? 'active' : ''}" data-schema-action="select-fields" data-table-index="${tableIndex}">${(table.columns || []).length} 个字段</button></td>
+                        <td class="memory-schema-effective-cell">${renderEffectiveSummary(resolution)}</td>
+                        <td class="memory-schema-source-cell">${renderSourceSummary(resolution)}</td>
+                        <td class="memory-schema-runtime-cell">${runtimeCell(runtime, 'unsyncedMessages')}</td>
+                        <td class="memory-schema-runtime-cell">${runtimeCell(runtime, 'lastRunLabel')}</td>
+                        <td class="memory-schema-runtime-cell">${runtime?.pendingReview ? '有' : (runtime ? '无' : '—')}</td>
+                        <td class="memory-schema-runtime-cell">${runtimeCell(runtime, 'cursorPosition')}</td>
+                        <td><div class="memory-schema-runtime-actions"><button type="button" data-schema-action="run-table-update" data-table-index="${tableIndex}" ${runtime ? '' : 'disabled'}>整理</button><button type="button" data-schema-action="cursor-start" data-table-index="${tableIndex}" ${runtime ? '' : 'disabled'}>从头</button><button type="button" data-schema-action="cursor-latest" data-table-index="${tableIndex}" ${runtime ? '' : 'disabled'}>最新</button></div></td>
+                        <td>${roleScope
+                            ? `<button type="button" class="memory-schema-reset-override" data-schema-action="reset-role-override" data-table-index="${tableIndex}" ${resolution?.hasRoleOverride ? '' : 'disabled'}>恢复模板</button>`
+                            : `<div class="memory-schema-row-actions"><button type="button" data-schema-action="move-table-up" data-table-index="${tableIndex}" aria-label="上移">↑</button><button type="button" data-schema-action="move-table-down" data-table-index="${tableIndex}" aria-label="下移">↓</button><button type="button" class="danger" data-schema-action="remove-table" data-table-index="${tableIndex}" aria-label="删除">×</button></div>`}</td>
                     </tr>`;
                 }).join('')}</tbody>
             </table></div>
@@ -116,27 +205,31 @@
     }
 
     function renderFieldSettings(draft, state) {
-        const tableIndex = Math.min(Math.max(0, Number(state.activeTableIndex) || 0), Math.max(0, draft.tables.length - 1));
-        state.activeTableIndex = tableIndex;
-        const table = draft.tables[tableIndex];
+        const tableIndex = state.activeTableIndex || 0;
+        const table = draft.tables?.[tableIndex];
         if (!table) return '<section class="memory-schema-unified-section"><div class="memory-schema-empty">还没有表格。</div></section>';
         const groups = Model.fieldGroups(table);
         const width = fieldNameColumnWidth(table);
-        return `<section class="memory-schema-unified-section memory-schema-fields-section" id="memory-schema-fields-section" aria-label="字段设置">
-            <div class="memory-schema-section-head"><div><strong>${escapeHtml(table.name)} · 字段设置</strong><small>基础项与高级项已合并；选项、最小值和最大值都允许留空。</small></div><button type="button" class="btn btn-small btn-primary" data-schema-action="add-field" data-table-index="${tableIndex}">新增字段</button></div>
+        const roleScope = state.policyScope === 'role';
+        return `<section class="memory-schema-unified-section memory-schema-fields-section ${roleScope ? 'is-readonly' : ''}" id="memory-schema-fields-section" aria-label="字段设置">
+            <div class="memory-schema-section-head"><div><strong>${escapeHtml(table.name)} · 字段设置</strong><small>字段 ID 不在日常界面显示；选项、最小值和最大值都允许留空；每个字段可以独立决定主体、证据要求、写入方式和最低置信度。</small></div><button type="button" class="btn btn-small btn-primary" data-schema-action="add-field" data-table-index="${tableIndex}" ${roleScope ? 'disabled' : ''}>新增字段</button></div>
             <div class="memory-schema-grid-wrap memory-schema-wide-grid-wrap"><table class="memory-schema-grid memory-schema-fields-grid memory-schema-unified-field-grid" style="--schema-field-name-width:${width.desktop}px;--schema-field-name-width-mobile:${width.mobile}px" data-schema-name-width-desktop="${width.desktop}" data-schema-name-width-mobile="${width.mobile}" data-schema-name-max-units="${width.longestUnits}">
-                <colgroup><col class="schema-col-group"><col class="schema-col-name"><col class="schema-col-type"><col class="schema-col-default"><col class="schema-col-options"><col class="schema-col-min"><col class="schema-col-max"><col class="schema-col-toggle"><col class="schema-col-toggle"><col class="schema-col-summary"><col class="schema-col-format"><col class="schema-col-ai-hint"><col class="schema-col-rules"><col class="schema-col-actions"></colgroup>
-                <thead><tr><th>分组</th><th>字段名</th><th>类型</th><th>默认值</th><th>选项</th><th>最小值</th><th>最大值</th><th>普通显示</th><th>AI 编辑</th><th>摘要标签</th><th>显示格式</th><th>AI 提示</th><th>条件规则</th><th>操作</th></tr></thead>
-                ${groups.map(group => `<tbody><tr class="memory-schema-group-row"><th colspan="14"><span>${escapeHtml(group.name)}</span><small>${group.fields.length} 个字段</small></th></tr>${group.fields.map(({ field, index }) => `<tr>
-                    <td>${renderInput('field-group', field.group || '', { tableIndex, fieldIndex: index, placeholder: '可空' })}</td>
-                    <td class="memory-schema-sticky-field-name">${renderInput('field-key', field.key || '', { tableIndex, fieldIndex: index, title: field.key || '' })}<small class="memory-schema-id">${escapeHtml(field.id || '')}</small></td>
+                <colgroup><col class="schema-col-group"><col class="schema-col-name"><col class="schema-col-type"><col class="schema-col-default"><col class="schema-col-options"><col class="schema-col-min"><col class="schema-col-max"><col class="schema-col-display"><col class="schema-col-ai"><col class="schema-col-subject"><col class="schema-col-evidence"><col class="schema-col-commit"><col class="schema-col-confidence"><col class="schema-col-summary"><col class="schema-col-format"><col class="schema-col-hint"><col class="schema-col-rules"><col class="schema-col-actions"></colgroup>
+                <thead><tr><th>分组</th><th>字段名</th><th>类型</th><th>默认值</th><th>选项</th><th>最小值</th><th>最大值</th><th>普通显示</th><th>AI 编辑</th><th>信息主体</th><th>证据要求</th><th>字段写入</th><th>最低置信度</th><th>摘要标签</th><th>显示格式</th><th>AI 提示</th><th>条件规则</th><th>操作</th></tr></thead>
+                ${groups.map(group => `<tbody><tr class="memory-schema-group-row"><th colspan="18"><span>${escapeHtml(group.name)}</span><small>${group.fields.length} 个字段</small></th></tr>${group.fields.map(({ field, index }) => `<tr>
+                    <td>${renderInput('field-group', field.group || '', { tableIndex, fieldIndex: index, placeholder: '未分组' })}</td>
+                    <td class="memory-schema-sticky-field-name">${renderInput('field-key', field.key || '', { tableIndex, fieldIndex: index, title: field.key || '', className: 'schema-col-name' })}</td>
                     <td>${renderInput('field-type', field.type || 'text', { tableIndex, fieldIndex: index, choices: FIELD_TYPES })}</td>
                     <td>${renderInput('field-default', Array.isArray(field.default) ? field.default.join(', ') : (field.default ?? ''), { tableIndex, fieldIndex: index, multiline: field.type === 'longtext', rows: field.type === 'longtext' ? 3 : 2, placeholder: '可空' })}</td>
-                    <td>${renderInput('field-options', (field.options || []).join('\n'), { tableIndex, fieldIndex: index, multiline: true, rows: 3, placeholder: '每行一个；可空' })}</td>
+                    <td>${renderInput('field-options', (field.options || []).join('\n'), { tableIndex, fieldIndex: index, multiline: true, rows: 3, placeholder: '可空' })}</td>
                     <td>${renderInput('field-min', field.min ?? '', { tableIndex, fieldIndex: index, type: 'number', placeholder: '可空' })}</td>
                     <td>${renderInput('field-max', field.max ?? '', { tableIndex, fieldIndex: index, type: 'number', placeholder: '可空' })}</td>
                     <td>${renderInput('field-important', field.important !== false ? 'true' : 'false', { tableIndex, fieldIndex: index, choices: [['true', '显示'], ['false', '隐藏']] })}</td>
                     <td>${renderInput('field-ai-editable', field.aiEditable !== false ? 'true' : 'false', { tableIndex, fieldIndex: index, choices: [['true', '允许'], ['false', '只读']] })}</td>
+                    <td>${renderInput('field-policy-subject', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).subject || 'user', { tableIndex, fieldIndex: index, choices: FIELD_SUBJECTS })}</td>
+                    <td>${renderInput('field-policy-evidence', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).evidence || 'explicit', { tableIndex, fieldIndex: index, choices: FIELD_EVIDENCE })}</td>
+                    <td>${renderInput('field-policy-commit', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).commitMode || 'inherit', { tableIndex, fieldIndex: index, choices: FIELD_COMMIT_MODES })}</td>
+                    <td>${renderInput('field-policy-confidence', (FieldPolicy?.normalizeFieldPolicy(field, table) || field.writePolicy || {}).minConfidence ?? 60, { tableIndex, fieldIndex: index, type: 'number', placeholder: '0-100' })}</td>
                     <td>${renderInput('field-summary-label', field.summaryLabel || '', { tableIndex, fieldIndex: index, placeholder: '可空' })}</td>
                     <td>${renderInput('field-display-format', field.displayFormat || '{value}', { tableIndex, fieldIndex: index, placeholder: '{value}' })}</td>
                     <td class="memory-schema-long-cell">${renderInput('field-ai-hint', field.aiHint || '', { tableIndex, fieldIndex: index, multiline: true, rows: 3, placeholder: '可空' })}</td>
@@ -147,14 +240,14 @@
         </section>`;
     }
 
-    function renderRawJson(draft) {
-        return `<details class="memory-schema-raw"><summary>高级：导入或查看原始 JSON</summary><p>这里仍然编辑同一份结构，只用于导入、导出和故障排查；日常配置请使用上面的统一表格。</p><textarea id="memory-schema-raw-json" rows="14">${escapeHtml(JSON.stringify(draft, null, 2))}</textarea><div><button type="button" class="btn btn-small btn-secondary" data-schema-action="refresh-raw-json">用当前结构刷新</button><button type="button" class="btn btn-small btn-primary" data-schema-action="apply-raw-json">应用原始 JSON</button></div></details>`;
+    function renderRawJson(draft, state = {}) {
+        return `<details class="memory-schema-raw" ${state.policyScope === 'role' ? 'hidden' : ''}><summary>高级：导入或查看原始 JSON</summary><p>内部 ID 只在这里保留，用于导入、导出和故障排查；日常配置请使用上面的统一表格。</p><textarea id="memory-schema-raw-json" rows="14">${escapeHtml(JSON.stringify(draft, null, 2))}</textarea><div><button type="button" class="btn btn-small btn-secondary" data-schema-action="refresh-raw-json">用当前结构刷新</button><button type="button" class="btn btn-small btn-primary" data-schema-action="apply-raw-json">应用原始 JSON</button></div></details>`;
     }
 
     function render(draft, state) {
         const safeState = state || {};
         safeState.activeTableIndex = Math.min(Math.max(0, Number(safeState.activeTableIndex) || 0), Math.max(0, (draft.tables || []).length - 1));
-        return `${renderSummary(draft)}<div class="memory-schema-unified-note"><strong>统一结构工作台</strong><span>表格设置、字段设置和高级设置只在这一页维护；原始 JSON 不再作为并列视图。</span></div>${renderTableSettings(draft, safeState)}${renderFieldSettings(draft, safeState)}${renderRawJson(draft)}`;
+        return `${renderSummary(draft, safeState)}${renderPolicyScope(safeState)}<div class="memory-schema-unified-note"><strong>统一结构工作台 · 有效策略</strong><span>模板默认与当前角色覆盖共用同一解释器；表格右侧会显示最终生效结果和来源。</span></div>${renderTableSettings(draft, safeState)}${renderFieldSettings(draft, safeState)}${renderRawJson(draft, safeState)}`;
     }
 
     function target(draft, tableIndex, fieldIndex) {
@@ -173,10 +266,13 @@
         if (!item) return false;
         const value = element.value;
         const ensurePolicies = () => {
-            const layer = Policy ? Policy.normalizeLayer(item.memoryLayer, item.name) : (item.memoryLayer || 'short');
-            item.memoryLayer = layer;
-            item.updatePolicy = Policy ? Policy.normalizeUpdatePolicy(item.updatePolicy || {}, layer) : (item.updatePolicy || {});
-            item.injectionPolicy = Policy ? Policy.normalizeInjectionPolicy(item.injectionPolicy || {}, layer) : (item.injectionPolicy || {});
+            const normalized = Policy?.normalizeTablePolicy ? Policy.normalizeTablePolicy(item) : item;
+            item.memoryLayer = normalized.memoryLayer || item.memoryLayer || 'short';
+            item.systemRole = normalized.systemRole || item.systemRole || 'general';
+            item.capturePolicy = normalized.capturePolicy || item.capturePolicy || { mode: 'manual', frequencySource: 'table', apiMode: 'summary' };
+            item.commitPolicy = normalized.commitPolicy || item.commitPolicy || { mode: 'review', requireUserConfirmation: true };
+            item.updatePolicy = normalized.updatePolicy || item.updatePolicy || {};
+            item.injectionPolicy = normalized.injectionPolicy || item.injectionPolicy || {};
         };
         const optionalNumber = (raw, fallback = undefined) => raw === '' ? fallback : Number(raw);
         switch (role) {
@@ -184,9 +280,18 @@
             case 'template-description': draft.description = value; break;
             case 'table-name': item.name = value; break;
             case 'table-mode': item.mode = value === 'rows' ? 'rows' : 'keyValue'; break;
-            case 'table-memory-layer': item.memoryLayer = value; if (Policy) { item.updatePolicy = Policy.normalizeUpdatePolicy({}, value); item.injectionPolicy = Policy.normalizeInjectionPolicy({}, value); } break;
+            case 'table-memory-layer': item.memoryLayer = value; ensurePolicies(); break;
+            case 'table-system-role': item.systemRole = value; ensurePolicies(); break;
+            case 'table-capture-mode':
+                ensurePolicies(); item.capturePolicy.mode = value;
+                if (value === 'sidecar' || value === 'disabled') item.capturePolicy.apiMode = 'none';
+                item.updatePolicy.enabled = value === 'scheduled';
+                item.updatePolicy.triggerMode = value === 'scheduled' && item.updatePolicy.triggerMode === 'manual' ? 'either' : (value === 'scheduled' ? item.updatePolicy.triggerMode : 'manual');
+                break;
+            case 'table-commit-mode': ensurePolicies(); item.commitPolicy.mode = value; item.commitPolicy.requireUserConfirmation = value === 'review' || value === 'promotion'; break;
+            case 'table-api-mode': ensurePolicies(); item.capturePolicy.apiMode = value; if (value !== 'none') item.updatePolicy.useSummaryApi = value === 'summary'; break;
+            case 'table-frequency-source': ensurePolicies(); item.capturePolicy.frequencySource = value; break;
             case 'table-extract-prompt': item.extractPrompt = value; break;
-            case 'table-update-enabled': ensurePolicies(); item.updatePolicy.enabled = value !== 'false'; break;
             case 'table-trigger-mode': ensurePolicies(); item.updatePolicy.triggerMode = value; break;
             case 'table-round-interval': ensurePolicies(); item.updatePolicy.roundInterval = Math.max(0, optionalNumber(value, 0) || 0); break;
             case 'table-message-interval': ensurePolicies(); item.updatePolicy.messageInterval = Math.max(0, optionalNumber(value, 0) || 0); break;
@@ -195,7 +300,6 @@
             case 'table-allow-add': ensurePolicies(); item.updatePolicy.allowAdd = value === 'true'; break;
             case 'table-allow-update': ensurePolicies(); item.updatePolicy.allowUpdate = value === 'true'; break;
             case 'table-allow-delete': ensurePolicies(); item.updatePolicy.allowDelete = value === 'true'; break;
-            case 'table-use-summary-api': ensurePolicies(); item.updatePolicy.useSummaryApi = value === 'true'; break;
             case 'table-update-instructions': ensurePolicies(); item.updatePolicy.instructions = value; break;
             case 'table-injection-mode': ensurePolicies(); item.injectionPolicy.mode = value; break;
             case 'table-injection-top-k': ensurePolicies(); item.injectionPolicy.topK = Math.max(0, optionalNumber(value, 0) || 0); break;
@@ -210,6 +314,10 @@
             case 'field-type': item.type = Domain.normalizeFieldType(value); break;
             case 'field-default': item.default = item.type === 'tags' ? Domain.parseOptionText(value) : value; break;
             case 'field-ai-editable': item.aiEditable = value !== 'false'; break;
+            case 'field-policy-subject': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), subject: value }; break;
+            case 'field-policy-evidence': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), evidence: value }; break;
+            case 'field-policy-commit': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), commitMode: value }; break;
+            case 'field-policy-confidence': item.writePolicy = { ...(FieldPolicy?.normalizeFieldPolicy(item, draft.tables?.[tableIndex]) || item.writePolicy || {}), minConfidence: Math.max(0, Math.min(100, Number(value) || 0)) }; break;
             case 'field-important': item.important = value !== 'false'; break;
             case 'field-summary-label': item.summaryLabel = value; break;
             case 'field-display-format': item.displayFormat = value || '{value}'; break;
@@ -229,7 +337,7 @@
     }
 
     Kernel.register('schemaEditor', Object.freeze({
-        VERSION: '2.13-R5.2',
+        VERSION: '2.14-R5',
         render,
         fieldNameVisualUnits,
         fieldNameColumnWidth,

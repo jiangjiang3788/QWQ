@@ -1,0 +1,39 @@
+{
+  "version": "2.14-R2",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "rowCount": 234,
+  "testedTable": "稳定长期特征库",
+  "testedField": "内容",
+  "failureWriteAttempts": 1,
+  "rollbackApplied": true,
+  "rollbackExact": true,
+  "successWrites": 2,
+  "receipt": {
+    "schemaVersion": "memory-write-receipt.v1",
+    "producerVersion": "2.14-R2",
+    "status": "committed",
+    "recordCount": 1,
+    "fieldCount": 1,
+    "persisted": true
+  },
+  "revertedToOriginalValue": true,
+  "sourceModified": false,
+  "gatewayMetrics": {
+    "requested": 3,
+    "committed": 2,
+    "skipped": 0,
+    "rolledBack": 1,
+    "recordedReceipts": 0,
+    "coordinator": {
+      "requested": 3,
+      "committed": 2,
+      "rolledBack": 1,
+      "skipped": 0,
+      "failed": 1,
+      "maxQueueDepth": 1,
+      "activeCharacters": 1
+    }
+  }
+}

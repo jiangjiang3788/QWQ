@@ -6,6 +6,7 @@ const assert = require('assert');
 const root = path.resolve(__dirname, '..');
 const chat = fs.readFileSync(path.join(root, 'js/modules/chat_ai.js'), 'utf8');
 const memoryTable = fs.readFileSync(path.join(root, 'js/modules/memory_table.js'), 'utf8');
+const memoryRetrievalUseCase = fs.readFileSync(path.join(root, 'js/features/memory/retrieval_orchestrator.js'), 'utf8');
 const memoryUi = fs.readFileSync(path.join(root, 'js/modules/memory_mode_ui.js'), 'utf8');
 const sidecar = fs.readFileSync(path.join(root, 'js/modules/memory_table_sidecar.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
@@ -81,7 +82,7 @@ assert.strictEqual((alreadyInjected.match(/<structured_archive_memory>/g) || [])
 sandbox.api.prepareCombinedLongTermMemoryContext(character).then(() => {
   assert(tablePrepareOptions && tablePrepareOptions.allowInactiveMode === true, 'table retrieval not prepared outside table mode');
   assert(vectorPrepared, 'vector supplemental retrieval not prepared');
-  assert(memoryTable.includes('const allowInactiveMode = !!options.allowInactiveMode;'), 'memory table inactive-mode bypass missing');
+  assert(memoryRetrievalUseCase.includes('const allowInactiveMode = !!options.allowInactiveMode;'), 'memory retrieval use case inactive-mode bypass missing');
   assert(chat.includes("title: '角色档案记忆（结构化档案）'"), 'operation center archive source missing');
   assert(chat.includes("extractPromptTagContent(systemPrompt, 'structured_archive_memory')"), 'archive source is not read from final prompt');
   assert(chat.includes('window.OvoMemory?.context'), 'chat does not use the converged memory facade');

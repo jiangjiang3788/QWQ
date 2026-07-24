@@ -5,14 +5,9 @@
     const Core = Kernel?.core;
     if (!Core) throw new Error('记忆内核未加载');
     const Service = Kernel.require('sidecarCandidateService');
+    const WriteGateway = Kernel.get('writeGateway') || Kernel.require('writeCoordinator');
     const Policy = Kernel.get('policy');
     const ACTIONS = new Set(['save', 'merge', 'dismiss', 'delete', 'clear-closed', 'clear-all']);
-
-    function restore(chat, snapshot) {
-        chat.memoryTables.data = Core.clone(snapshot.data);
-        chat.memoryTables.sidecar = Core.clone(snapshot.sidecar);
-        Policy?.clearRetrievalCache?.(chat);
-    }
 
     function operationTitle(action) {
         return action === 'save' ? '保存短期候选到档案'
@@ -72,26 +67,23 @@
         }
         if (action === 'clear-all' && !(context.confirm || global.confirm)?.('确定清空全部短期候选吗？正式档案不会被删除。')) return true;
         const candidateId = element?.dataset?.candidateId || '';
-        const snapshot = {
-            data: Core.clone(chat.memoryTables?.data || {}),
-            sidecar: Core.clone(chat.memoryTables?.sidecar || {})
-        };
         const operation = startOperation(action, chat, candidateId);
         try {
-            const result = Service.execute(chat, action, {
+            const result = await WriteGateway.run(chat, {
+                reason: `sidecar-candidate-${action}`,
+                writer: context.save,
+                persistRollback: true
+            }, ({ transactionId }) => Service.execute(chat, action, {
                 candidateId,
                 targetRowId: targetRowId(element, context),
-                operationId: operation?.id || null,
+                operationId: operation?.id || transactionId,
                 processedBy: 'user'
-            });
-            if (result.changed) await context.save?.(chat.id);
+            }));
             recordOperation(operation, result);
             context.render?.();
             context.toast?.(result.message);
             return true;
         } catch (error) {
-            restore(chat, snapshot);
-            try { await context.save?.(chat.id); } catch (_) {}
             global.OVOOperationRuntime?.fail?.(operation?.id, error, { summary: `候选处理失败：${error.message || error}` });
             context.render?.();
             if (context.showError) context.showError(error);
@@ -101,7 +93,7 @@
     }
 
     Kernel.register('sidecarCandidateController', Object.freeze({
-        VERSION: '2.13-R4',
+        VERSION: '2.14-R2',
         handles: action => ACTIONS.has(action),
         handle
     }));

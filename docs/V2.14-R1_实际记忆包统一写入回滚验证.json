@@ -1,0 +1,23 @@
+{
+  "version": "2.14-R1",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "rowCount": 234,
+  "testedTable": "稳定长期特征库",
+  "testedField": "内容",
+  "failureWriteAttempts": 2,
+  "rollbackExact": true,
+  "successWrites": 2,
+  "undoRestored": true,
+  "sourceModified": false,
+  "coordinatorMetrics": {
+    "requested": 3,
+    "committed": 2,
+    "rolledBack": 1,
+    "skipped": 0,
+    "failed": 1,
+    "maxQueueDepth": 1,
+    "activeCharacters": 1
+  }
+}

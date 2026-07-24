@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const fieldWidth = read('js/features/memory/field_width.js');
 const schema = read('js/features/memory/schema_editor.js');
@@ -45,7 +45,7 @@ assert(tableView.includes("input('topic', '主题'"));
 assert(tableView.includes('data-tag-dimension="effect"'));
 assert(tableGrid.includes('TableView.renderTagEditor(row)'));
 assert(tableEditor.includes('async function commitTagDimension'));
-assert(tableEditor.includes("fieldId: '__tags__'"));
+assert(tableEditor.includes('Domain.setRowTagBundle') || tableEditor.includes("fieldId: '__tags__'"));
 assert(tableEditController.includes('handleTagInput'));
 
 // Multi-level sorting and special tag dimensions exist.

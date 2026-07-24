@@ -6,7 +6,7 @@
     if (!Core) throw new Error('记忆内核未加载');
     const Domain = Kernel.require('domain');
 
-    const VERSION = '2.13-R4';
+    const VERSION = '2.13-R5.3';
     const STATUS = Object.freeze({
         PENDING: 'pending',
         PROMOTED: 'promoted',
@@ -52,6 +52,9 @@
 
     function isRowsTarget(table, type) {
         if (!table || !Domain.isRowsTable(table)) return false;
+        const role = Kernel.get('policy')?.normalizeSystemRole?.(table.systemRole, table) || table.systemRole;
+        if (type === 'daily_observation' && role === 'daily_observation') return true;
+        if (type === 'experience' && role === 'recent_events') return true;
         const rule = TARGET_RULES[type] || TARGET_RULES.experience;
         return rule.ids.includes(table.id) || rule.name.test(String(table.name || ''));
     }
@@ -100,6 +103,14 @@
         const preferred = descriptorByIds(chat, candidate?.suggestedTargetTemplateId, candidate?.suggestedTargetTableId, type);
         if (preferred) return preferred;
         const rule = TARGET_RULES[type];
+        const expectedRole = type === 'daily_observation' ? 'daily_observation' : 'recent_events';
+        for (const template of boundTemplates(chat)) {
+            const tableByRole = (template.tables || []).find(table => {
+                const role = Kernel.get('policy')?.normalizeSystemRole?.(table.systemRole, table) || table.systemRole;
+                return role === expectedRole && Domain.isRowsTable(table);
+            });
+            if (tableByRole) return { template, table: tableByRole };
+        }
         for (const template of boundTemplates(chat)) {
             const tableById = (template.tables || []).find(table => rule.ids.includes(table.id) && Domain.isRowsTable(table));
             if (tableById) return { template, table: tableById };

@@ -1,0 +1,26 @@
+{
+  "version": "2.14-R6",
+  "input": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "fieldCount": 94,
+  "rowCount": 234,
+  "controller": {
+    "beforeLines": 3989,
+    "afterLines": 3128,
+    "reducedLines": 861,
+    "budget": 3300
+  },
+  "extractedUseCases": {
+    "retrieval": "js/features/memory/retrieval_orchestrator.js",
+    "review": "js/features/memory/review_orchestrator.js",
+    "package": "js/features/memory/package_orchestrator.js"
+  },
+  "retrievalEquivalent": true,
+  "policyEquivalent": true,
+  "formalDataHashBefore": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "formalDataHashAfter": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "sourcePackageHashBefore": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourcePackageHashAfter": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourcePackageUnchanged": true
+}

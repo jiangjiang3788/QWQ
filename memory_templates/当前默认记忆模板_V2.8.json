@@ -222,7 +222,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "core_profile",
+          "capturePolicy": {
+            "mode": "manual",
+            "frequencySource": "table",
+            "apiMode": "summary"
+          },
+          "commitPolicy": {
+            "mode": "manual_only",
+            "requireUserConfirmation": false
+          }
         },
         {
           "id": "table_current_state",
@@ -540,7 +550,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "current_state",
+          "capturePolicy": {
+            "mode": "sidecar",
+            "frequencySource": "table",
+            "apiMode": "none"
+          },
+          "commitPolicy": {
+            "mode": "direct",
+            "requireUserConfirmation": false
+          }
         },
         {
           "id": "table_tasks",
@@ -774,7 +794,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "tasks",
+          "capturePolicy": {
+            "mode": "sidecar",
+            "frequencySource": "table",
+            "apiMode": "none"
+          },
+          "commitPolicy": {
+            "mode": "direct",
+            "requireUserConfirmation": false
+          }
         },
         {
           "id": "table_recent_events",
@@ -1008,7 +1038,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "recent_events",
+          "capturePolicy": {
+            "mode": "sidecar",
+            "frequencySource": "table",
+            "apiMode": "none"
+          },
+          "commitPolicy": {
+            "mode": "candidate",
+            "requireUserConfirmation": false
+          }
         },
         {
           "id": "table_daily_observation",
@@ -1154,7 +1194,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "daily_observation",
+          "capturePolicy": {
+            "mode": "sidecar",
+            "frequencySource": "table",
+            "apiMode": "none"
+          },
+          "commitPolicy": {
+            "mode": "candidate",
+            "requireUserConfirmation": false
+          }
         },
         {
           "id": "table_medium_summary",
@@ -1372,7 +1422,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "medium_summary",
+          "capturePolicy": {
+            "mode": "manual",
+            "frequencySource": "table",
+            "apiMode": "summary"
+          },
+          "commitPolicy": {
+            "mode": "review",
+            "requireUserConfirmation": true
+          }
         },
         {
           "id": "table_long_candidate",
@@ -1536,6 +1596,16 @@
           "promotionPolicy": {
             "enabled": true,
             "targetTableId": "table_stable_longterm"
+          },
+          "systemRole": "long_candidate",
+          "capturePolicy": {
+            "mode": "manual",
+            "frequencySource": "table",
+            "apiMode": "summary"
+          },
+          "commitPolicy": {
+            "mode": "promotion",
+            "requireUserConfirmation": true
           }
         },
         {
@@ -1692,7 +1762,17 @@
               "summaryLabel": "",
               "conditionalRules": []
             }
-          ]
+          ],
+          "systemRole": "long_store",
+          "capturePolicy": {
+            "mode": "disabled",
+            "frequencySource": "table",
+            "apiMode": "none"
+          },
+          "commitPolicy": {
+            "mode": "manual_only",
+            "requireUserConfirmation": false
+          }
         }
       ]
     }

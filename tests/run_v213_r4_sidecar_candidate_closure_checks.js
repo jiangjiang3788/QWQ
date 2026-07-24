@@ -45,6 +45,7 @@ vm.createContext(sandbox);
 vm.runInContext(read('js/features/memory/kernel.js'), sandbox);
 vm.runInContext(read('js/modules/memory_table_sidecar.js'), sandbox);
 vm.runInContext(read('js/features/memory/domain.js'), sandbox);
+vm.runInContext(read('js/features/memory/write_coordinator.js'), sandbox);
 vm.runInContext(read('js/features/memory/sidecar_candidate_service.js'), sandbox);
 vm.runInContext(read('js/features/memory/sidecar_candidate_controller.js'), sandbox);
 

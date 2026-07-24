@@ -7,8 +7,17 @@
     if (!Core) throw new Error('记忆内核未加载');
     const escapeHtml = Core.escapeHtml;
     const escapeAttribute = Core.escapeAttribute || Core.escapeHtml;
+    const FieldPolicy = Kernel.get('fieldPolicy') || Object.freeze({
+        describe: () => '兼容默认',
+        effectiveCommitMode: () => 'direct',
+        assess: field => ({ allowed: field?.aiEditable !== false, route: field?.aiEditable === false ? 'blocked' : 'direct', policy: {}, sourceEvidence: 'inferred', confidence: 0, reasons: [] }),
+        setRuntimeValue: () => null,
+        getRuntimeEntry: () => null
+    });
+    const Review = Kernel.get('review');
+    const PolicyResolver = Kernel.get('policyResolver');
 
-    const VERSION = '2.13-R4';
+    const VERSION = '2.14-R5';
     const MAX_CANDIDATES = 200;
     const MAX_HISTORY = 120;
     const LIVE_TABLE_IDS = new Set(['table_current_state', 'table_tasks']);
@@ -62,26 +71,37 @@
         return db.memoryTableTemplates.filter(template => ids.has(template.id));
     }
 
+    function tableRole(table) {
+        return Kernel.get('policy')?.normalizeSystemRole?.(table?.systemRole, table) || String(table?.systemRole || '');
+    }
+
     function isCurrentStateTable(table) {
-        return !!table && (table.id === 'table_current_state' || /当前状态|近期状态/.test(String(table.name || '')));
+        return !!table && (tableRole(table) === 'current_state' || table.id === 'table_current_state' || /当前状态|近期状态/.test(String(table.name || '')));
     }
 
     function isTaskTable(table) {
-        return !!table && (table.id === 'table_tasks' || /待办|承诺|未完成事项/.test(String(table.name || '')));
+        return !!table && (tableRole(table) === 'tasks' || table.id === 'table_tasks' || /待办|承诺|未完成事项/.test(String(table.name || '')));
     }
 
     function isCandidateSourceTable(table) {
-        return !!table && (CANDIDATE_TABLE_IDS.has(table.id) || /近期经历|重要事件|日常观察|睡眠|饮水/.test(String(table.name || '')));
+        const role = tableRole(table);
+        return !!table && (role === 'recent_events' || role === 'daily_observation' || CANDIDATE_TABLE_IDS.has(table.id) || /近期经历|重要事件|日常观察|睡眠|饮水/.test(String(table.name || '')));
     }
 
     function isLiveTable(table) {
         return isCurrentStateTable(table) || isTaskTable(table);
     }
 
-    function findTable(chat, predicate) {
+    function findTable(chat, predicate, options = {}) {
         for (const template of getBoundTemplates(chat)) {
-            const table = (template.tables || []).find(predicate);
-            if (table) return { template, table };
+            for (const sourceTable of (template.tables || [])) {
+                const table = PolicyResolver?.materializeTable
+                    ? PolicyResolver.materializeTable(chat, template.id, sourceTable)
+                    : sourceTable;
+                if (!predicate(table)) continue;
+                if (options.forCapture && table.capturePolicy?.mode !== 'sidecar') continue;
+                return { template, table, sourceTable };
+            }
         }
         return null;
     }
@@ -144,7 +164,34 @@
         return !getLockedSet(chat, template.id, table.id).has(field.id);
     }
 
-    function setFields(chat, template, table, target, patch, report, prefix) {
+    function queueFieldProposal(report, template, table, field, oldValue, newValue, assessment, context = {}) {
+        report.pendingFieldProposals ||= [];
+        report.pendingFieldProposals.push({
+            id: makeId('sidecar_field_proposal'),
+            kind: context.rowId ? 'row_update_field' : 'field',
+            actionLabel: assessment.route === 'candidate' ? '候选字段' : '更新字段',
+            templateId: template.id,
+            tableId: table.id,
+            templateName: template.name,
+            tableName: table.name,
+            rowId: context.rowId || undefined,
+            fieldId: field.id,
+            label: `${table.name} / ${field.key}`,
+            oldValue,
+            newValue,
+            valid: true,
+            error: assessment.reasons.join('；'),
+            risk: assessment.route === 'candidate' ? 'medium' : 'low',
+            editable: true,
+            fieldType: field.type,
+            fieldPolicy: assessment.policy,
+            fieldRoute: assessment.route,
+            evidence: assessment.sourceEvidence,
+            confidence: assessment.confidence
+        });
+    }
+
+    function setFields(chat, template, table, target, patch, report, prefix, context = {}) {
         if (!patch || typeof patch !== 'object') return 0;
         let changed = 0;
         Object.entries(patch).forEach(([key, raw]) => {
@@ -160,6 +207,34 @@
             }
             const before = target[field.id];
             if (JSON.stringify(before) === JSON.stringify(value)) return;
+            const assessment = FieldPolicy.assess(field, table, {
+                source: context.source || 'assistant_inferred',
+                confidence: context.confidence || 0
+            });
+            if (!assessment.allowed || assessment.route === 'blocked') {
+                report.rejected.push(`${prefix || table.name}.${field.key}: ${assessment.reasons.join('；') || '字段策略阻止写入'}`);
+                return;
+            }
+            if (assessment.route === 'runtime_only') {
+                FieldPolicy.setRuntimeValue(chat, template.id, table.id, context.rowId ? `${context.rowId}::${field.id}` : field.id, value, {
+                    source: context.source,
+                    confidence: context.confidence
+                });
+                report.runtimeChanged ||= [];
+                report.runtimeChanged.push(`${prefix || table.name}.${field.key}`);
+                return;
+            }
+            if (assessment.route === 'review' || assessment.route === 'candidate') {
+                if (context.rowAdd) {
+                    context.deferredValues ||= {};
+                    context.deferredValues[field.id] = value;
+                    context.deferredDecisions ||= {};
+                    context.deferredDecisions[field.id] = assessment;
+                } else {
+                    queueFieldProposal(report, template, table, field, before, value, assessment, context);
+                }
+                return;
+            }
             target[field.id] = value;
             changed += 1;
             report.changed.push(`${prefix || table.name}.${field.key}`);
@@ -167,12 +242,53 @@
         return changed;
     }
 
+    function flushFieldReviewBatches(chat, report, context = {}) {
+        if (!Review || !Array.isArray(report.pendingFieldProposals) || !report.pendingFieldProposals.length) return [];
+        const groups = new Map();
+        report.pendingFieldProposals.forEach(proposal => {
+            const key = `${proposal.templateId}::${proposal.tableId}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(proposal);
+        });
+        const batches = [];
+        groups.forEach(proposals => {
+            const first = proposals[0];
+            batches.push(Review.enqueueBatch(chat, {
+                id: makeId('memory_review'),
+                templateId: first.templateId,
+                tableId: first.tableId,
+                templateName: first.templateName,
+                tableName: first.tableName,
+                source: 'sidecar_field_policy',
+                apiMode: 'main',
+                requestedApiMode: 'main',
+                sourceMessageCount: 1,
+                range: { start: 0, end: 0 },
+                historyPreview: '',
+                fieldPolicyVersion: '2.14-R5',
+                proposals
+            }));
+        });
+        report.reviewBatchIds = batches.map(item => item.id);
+        return batches;
+    }
     function migratePolicies(chat) {
         ensureMemoryTables(chat);
         let dirty = false;
         getBoundTemplates(chat).forEach(template => {
             (template.tables || []).forEach(table => {
                 if (isLiveTable(table) || isCandidateSourceTable(table)) {
+                    table.capturePolicy = {
+                        ...(table.capturePolicy || {}),
+                        mode: 'sidecar',
+                        frequencySource: 'table',
+                        apiMode: 'none'
+                    };
+                    table.commitPolicy = {
+                        ...(table.commitPolicy || {}),
+                        mode: isLiveTable(table) ? 'direct' : 'candidate',
+                        requireUserConfirmation: false
+                    };
                     table.updatePolicy ||= {};
                     if (table.updatePolicy.enabled !== false || table.updatePolicy.triggerMode !== 'manual') {
                         table.updatePolicy.enabled = false;
@@ -202,6 +318,11 @@
         if (typeof value === 'boolean') return value ? '是' : '否';
         return String(value);
     }
+    function getEffectiveFieldValue(chat, template, table, field, formalValue, rowId) {
+        if (FieldPolicy.effectiveCommitMode(field, table) !== 'runtime_only') return formalValue;
+        const runtimeId = rowId ? `${rowId}::${field.id}` : field.id;
+        return FieldPolicy.getRuntimeEntry(chat, template.id, table.id, runtimeId)?.value ?? formalValue;
+    }
 
     function isStatusExpired(table, data) {
         const field = (table.columns || []).find(item => /状态有效期/.test(item.key));
@@ -217,7 +338,7 @@
         const data = ensureTableData(chat, template, table);
         if (isStatusExpired(table, data)) return '';
         const fields = (table.columns || []).filter(field => field.important !== false).map(field => {
-            const value = getFieldDisplay(field, data[field.id]);
+            const value = getFieldDisplay(field, getEffectiveFieldValue(chat, template, table, field, data[field.id]));
             return value ? `- ${field.key}: ${value}` : '';
         }).filter(Boolean);
         return fields.length ? `【当前状态｜近3-7天，可能变化】\n${fields.join('\n')}` : '';
@@ -273,7 +394,7 @@
             return true;
         }).map(field => {
             const options = field.type === 'enum' && field.options?.length ? `，可选：${field.options.join('/')}` : '';
-            return `- ${field.key}（${field.type}${options}）`;
+            return `- ${field.key}（${field.type}${options}；策略：${FieldPolicy.describe(field, table)}）`;
         }).join('\n');
     }
 
@@ -281,8 +402,8 @@
         const state = ensureMemoryTables(chat);
         if (!state?.enabled || chat.memoryTables?.enabled === false || getBoundTemplates(chat).length === 0) return '';
         migratePolicies(chat);
-        const statusDescriptor = findTable(chat, isCurrentStateTable);
-        const taskDescriptor = findTable(chat, isTaskTable);
+        const statusDescriptor = findTable(chat, isCurrentStateTable, { forCapture: true });
+        const taskDescriptor = findTable(chat, isTaskTable, { forCapture: true });
         if (!statusDescriptor && !taskDescriptor) return '';
         const liveSections = [
             buildStatusContext(chat, statusDescriptor),
@@ -322,11 +443,13 @@
 
     function applyStatus(chat, payload, report) {
         if (!payload || typeof payload !== 'object' || !payload.fields || typeof payload.fields !== 'object') return;
-        const descriptor = findTable(chat, isCurrentStateTable);
+        const descriptor = findTable(chat, isCurrentStateTable, { forCapture: true });
         if (!descriptor) return;
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
-        const changed = setFields(chat, template, table, data, payload.fields, report, '当前状态');
+        const confidence = Math.max(0, Math.min(100, Number(payload.confidence) || 0));
+        const source = payload.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred';
+        const changed = setFields(chat, template, table, data, payload.fields, report, '当前状态', { source, confidence });
         if (!changed) return;
         const timeField = (table.columns || []).find(field => /状态记录时间|更新时间/.test(field.key));
         if (timeField && canEditField(chat, template, table, timeField)) data[timeField.id] = nowText();
@@ -337,7 +460,6 @@
             data[validField.id] = expires.toISOString().slice(0, 10);
         }
         const state = ensureMemoryTables(chat);
-        const confidence = Math.max(0, Math.min(100, Number(payload.confidence) || 0));
         Object.keys(payload.fields).forEach(key => {
             const field = resolveField(table, key);
             if (!field) return;
@@ -368,7 +490,7 @@
 
     function applyTaskOps(chat, taskOps, report, context = {}) {
         if (!Array.isArray(taskOps) || !taskOps.length) return;
-        const descriptor = findTable(chat, isTaskTable);
+        const descriptor = findTable(chat, isTaskTable, { forCapture: true });
         if (!descriptor) return;
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
@@ -380,12 +502,28 @@
             }
             if (op === 'add') {
                 const cells = {};
-                const tempReport = { changed: [], rejected: report.rejected };
-                setFields(chat, template, table, cells, operation.fields || {}, tempReport, '新增待办');
+                const tempReport = { changed: [], rejected: report.rejected, pendingFieldProposals: report.pendingFieldProposals };
+                const addContext = { source: operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', confidence: Math.max(0, Math.min(100, Number(operation.confidence) || 0)), rowAdd: true, deferredValues: {}, deferredDecisions: {} };
+                setFields(chat, template, table, cells, operation.fields || {}, tempReport, '新增待办', addContext);
                 const titleField = findFieldByPattern(table, /^标题$/);
                 const contentField = findFieldByPattern(table, /^内容$/);
-                if (!String(cells[titleField?.id] || cells[contentField?.id] || '').trim()) {
+                const proposedCells = { ...cells, ...(addContext.deferredValues || {}) };
+                if (!String(proposedCells[titleField?.id] || proposedCells[contentField?.id] || '').trim()) {
                     report.rejected.push('新增待办：缺少标题或内容');
+                    continue;
+                }
+                if (Object.keys(addContext.deferredValues || {}).length) {
+                    report.pendingFieldProposals ||= [];
+                    report.pendingFieldProposals.push({
+                        id: makeId('sidecar_row_proposal'), kind: 'row_add', actionLabel: '候选待办',
+                        templateId: template.id, tableId: table.id, templateName: template.name, tableName: table.name,
+                        label: `${table.name} / 新增待办`, oldValue: '',
+                        newValue: Object.fromEntries((table.columns || []).filter(field => proposedCells[field.id] !== undefined).map(field => [field.key, proposedCells[field.id]])),
+                        fieldValues: proposedCells, fieldDecisions: addContext.deferredDecisions,
+                        valid: true, error: '', risk: 'medium', editable: false, fieldRoute: 'candidate',
+                        evidence: addContext.source, confidence: addContext.confidence
+                    });
+                    report.changed.push('新增待办候选');
                     continue;
                 }
                 const titleText = titleField ? String(cells[titleField.id] || '').trim().toLowerCase() : '';
@@ -399,7 +537,7 @@
                     return (titleText && oldTitle === titleText) || (contentText && oldContent === contentText);
                 });
                 if (duplicate) {
-                    setFields(chat, template, table, duplicate.cells, operation.fields || {}, report, `合并待办:${duplicate.id}`);
+                    setFields(chat, template, table, duplicate.cells, operation.fields || {}, report, `合并待办:${duplicate.id}`, { rowId: duplicate.id, source: operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', confidence: Number(operation.confidence) || 0 });
                     duplicate.meta ||= {};
                     duplicate.meta.updatedAt = Date.now();
                     if (window.MemoryTableLifecycle) window.MemoryTableLifecycle.recordSource(duplicate, operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', { type: 'round', roundId: context.roundId || '', at: Date.now() }, { userConfirmed: operation.source === 'user_explicit' });
@@ -440,7 +578,7 @@
             row.cells ||= {};
             row.meta ||= {};
             if (op === 'update') {
-                setFields(chat, template, table, row.cells, operation.fields || {}, report, `待办:${row.id}`);
+                setFields(chat, template, table, row.cells, operation.fields || {}, report, `待办:${row.id}`, { rowId: row.id, source: operation.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred', confidence: Number(operation.confidence) || 0 });
             } else if (op === 'complete') {
                 setAutoField(chat, template, table, row.cells, /^当前状态$/, '已完成', report);
                 setAutoField(chat, template, table, row.cells, /完成时间/, nowText(), report);
@@ -466,6 +604,10 @@
         if (state.captureCandidates === false || !Array.isArray(candidates)) return;
         candidates.slice(0, 8).forEach(item => {
             const type = item?.type === 'daily_observation' ? 'daily_observation' : 'experience';
+            const descriptor = findTable(chat, table => type === 'daily_observation'
+                ? tableRole(table) === 'daily_observation'
+                : tableRole(table) === 'recent_events', { forCapture: true });
+            if (!descriptor) return;
             const summary = String(item?.summary || '').trim().slice(0, 1600);
             if (!summary) return;
             const duplicate = state.candidates.find(existing => existing.status === 'pending' && existing.type === type && existing.summary === summary);
@@ -498,28 +640,43 @@
 
     async function applySidecar(chat, payload, context = {}) {
         const state = ensureMemoryTables(chat);
-        const report = { at: Date.now(), changed: [], rejected: [], error: '', roundId: context.roundId || null };
+        const report = { at: Date.now(), changed: [], runtimeChanged: [], pendingFieldProposals: [], rejected: [], error: '', roundId: context.roundId || null };
         if (!state.enabled || !payload || typeof payload !== 'object') return report;
-        try {
+        const mutate = () => {
+            const currentState = ensureMemoryTables(chat);
             applyStatus(chat, payload.status, report);
             applyTaskOps(chat, payload.taskOps, report, context);
             applyCandidates(chat, payload.candidates, report, context);
-            state.lastApplyReport = report;
-            state.history.push(report);
-            state.history = state.history.slice(-MAX_HISTORY);
+            flushFieldReviewBatches(chat, report, context);
+            report.pendingProposalCount = Array.isArray(report.pendingFieldProposals) ? report.pendingFieldProposals.length : 0;
+            delete report.pendingFieldProposals;
+            currentState.lastApplyReport = report;
+            currentState.history.push(report);
+            currentState.history = currentState.history.slice(-MAX_HISTORY);
             if (report.changed.length) {
                 chat.memoryTables.lastChangedFieldPaths = report.changed.slice(-100);
                 if (window.MemoryTablePolicy) window.MemoryTablePolicy.clearRetrievalCache(chat);
             }
-            if (typeof saveCharacter === 'function') await saveCharacter(chat.id);
+            return { changed: true, report };
+        };
+        try {
+            const gateway = Kernel?.get?.('writeGateway') || Kernel?.get?.('writeCoordinator');
+            if (!gateway) throw new Error('记忆正式写入门禁未加载');
+            await gateway.run(chat, {
+                reason: 'sidecar-chat-apply',
+                source: 'sidecar-chat',
+                action: 'update',
+                writer: typeof saveCharacter === 'function' ? saveCharacter : null,
+                persistRollback: true
+            }, mutate);
             refreshStateBar(chat);
             if (typeof renderMemoryTableScreen === 'function' && typeof currentChatId !== 'undefined' && currentChatId === chat.id) {
                 try { renderMemoryTableScreen(); } catch (_) {}
             }
         } catch (error) {
             report.error = error?.message || String(error);
-            state.lastApplyReport = report;
-            console.warn('[MemorySidecar] apply failed:', error);
+            ensureMemoryTables(chat).lastApplyReport = report;
+            console.warn('[MemorySidecar] apply failed and rolled back:', error);
         }
         return report;
     }
@@ -532,7 +689,7 @@
         if (isStatusExpired(table, data)) return null;
         const findValue = regex => {
             const field = (table.columns || []).find(item => regex.test(item.key));
-            return field ? getFieldDisplay(field, data[field.id]) : '';
+            return field ? getFieldDisplay(field, getEffectiveFieldValue(chat, template, table, field, data[field.id])) : '';
         };
         const mentalField = (table.columns || []).find(item => /user_精神状态/.test(item.key));
         const mentalMeta = mentalField ? ensureMemoryTables(chat).statusMeta?.[mentalField.id] : null;

@@ -41,7 +41,7 @@ const runtime = windowMock.OVOOperationRuntime;
 const aiRuntime = windowMock.OVOAIRequestRuntime;
 assert(catalog && runtime && aiRuntime, 'R4 runtimes missing');
 assert.strictEqual(catalog.VERSION, '2.10-R4');
-assert(['2.10-R4', '2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(runtime.VERSION));
+assert(['2.10-R4', '2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(runtime.VERSION));
 assert.strictEqual(aiRuntime.VERSION, '2.10-R4');
 assert(catalog.list().length >= 27, 'capability catalog should cover the current AI surface');
 

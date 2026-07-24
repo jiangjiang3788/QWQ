@@ -17,10 +17,13 @@ assert(registry.includes("const homeAppIds = Object.freeze(['worldbook', 'theate
 assert(!registry.includes("id: 'characters'") && !registry.includes("id: 'contacts'"), 'retired duplicate chat entries remain');
 assert(html.includes('js/modules/message_content.js'), 'message content parser is not loaded');
 assert(favorites.includes('FavoriteMessageContent.snapshot'), 'favorites do not use shared message parser');
-assert(html.includes('memory-table-auto-schedule-list'), 'memory schedule list missing');
+assert(!html.includes('memory-table-auto-schedule-list'), 'legacy per-table schedule list should be retired');
+assert(html.includes('聊天记忆采集'), 'chat memory capture section missing');
+assert(html.includes('周期整理默认值'), 'periodic default section missing');
+assert(html.includes('召回与安全'), 'retrieval and safety section missing');
 assert(html.includes('js/modules/memory_table_schedule.js'), 'memory schedule module is not loaded');
 assert(scheduleUi.includes("Kernel.register('schedule'"), 'memory schedule module is not registered');
-assert(html.includes('id="memory-workbench-advanced-settings" open'), 'memory update panel should be directly visible');
+assert(html.includes('<strong>记忆运行设置</strong>'), 'memory runtime settings drawer missing');
 assert(memoryController.includes("settingsPanel.hidden = uiState.workspace !== 'memory'"), 'update settings were not moved to memory workspace');
 
 const parserContext = { window: null };
@@ -55,8 +58,8 @@ const live = {
 };
 policy.ensureTableState(chat, 'tpl', medium.id, { table: medium, initializeAtLatest: false });
 policy.setTableCursorByPosition(chat, 'tpl', medium.id, 0);
-assert(policy.getAutomationMode(chat, 'tpl', medium) === 'engine', 'medium table should default to engine schedule');
-assert(policy.isTableDue(chat, 'tpl', medium) === true, 'engine settings should make medium table due');
+assert(policy.getAutomationMode(chat, 'tpl', medium) === 'manual', 'medium table should keep its explicit manual policy');
+assert(policy.isTableDue(chat, 'tpl', medium) === false, 'manual medium table must not be scheduled by global defaults');
 policy.ensureTableState(chat, 'tpl', live.id, { table: live, initializeAtLatest: false });
 policy.setTableCursorByPosition(chat, 'tpl', live.id, 0);
 assert(policy.getAutomationMode(chat, 'tpl', live) === 'sidecar', 'live table should use sidecar');
@@ -85,8 +88,8 @@ defaultTemplate.tables.forEach(table => {
 });
 assert(defaultModes.table_current_state === 'sidecar', 'default current state should stay in main chat sidecar');
 assert(defaultModes.table_tasks === 'sidecar', 'default tasks should stay in main chat sidecar');
-assert(defaultModes.table_medium_summary === 'engine', 'default medium summary should follow global schedule');
+assert(defaultModes.table_medium_summary === 'manual', 'default medium summary should require deliberate manual organization');
 const defaultDue = defaultTemplate.tables.filter(table => policy.isTableDue(defaultChat, defaultTemplate.id, table));
-assert(defaultDue.length === 1 && defaultDue[0].id === 'table_medium_summary', `unexpected default due tables: ${defaultDue.map(table => table.id).join(',')}`);
+assert(defaultDue.length === 0, `unexpected default due tables: ${defaultDue.map(table => table.id).join(',')}`);
 
 console.log('V2.9-R6 EXPERIENCE + MEMORY SCHEDULER CHECKS: PASS');

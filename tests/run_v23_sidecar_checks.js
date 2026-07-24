@@ -16,6 +16,7 @@ global.confirm = () => true;
 global.addEventListener = () => {};
 
 vm.runInThisContext(fs.readFileSync(path.join(root, 'js/features/memory/kernel.js'), 'utf8'), { filename: 'kernel.js' });
+vm.runInThisContext(fs.readFileSync(path.join(root, 'js/features/memory/write_coordinator.js'), 'utf8'), { filename: 'write_coordinator.js' });
 vm.runInThisContext(fs.readFileSync(path.join(root, 'js/modules/memory_table_sidecar.js'), 'utf8'), { filename: 'memory_table_sidecar.js' });
 
 (async () => {

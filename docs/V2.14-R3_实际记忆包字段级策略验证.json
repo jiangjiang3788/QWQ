@@ -1,0 +1,275 @@
+{
+  "version": "2.14-R3",
+  "input": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "fieldCount": 94,
+  "routeCounts": {
+    "direct": 33,
+    "review": 18,
+    "candidate": 21,
+    "runtime_only": 14,
+    "manual_only": 8,
+    "other": 0
+  },
+  "subjectCounts": {
+    "user": 59,
+    "assistant": 12,
+    "relationship": 3,
+    "system": 20
+  },
+  "idsPreserved": true,
+  "currentStateExamples": {
+    "scene": {
+      "field": "user_当前场景",
+      "policy": {
+        "subject": "user",
+        "evidence": "explicit",
+        "commitMode": "direct",
+        "minConfidence": 65
+      },
+      "route": "direct"
+    },
+    "mental": {
+      "field": "user_精神状态",
+      "policy": {
+        "subject": "user",
+        "evidence": "inferred",
+        "commitMode": "candidate",
+        "minConfidence": 75
+      },
+      "route": "candidate"
+    },
+    "role": {
+      "field": "char_当前场景",
+      "policy": {
+        "subject": "assistant",
+        "evidence": "inferred",
+        "commitMode": "runtime_only",
+        "minConfidence": 0
+      },
+      "route": "runtime_only"
+    },
+    "suggestion": {
+      "field": "user_下一步建议",
+      "policy": {
+        "subject": "assistant",
+        "evidence": "inferred",
+        "commitMode": "runtime_only",
+        "minConfidence": 0
+      },
+      "route": "runtime_only"
+    }
+  },
+  "assessmentRoutes": {
+    "explicitScene": {
+      "route": "direct",
+      "allowed": true,
+      "reasons": [],
+      "confidence": 90
+    },
+    "inferredScene": {
+      "route": "review",
+      "allowed": true,
+      "reasons": [
+        "缺少用户明确表达"
+      ],
+      "confidence": 90
+    },
+    "inferredMental": {
+      "route": "candidate",
+      "allowed": true,
+      "reasons": [],
+      "confidence": 88
+    },
+    "roleRuntime": {
+      "route": "runtime_only",
+      "allowed": true,
+      "reasons": [],
+      "confidence": 70
+    },
+    "suggestionRuntime": {
+      "route": "runtime_only",
+      "allowed": true,
+      "reasons": [],
+      "confidence": 70
+    }
+  },
+  "runtimeIsolation": {
+    "formalDataUnchanged": true,
+    "runtimeValueStored": true
+  },
+  "sourcePackageUnchanged": true,
+  "sampleFields": [
+    {
+      "table": "当前状态（3-7天）",
+      "field": "状态记录时间",
+      "group": "用户当前状态",
+      "route": "direct",
+      "subject": "system",
+      "evidence": "inferred",
+      "commitMode": "direct",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_当前场景",
+      "group": "用户当前状态",
+      "route": "direct",
+      "subject": "user",
+      "evidence": "explicit",
+      "commitMode": "direct",
+      "minConfidence": 65
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_精神状态",
+      "group": "用户当前状态",
+      "route": "candidate",
+      "subject": "user",
+      "evidence": "inferred",
+      "commitMode": "candidate",
+      "minConfidence": 75
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_身体状态",
+      "group": "用户当前状态",
+      "route": "direct",
+      "subject": "user",
+      "evidence": "explicit",
+      "commitMode": "direct",
+      "minConfidence": 65
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_体力",
+      "group": "用户当前状态",
+      "route": "candidate",
+      "subject": "user",
+      "evidence": "inferred",
+      "commitMode": "candidate",
+      "minConfidence": 75
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_精力",
+      "group": "用户当前状态",
+      "route": "candidate",
+      "subject": "user",
+      "evidence": "inferred",
+      "commitMode": "candidate",
+      "minConfidence": 75
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_压力源",
+      "group": "用户当前状态",
+      "route": "direct",
+      "subject": "user",
+      "evidence": "explicit",
+      "commitMode": "direct",
+      "minConfidence": 65
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_当前需求",
+      "group": "用户当前状态",
+      "route": "direct",
+      "subject": "user",
+      "evidence": "explicit",
+      "commitMode": "direct",
+      "minConfidence": 65
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_当前风险",
+      "group": "用户当前状态",
+      "route": "candidate",
+      "subject": "user",
+      "evidence": "inferred",
+      "commitMode": "candidate",
+      "minConfidence": 75
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "user_下一步建议",
+      "group": "用户当前状态",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_当前场景",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_精神状态",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_运行状态",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_对user的判断",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_回应策略",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "assistant",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "char_边界提醒",
+      "group": "角色即时判断",
+      "route": "runtime_only",
+      "subject": "relationship",
+      "evidence": "inferred",
+      "commitMode": "runtime_only",
+      "minConfidence": 0
+    },
+    {
+      "table": "当前状态（3-7天）",
+      "field": "状态有效期",
+      "group": "系统时效",
+      "route": "direct",
+      "subject": "system",
+      "evidence": "inferred",
+      "commitMode": "direct",
+      "minConfidence": 0
+    }
+  ]
+}

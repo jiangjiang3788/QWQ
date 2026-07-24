@@ -1,0 +1,44 @@
+{
+  "version": "2.14-R4",
+  "input": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "rowCount": 234,
+  "retrievalGroupCount": 5,
+  "keywordRetrieval": {
+    "pureRead": true,
+    "selectedCount": 13,
+    "formalDataUnchanged": true,
+    "wholeChatUnchanged": true
+  },
+  "indexMaintenance": {
+    "indexed": 234,
+    "reused": 0,
+    "migratedFromLegacyMeta": 0,
+    "createdByMaintenanceApi": 234,
+    "missing": 0,
+    "runtimeIndexCount": 234,
+    "embeddingCalls": 2,
+    "formalDataUnchanged": true
+  },
+  "hybridRetrieval": {
+    "actualMode": "hybrid",
+    "indexCoverage": {
+      "candidates": 39,
+      "indexed": 39,
+      "missing": 0
+    },
+    "selectedCount": 13,
+    "formalDataUnchanged": true
+  },
+  "runtimeUsage": {
+    "changed": true,
+    "retrieved": 13,
+    "injected": 6,
+    "trackedRows": 13,
+    "formalDataUnchanged": true
+  },
+  "formalDataHashBefore": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "formalDataHashAfter": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "sourcePackageUnchanged": true
+}

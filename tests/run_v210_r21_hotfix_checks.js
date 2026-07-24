@@ -36,8 +36,8 @@ assert(memoryUpdate.includes('`[${timestamp(item.timestamp)}]'), 'memory history
 assert(memory.includes("memoryTableScreenBound === '1'"), 'memory review screen binding guard is missing');
 assert(memory.includes('正在保存…'), 'memory review apply feedback is missing');
 assert(memory.includes('审核结果保存失败'), 'memory review apply failure feedback is missing');
-assert(review.includes('保存已接受项（${counts.accepted}）'), 'memory review final save action is unclear');
-assert(review.includes("counts.accepted ? '' : 'disabled'"), 'save action should be disabled until at least one item is selected');
+assert(review.includes('保存已接受记忆（${acceptedRecordCount}）'), 'memory review final save action is unclear');
+assert(review.includes("acceptedRecordCount ? '' : 'disabled'"), 'save action should be disabled until at least one memory record is selected');
 assert(memoryCss.includes('.memory-review-source pre,.memory-feedback-round pre{max-height:none'), 'memory feedback remains trapped in a small scroll box');
 
 console.log('V2.10-R2.1 EMERGENCY HOTFIX CHECKS: PASS');

@@ -9,12 +9,23 @@
     const TableGrid = Kernel.require('tableGrid');
     const TableEditor = Kernel.require('tableEditor');
     const UpdateActivity = Kernel.require('updateActivity');
+    const PolicyResolver = Kernel.get('policyResolver');
 
     function descriptors(chat, templates) {
         const result = [];
         (templates || []).forEach(template => {
             Domain.ensureTemplateDataForChat(chat, template);
-            (template.tables || []).forEach(table => result.push({ template, table }));
+            (template.tables || []).forEach(sourceTable => {
+                const resolution = PolicyResolver?.resolve
+                    ? PolicyResolver.resolve(chat, template.id, sourceTable)
+                    : null;
+                result.push({
+                    template,
+                    sourceTable,
+                    table: resolution?.materializedTable || sourceTable,
+                    policyResolution: resolution
+                });
+            });
         });
         return result;
     }
@@ -104,7 +115,8 @@
             </button>`;
         }).join('');
         const active = resolved.active;
-        const policy = runtimePolicy(active.table);
+        const policy = active.policyResolution?.effective || runtimePolicy(active.table);
+        const policySource = active.policyResolution?.hasRoleOverride ? '当前角色覆盖' : '模板默认';
         const currentGrid = gridConfig(config, active);
         const content = TableGrid.render(currentGrid);
         return `<div class="memory-v2-workspace">
@@ -114,7 +126,7 @@
                     <div class="memory-v2-sheet-head">
                         <div>
                             <h2>${Core.escapeHtml(active.table.name)}</h2>
-                            <div class="sub">${Core.escapeHtml(active.template.name)} · ${Domain.isRowsTable(active.table) ? '多行记录' : '键值档案'}${state.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'}</div>
+                            <div class="sub">${Core.escapeHtml(active.template.name)} · ${Domain.isRowsTable(active.table) ? '多行记录' : '键值档案'}${state.viewMode === 'json' ? ' · 完整字段/结构模式' : ' · 重要字段模式'} · 策略来源：${Core.escapeHtml(policySource)}</div>
                             <div class="memory-table-interaction-hint" aria-label="表格编辑方式"><span>双击打开整行编辑</span><span>手机双点</span><span>完整文本可见</span></div>
                             ${policySummary(active.table)}
                             ${active.table.extractPrompt ? `<div class="memory-v2-json-meta memory-v2-json-only">extractPrompt: ${Core.escapeHtml(active.table.extractPrompt)}</div>` : ''}
@@ -140,7 +152,7 @@
     }
 
     Kernel.register('tableWorkspace', Object.freeze({
-        VERSION: '2.13-R5.1',
+        VERSION: '2.14-R5',
         descriptors,
         resolveActive,
         visibleColumns,

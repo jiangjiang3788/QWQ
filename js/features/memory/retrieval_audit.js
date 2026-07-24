@@ -102,6 +102,8 @@
             status: 'preview',
             requestStatus: 'completed',
             isDiagnosticOnly: true,
+            pureRead: diagnostic.pureRead === true,
+            indexCoverage: diagnostic.indexCoverage || null,
             items: flattenDiagnostic(diagnostic)
         };
     }
@@ -347,18 +349,18 @@
     function render(chat) {
         const model = getViewModel(chat);
         if (!model.round) {
-            return `<div class="memory-audit-page"><header class="memory-audit-head"><div><h2>记忆引用与作用</h2><p>查看本轮引用了哪些记忆表、为什么引用，以及它们对回复承担的作用。</p></div><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">重建并预览</button></header><div class="memory-audit-empty"><strong>还没有引用记录</strong><span>发送一次使用结构化记忆的聊天，或先重建召回预览。</span></div></div>`;
+            return `<div class="memory-audit-page"><header class="memory-audit-head"><div><h2>记忆引用与作用</h2><p>查看本轮引用了哪些记忆表、为什么引用，以及它们对回复承担的作用。</p></div><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">更新索引并预览</button></header><div class="memory-audit-empty"><strong>还没有引用记录</strong><span>发送一次使用结构化记忆的聊天，或先重建召回预览。</span></div></div>`;
         }
         const context = model.queryContext || {};
         const modeLabel = model.round.actualMode === 'hybrid' ? '混合检索' : '关键词检索';
         return `<div class="memory-audit-page">
             <header class="memory-audit-head">
                 <div><h2>记忆引用与作用</h2><p>先看引用了哪些表，再核对具体记录、引用原因和本轮作用。</p></div>
-                <div class="memory-audit-head-actions"><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">重建并预览</button><button class="btn btn-small btn-secondary" data-feedback-action="undo-last">撤销最近反馈</button>${model.totalPending ? `<button class="btn btn-small btn-neutral memory-audit-clear-pending" data-feedback-action="clear-pending-tasks">清空全部待反馈（${model.totalPending}）</button>` : ''}</div>
+                <div class="memory-audit-head-actions"><button class="btn btn-small btn-primary" data-action="retrieval-rebuild">更新索引并预览</button><button class="btn btn-small btn-secondary" data-feedback-action="undo-last">撤销最近反馈</button>${model.totalPending ? `<button class="btn btn-small btn-neutral memory-audit-clear-pending" data-feedback-action="clear-pending-tasks">清空全部待反馈（${model.totalPending}）</button>` : ''}</div>
             </header>
             <div class="memory-audit-roundbar">
                 <label><span>查看轮次</span><select data-memory-audit-round>${renderRoundOptions(model.rounds, model.round.id)}</select></label>
-                <div class="memory-audit-roundmeta"><b>${dateTime(model.round.completedAt || model.round.createdAt)}</b><span>${modeLabel} · ${model.items.length} 条引用 · ${model.tables.length} 张表 · ${model.finalChars} 字符</span></div>
+                <div class="memory-audit-roundmeta"><b>${dateTime(model.round.completedAt || model.round.createdAt)}</b><span>${modeLabel} · ${model.round.pureRead ? '纯读取 · ' : ''}${model.items.length} 条引用 · ${model.tables.length} 张表 · ${model.finalChars} 字符${model.round.indexCoverage ? ` · 索引 ${model.round.indexCoverage.indexed || 0}/${model.round.indexCoverage.candidates || 0}` : ''}</span></div>
             </div>
             <div class="memory-audit-context"><strong>本轮检索线索</strong><span>主题：${Core.escapeHtml((context.topic || []).join('、') || '未识别')}</span><span>场景：${Core.escapeHtml((context.scene || []).join('、') || '日常聊天')}</span><span>主体：${Core.escapeHtml((context.entity || []).join('、') || '未识别')}</span></div>
             <section class="memory-audit-section"><div class="memory-audit-section-head"><div><h3>引用表总览</h3><p>先确认本轮从哪些表取了记忆，以及每张表进入 Prompt 的原因和用途。</p></div><span>${model.pending} 项待反馈</span></div>${renderSummaryTable(model)}</section>

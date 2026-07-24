@@ -1,11 +1,12 @@
 {
-  "version": "2.13-R5.2",
+  "version": "2.14-R6",
   "controller": "js/modules/memory_table.js",
   "publicFacades": {
     "memoryPlatformDomain": {
       "file": "js/features/memory/domains/platform.js",
       "owns": [
         "policy",
+        "policyResolver",
         "review",
         "retrieval",
         "effects",
@@ -25,7 +26,11 @@
         "api",
         "domain",
         "fieldWidth",
-        "workspace"
+        "workspace",
+        "packageAdapter",
+        "writeCoordinator",
+        "writeGateway",
+        "packageOrchestrator"
       ]
     },
     "memorySchemaDomain": {
@@ -46,18 +51,23 @@
         "governanceQueue",
         "governanceController",
         "rowInspector",
-        "rowInspectorController"
+        "rowInspectorController",
+        "integrityDoctor",
+        "reviewOrchestrator"
       ]
     },
     "memoryRetrievalDomain": {
       "file": "js/features/memory/domains/retrieval.js",
       "owns": [
-        "retrievalAudit"
+        "retrievalAudit",
+        "retrievalMaintenance",
+        "retrievalOrchestrator"
       ]
     },
     "memoryUpdateDomain": {
       "file": "js/features/memory/domains/update.js",
       "owns": [
+        "fieldPolicy",
         "tagService",
         "contextAssembler",
         "updateService"
@@ -99,10 +109,30 @@
     "memoryArchitecture"
   ],
   "budgets": {
-    "js/modules/memory_table.js": 4000,
+    "js/modules/memory_table.js": 3300,
     "js/modules/floating_ball.js": 1020,
     "js/features/memory/schema_editor.js": 900,
     "js/features/memory/retrieval_audit.js": 700,
-    "js/settings.js": 500
+    "js/settings.js": 500,
+    "js/features/memory/review_orchestrator.js": 750,
+    "js/features/memory/retrieval_orchestrator.js": 260,
+    "js/features/memory/package_orchestrator.js": 260
+  },
+  "formalWriteGate": {
+    "gateway": "writeGateway",
+    "allowedDirectWriters": [
+      "js/features/memory/domain.js",
+      "js/modules/memory_table_sidecar.js",
+      "js/features/memory/package_adapter.js",
+      "js/features/memory/write_coordinator.js"
+    ],
+    "gatewayClients": [
+      "js/modules/memory_table.js",
+      "js/modules/memory_table_sidecar.js",
+      "js/features/memory/table_editor.js",
+      "js/features/memory/candidate_service.js",
+      "js/features/memory/sidecar_candidate_controller.js",
+      "js/features/memory/review_orchestrator.js"
+    ]
   }
 }

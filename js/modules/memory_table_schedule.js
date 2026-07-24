@@ -5,6 +5,7 @@
     const Kernel = global.OvoMemoryKernel || null;
     const Core = Kernel?.core;
     const Policy = Kernel?.require('policy');
+    const Resolver = Kernel?.get('policyResolver');
     if (!Core || !Policy) throw new Error('记忆调度依赖未加载');
 
     function getModeLabel(mode) {
@@ -28,9 +29,11 @@
         const stats = { dueCount: 0, eligibleCount: 0, maxUnsyncedMessages: 0, maxUnsyncedRounds: 0 };
 
         (descriptors || []).forEach(({ template, table }) => {
-            const info = Policy.getUnprocessedInfo(chat, template.id, table);
-            const automationMode = Policy.getAutomationMode(chat, template.id, table);
-            const effectivePolicy = Policy.resolveEffectiveUpdatePolicy(table, engine, automationMode);
+            const resolved = Resolver?.resolve ? Resolver.resolve(chat, template.id, table, { engineSettings: engine }) : null;
+            const effectiveTable = resolved?.materializedTable || table;
+            const info = Policy.getUnprocessedInfo(chat, template.id, effectiveTable);
+            const automationMode = Policy.getAutomationMode(chat, template.id, effectiveTable);
+            const effectivePolicy = resolved?.effective?.updatePolicy || Policy.resolveEffectiveUpdatePolicy(effectiveTable, engine, automationMode);
             const isDue = Policy.isTableDue(chat, template.id, table);
             stats.maxUnsyncedMessages = Math.max(stats.maxUnsyncedMessages, info.unsyncedMessages);
             stats.maxUnsyncedRounds = Math.max(stats.maxUnsyncedRounds, info.unsyncedRounds);
@@ -38,7 +41,7 @@
             if (isDue) stats.dueCount += 1;
             rows.push(`
                 <div class="memory-auto-schedule-row" data-schedule-key="${Core.escapeAttribute(`${template.id}::${table.id}`)}">
-                    <div class="memory-auto-schedule-name"><strong>${Core.escapeHtml(table.name)}</strong><small>${Core.escapeHtml(template.name)} · ${Core.escapeHtml(getModeLabel(automationMode))}</small></div>
+                    <div class="memory-auto-schedule-name"><strong>${Core.escapeHtml(table.name)}</strong><small>${Core.escapeHtml(template.name)} · ${Core.escapeHtml(getModeLabel(automationMode))} · 来源：${Core.escapeHtml(Resolver?.sourceLabel ? Resolver.sourceLabel(resolved?.sourceSummary?.schedule) : '模板默认')}</small></div>
                     <select data-memory-automation-mode data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" ${isRunning ? 'disabled' : ''}>
                         <option value="sidecar" ${automationMode === 'sidecar' ? 'selected' : ''}>聊天同请求</option>
                         <option value="engine" ${automationMode === 'engine' ? 'selected' : ''}>跟随全局</option>
@@ -55,5 +58,5 @@
         };
     }
 
-    Kernel.register('schedule', Object.freeze({ getModeLabel, getStateLabel, build }));
+    Kernel.register('schedule', Object.freeze({ VERSION: '2.14-R5', getModeLabel, getStateLabel, build }));
 })(window);

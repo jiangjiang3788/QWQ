@@ -5519,53 +5519,46 @@
 </div>
 <button type="button" class="memory-flat-settings-backdrop" id="memory-workbench-settings-backdrop" data-action="toggle-memory-settings" aria-label="关闭整理设置"></button>
 <section class="memory-workbench-settings" id="memory-workbench-settings" hidden>
-<div class="memory-flat-drawer-head"><strong>更新与整理</strong><button type="button" class="btn btn-small btn-secondary" data-action="toggle-memory-settings">关闭</button></div>
-<details id="memory-workbench-advanced-settings" open>
-<summary>更新与整理 <small>高频操作</small></summary>
+<div class="memory-flat-drawer-head"><strong>记忆运行设置</strong><button type="button" class="btn btn-small btn-secondary" data-action="toggle-memory-settings">关闭</button></div>
 <div class="memory-workbench-settings-body">
-<div class="memory-v2-policy-panel">
+<section class="memory-v2-policy-panel memory-settings-section">
+<div class="memory-workbench-setting-head"><strong>聊天记忆采集</strong><span>跟随正常 AI 回复，不额外调用 API</span></div>
+<div class="memory-v2-policy-grid">
+<label class="memory-sidecar-setting">跟随聊天采集<span class="memory-sidecar-switch-row"><input id="memory-sidecar-enabled-toggle" type="checkbox" checked/>启用</span></label>
+<label class="memory-sidecar-setting">保存短期候选<span class="memory-sidecar-switch-row"><input id="memory-sidecar-candidate-toggle" type="checkbox" checked/>保存</span></label>
+<label class="memory-sidecar-setting">聊天状态提示<span class="memory-sidecar-switch-row"><input id="memory-sidecar-statusbar-toggle" type="checkbox" checked/>显示</span></label>
+</div>
+</section>
+<section class="memory-v2-policy-panel memory-settings-section">
 <div class="memory-workbench-setting-head">
-<strong>自动整理</strong>
+<strong>周期整理默认值</strong>
 <label class="kkt-switch"><input id="memory-table-auto-update-toggle" type="checkbox"/><span class="kkt-slider"></span></label>
-<span id="memory-table-round-status">短期状态随聊天更新</span>
+<span id="memory-table-round-status">仅供选择“使用全局默认”的表格使用</span>
 </div>
 <div class="memory-v2-policy-grid">
-<label>触发<select id="memory-table-trigger-mode"><option value="rounds">按轮数</option><option value="messages">按消息数</option><option value="either">任一达到</option></select></label>
+<label>默认触发<select id="memory-table-trigger-mode"><option value="rounds">按轮数</option><option value="messages">按消息数</option><option value="either">任一达到</option></select></label>
 <label>默认轮数<input id="memory-table-round-interval" type="number" min="1" step="1" value="2"/></label>
-<label>消息兜底<input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/></label>
-<label>读取上限<input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/></label>
-<label>审核<select id="memory-table-review-mode"><option value="summary_only">总结需审核</option><option value="manual_and_summary">手动与总结</option><option value="all">全部审核</option></select></label>
+<label>默认消息数<input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/></label>
+<label>默认读取上限<input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/></label>
+</div>
+<div class="memory-workbench-tools">
+<button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">整理到期表</button>
+<button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试失败</button>
+</div>
+<div id="memory-table-auto-update-status">周期整理未开启</div>
+</section>
+<section class="memory-v2-policy-panel memory-settings-section">
+<div class="memory-workbench-setting-head"><strong>召回与安全</strong><span>决定如何寻找和使用记忆，不决定是否直接写入</span></div>
+<div class="memory-v2-policy-grid">
 <label>检索<select id="memory-table-retrieval-mode"><option value="auto">自动</option><option value="keyword">关键词</option><option value="hybrid">混合</option></select></label>
 <label>语义权重<input id="memory-table-semantic-weight" type="number" min="0" max="1" step="0.05" value="0.55"/></label>
 <label>标签权重<input id="memory-table-tag-weight" type="number" min="0" max="0.8" step="0.05" value="0.35"/></label>
 <label>向量候选<input id="memory-table-embedding-candidate-limit" type="number" min="4" max="200" step="4" value="32"/></label>
 <label class="memory-sidecar-setting">场景路由<span class="memory-sidecar-switch-row"><input id="memory-table-scene-routing-toggle" type="checkbox" checked/>启用</span></label>
 <label class="memory-sidecar-setting">副作用保护<span class="memory-sidecar-switch-row"><input id="memory-table-side-effect-guard-toggle" type="checkbox" checked/>启用</span></label>
-<label class="memory-sidecar-setting">聊天更新<span class="memory-sidecar-switch-row"><input id="memory-sidecar-enabled-toggle" type="checkbox" checked/>启用</span></label>
-<label class="memory-sidecar-setting">短期候选<span class="memory-sidecar-switch-row"><input id="memory-sidecar-candidate-toggle" type="checkbox" checked/>保存</span></label>
-<label class="memory-sidecar-setting">聊天状态条<span class="memory-sidecar-switch-row"><input id="memory-sidecar-statusbar-toggle" type="checkbox" checked/>显示</span></label>
 </div>
-<div class="memory-auto-schedule" aria-label="表格自动整理方式">
-<div class="memory-auto-schedule-head"><strong>表格更新通道</strong><small>聊天同请求不会额外调用 API；跟随全局会按上方频率自动整理。</small></div>
-<div id="memory-table-auto-schedule-list" class="memory-auto-schedule-list"></div>
+</section>
 </div>
-<div class="memory-v2-cursor-row">
-<label>目标表<select id="memory-table-cursor-table-select"></select></label>
-<label>消息位置<input id="memory-table-cursor-position" type="number" min="0" step="1" value="0"/></label>
-<button class="btn btn-small btn-secondary" id="memory-table-save-cursor-btn" type="button">保存</button>
-<button class="btn btn-small btn-primary" id="memory-table-update-selected-btn" type="button">整理此表</button>
-</div>
-<div class="memory-workbench-tools">
-<button class="btn btn-small btn-secondary" id="memory-table-preview-range-btn" type="button">预览范围</button>
-<button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">整理到期表</button>
-<button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试失败</button>
-<button class="btn btn-small btn-neutral" id="memory-table-cursor-latest-btn" type="button">跳到最新</button>
-<button class="btn btn-small btn-neutral" id="memory-table-cursor-start-btn" type="button">回到开头</button>
-</div>
-<div id="memory-table-auto-update-status">自动整理未开启</div>
-</div>
-</div>
-</details>
 </section>
 <div class="memory-workbench-legacy-tabs" aria-hidden="true">
 <button class="memory-table-tab-btn" data-tab="tables" type="button">当前表格</button>
@@ -6408,7 +6401,7 @@
 <div class="modal-overlay" id="memory-schema-editor-modal">
 <div class="modal-window memory-schema-editor-window">
 <div class="memory-schema-editor-head">
-<div><h3 id="memory-schema-editor-title">表结构编辑器</h3><p>表格设置、字段设置和高级设置已收敛为同一个全屏工作台。</p></div>
+<div><h3 id="memory-schema-editor-title">表结构与记忆策略</h3><p>在同一工作台查看模板默认、当前角色覆盖、最终生效值与来源；字段结构仍只保存在模板中。</p></div>
 <button type="button" class="memory-schema-editor-close" data-schema-action="cancel" aria-label="关闭">×</button>
 </div>
 <div class="memory-schema-editor-body" id="memory-schema-editor-body"></div>
@@ -6736,18 +6729,26 @@
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
 <script src="js/features/memory/kernel.js"></script>
 <script src="js/modules/memory_table_policy.js"></script>
+<script src="js/features/memory/policy_resolver.js"></script>
+<script src="js/features/memory/field_policy.js"></script>
 <script src="js/modules/memory_table_schedule.js"></script>
 <script src="js/modules/memory_table_lifecycle.js"></script>
 <script src="js/modules/memory_table_effects.js"></script>
 <script src="js/modules/memory_table_feedback.js"></script>
 <script src="js/modules/memory_table_review.js"></script>
+<script src="js/features/memory/retrieval_maintenance.js"></script>
 <script src="js/modules/memory_table_retrieval.js"></script>
 <script src="js/features/memory/retrieval_audit.js"></script>
+<script src="js/features/memory/retrieval_orchestrator.js"></script>
 <script src="js/modules/memory_table_sidecar.js"></script>
 <script src="js/modules/memory_table_tasks.js"></script>
 <script src="js/modules/memory_table_quality.js"></script>
 <script src="js/features/memory/api_adapter.js"></script>
 <script src="js/features/memory/domain.js"></script>
+<script src="js/features/memory/package_adapter.js"></script>
+<script src="js/features/memory/package_orchestrator.js"></script>
+<script src="js/features/memory/write_coordinator.js"></script>
+<script src="js/features/memory/write_gateway.js"></script>
 <script src="js/features/memory/sidecar_candidate_service.js"></script>
 <script src="js/features/memory/sidecar_candidate_controller.js"></script>
 <script src="js/features/memory/field_width.js"></script>
@@ -6759,9 +6760,11 @@
 <script src="js/features/memory/relation_service.js"></script>
 <script src="js/features/memory/merge_review_service.js"></script>
 <script src="js/features/memory/candidate_service.js"></script>
+<script src="js/features/memory/integrity_doctor.js"></script>
 <script src="js/features/memory/table_filter.js"></script>
 <script src="js/features/memory/governance_queue.js"></script>
 <script src="js/features/memory/governance_controller.js"></script>
+<script src="js/features/memory/review_orchestrator.js"></script>
 <script src="js/features/memory/row_inspector.js"></script>
 <script src="js/features/memory/row_inspector_controller.js"></script>
 <script src="js/features/memory/context_assembler.js"></script>

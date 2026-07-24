@@ -17,7 +17,7 @@
         { type: 'memory.tags.regenerate', title: '重新生成记忆标签', category: '记忆', icon: '🏷️', tasks: ['memory-table-tags'] },
         { type: 'memory.review.apply', title: '保存结构化档案审核结果', category: '记忆', icon: '✅', tasks: [] },
         { type: 'memory.table.auto', title: '检查结构化档案更新', category: '后台工作', icon: '🗂️', tasks: [] },
-        { type: 'memory.embedding', title: '生成结构化档案向量', category: '记忆', icon: '🔎', tasks: ['memory-table-embedding'] },
+        { type: 'memory.embedding', title: '生成结构化档案向量', category: '记忆', icon: '🔎', tasks: ['memory-table-embedding', 'memory-table-index-maintenance'] },
         { type: 'memory.vector.summary', title: '生成向量记忆摘要', category: '记忆', icon: '🧠', tasks: ['vector-summary'] },
         { type: 'memory.vector.embedding', title: '生成向量记忆索引', category: '记忆', icon: '🧠', tasks: ['vector-embedding', 'vector-embedding-test'] },
         { type: 'memory.vector.auto', title: '检查向量记忆总结', category: '后台工作', icon: '🧠', tasks: [] },

@@ -18,7 +18,7 @@ vm.runInContext(fs.readFileSync(path.join(root,'js/modules/operation_runtime.js'
 const trace=windowMock.OVOPromptTrace;
 const runtime=windowMock.OVOOperationRuntime;
 assert.strictEqual(trace.VERSION,'2.10-R5');
-assert(['2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(runtime.VERSION));
+assert(['2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(runtime.VERSION));
 const built=trace.build({model:'m',messages:[{role:'system',content:'system final'},{role:'user',content:'hello'}]},[
  {type:'worldbook',title:'世界书 A',content:'lore',traceMode:'source_exact',sourceId:'wb1'},
  {type:'structured_memory',content:'memory row',traceMode:'source_verified',sourceId:'char1'},
@@ -50,5 +50,5 @@ assert(dock.includes('open-source-management'));
 assert(dock.includes('quick-dock-source-content'));
 assert(magic.includes('ovo_proment_focus_v1'));
 assert(magic.includes('renderFocusedPromptSource'));
-assert(['2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(fs.readFileSync(path.join(root,'VERSION.txt'),'utf8').trim()));
+assert(['2.10-R5', '2.10-R6', '2.11-R0', '2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(fs.readFileSync(path.join(root,'VERSION.txt'),'utf8').trim()));
 console.log('V2.10-R5 PROMPT PROTOCOL + WORKBENCH CHECKS: PASS');

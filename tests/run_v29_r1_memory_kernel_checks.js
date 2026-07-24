@@ -34,18 +34,26 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
 
 [
   'js/modules/memory_table_policy.js',
+  'js/features/memory/policy_resolver.js',
+  'js/features/memory/field_policy.js',
   'js/modules/memory_table_schedule.js',
   'js/modules/memory_table_lifecycle.js',
   'js/modules/memory_table_effects.js',
   'js/modules/memory_table_feedback.js',
   'js/modules/memory_table_review.js',
+  'js/features/memory/retrieval_maintenance.js',
   'js/modules/memory_table_retrieval.js',
   'js/features/memory/retrieval_audit.js',
+  'js/features/memory/retrieval_orchestrator.js',
   'js/modules/memory_table_sidecar.js',
   'js/modules/memory_table_tasks.js',
   'js/modules/memory_table_quality.js',
   'js/features/memory/api_adapter.js',
   'js/features/memory/domain.js',
+  'js/features/memory/package_adapter.js',
+  'js/features/memory/package_orchestrator.js',
+  'js/features/memory/write_coordinator.js',
+  'js/features/memory/write_gateway.js',
   'js/features/memory/sidecar_candidate_service.js',
   'js/features/memory/sidecar_candidate_controller.js',
   'js/features/memory/field_width.js',
@@ -57,9 +65,11 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/features/memory/relation_service.js',
   'js/features/memory/merge_review_service.js',
   'js/features/memory/candidate_service.js',
+  'js/features/memory/integrity_doctor.js',
   'js/features/memory/table_filter.js',
   'js/features/memory/governance_queue.js',
   'js/features/memory/governance_controller.js',
+  'js/features/memory/review_orchestrator.js',
   'js/features/memory/row_inspector.js',
   'js/features/memory/row_inspector_controller.js',
   'js/features/memory/context_assembler.js',
@@ -97,7 +107,7 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/features/memory/maintenance.js'
 ].forEach(load);
 
-const expected = ['policy', 'lifecycle', 'effects', 'feedback', 'review', 'retrieval', 'retrievalAudit', 'sidecar', 'sidecarCandidateService', 'sidecarCandidateController', 'tasks', 'quality', 'api', 'domain', 'fieldWidth', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'rowEditModal', 'tableEditor', 'tableEditController', 'rowEditController', 'updateActivity', 'tableWorkspace'];
+const expected = ['policy', 'policyResolver', 'fieldPolicy', 'lifecycle', 'effects', 'feedback', 'review', 'reviewOrchestrator', 'retrievalMaintenance', 'retrievalOrchestrator', 'retrieval', 'retrievalAudit', 'sidecar', 'sidecarCandidateService', 'sidecarCandidateController', 'tasks', 'quality', 'api', 'domain', 'packageAdapter', 'packageOrchestrator', 'writeCoordinator', 'writeGateway', 'fieldWidth', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'integrityDoctor', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'rowEditModal', 'tableEditor', 'tableEditController', 'rowEditController', 'updateActivity', 'tableWorkspace'];
 expected.forEach(name => assert(OvoMemoryKernel.has(name), `module not registered: ${name}`));
 ['memoryPlatformDomain', 'memoryFoundationDomain', 'memorySchemaDomain', 'memoryGovernanceDomain', 'memoryRetrievalDomain', 'memoryUpdateDomain', 'memoryTablesDomain', 'memoryArchitecture', 'memoryMaintenance']
   .forEach(name => assert(OvoMemoryKernel.has(name), `domain facade not registered: ${name}`));

@@ -4,8 +4,9 @@
     if (!Kernel) throw new Error('记忆内核未加载');
 
     const api = Object.freeze({
-        VERSION: '2.13-R4',
+        VERSION: '2.14-R6',
         policy: Kernel.get('policy'),
+        policyResolver: Kernel.require('policyResolver'),
         review: Kernel.get('review'),
         retrieval: Kernel.get('retrieval'),
         effects: Kernel.get('effects'),

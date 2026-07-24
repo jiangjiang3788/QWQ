@@ -1,0 +1,63 @@
+{
+  "version": "2.14-R0",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "sourceSchemaVersion": "2.8",
+  "readOnlyScan": {
+    "sourceMutated": false,
+    "score": 37,
+    "issueCount": 15,
+    "severityCounts": {
+      "critical": 1,
+      "high": 0,
+      "medium": 4,
+      "low": 9,
+      "info": 1
+    },
+    "topIssueCodes": [
+      [
+        "invalid_round_cursor",
+        5
+      ],
+      [
+        "legacy_candidate",
+        4
+      ],
+      [
+        "stale_candidate_round",
+        4
+      ],
+      [
+        "promotion_target_missing",
+        1
+      ],
+      [
+        "maintenance_never_run",
+        1
+      ]
+    ]
+  },
+  "importPlan": {
+    "templateCount": 1,
+    "tableCount": 8,
+    "fieldCount": 94,
+    "rowCount": 234,
+    "sourceRowCount": 234,
+    "importedRowCount": 234,
+    "rowCountPreserved": true,
+    "sourceMessageRefsRemaining": 0,
+    "oldIdReferenceLeaks": 0,
+    "importedSidecarCandidates": 4,
+    "importedSidecarHistory": 0,
+    "importedQualityCases": 4,
+    "importedQualityRuns": 0
+  },
+  "guaranteesChecked": [
+    "扫描不修改源包",
+    "模板/表格/字段/行重新生成 ID",
+    "正式行数量保持",
+    "行来源消息引用清空",
+    "Sidecar 运行历史清空",
+    "质量运行历史清空"
+  ],
+  "note": "完整性医生为只读扫描；问题报告不等于自动修复。旧 ID 泄漏统计仅检查结构化值的精确字符串引用。"
+}

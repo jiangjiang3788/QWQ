@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controllerText = read('js/modules/memory_table.js');
 const workspaceText = read('js/features/memory/workspace.js');
@@ -74,6 +74,13 @@ const domain = {
     this.getRows(chatArg, templateId, table).push(row);
     return row;
   },
+  updateRowFieldValue(chatArg, templateId, table, rowId, field, value) {
+    const row = this.getRows(chatArg, templateId, table).find(item => item.id === rowId);
+    if (!row) return false;
+    const before = row.cells[field.id];
+    row.cells[field.id] = this.normalizeFieldValue(field, value);
+    return JSON.stringify(before) !== JSON.stringify(row.cells[field.id]);
+  },
   pushMemoryHistory(chatArg, changedFields, options = {}) { chatArg.memoryTables.history.push({ changedFields, source: options.source, snapshot: options.snapshot }); }
 };
 const lifecycle = {
@@ -91,6 +98,7 @@ const lifecycle = {
 Kernel.register('domain', domain);
 Kernel.register('policy', { normalizeTablePolicy: table => ({ memoryLayer: table.memoryLayer || 'long' }), clearRetrievalCache() {} });
 Kernel.register('lifecycle', lifecycle);
+vm.runInContext(read('js/features/memory/write_coordinator.js'), context);
 Kernel.register('review', { getPendingBatches: () => [{ id: 'batch-1', tableName: '当前状态', proposals: [{ risk: 'high' }, { risk: 'low' }], sourceMessageCount: 12, relatedContext: { rowCount: 6 }, createdAt: 20 }], setActiveBatch() {} });
 Kernel.register('tasks', { getCounts: () => ({ failed: 1, queued: 2, paused: 0 }) });
 Kernel.register('sidecar', { ensureState: () => ({ candidates: [{ status: 'pending' }] }) });
@@ -107,7 +115,7 @@ const candidates = Kernel.get('candidateService');
 const filters = Kernel.get('tableFilter');
 const queue = Kernel.get('governanceQueue');
 const governance = Kernel.get('governanceController');
-assert.strictEqual(candidates.VERSION, '2.13-R5');
+assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(candidates.VERSION));
 assert.strictEqual(filters.VERSION, '2.11-R4');
 assert.strictEqual(queue.VERSION, '2.11-R4');
 assert.strictEqual(governance.VERSION, '2.13-R5');

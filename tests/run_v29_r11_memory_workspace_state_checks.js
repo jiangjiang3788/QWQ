@@ -24,6 +24,7 @@ let currentChat = {
 let controller = null;
 
 const noop = () => {};
+const useCaseFactory = exports => ({ create: () => Object.fromEntries(exports.map(name => [name, name.startsWith('prepare') || name.startsWith('rebuild') || name.startsWith('finalize') || name.startsWith('cancel') || name.startsWith('rollback') || name.startsWith('import') ? async () => ({}) : noop])) });
 const domainNames = [
     'createStarterTemplate', 'createEmptyFieldDraft', 'createEmptyTableDraft', 'normalizeTemplate',
     'normalizeFieldType', 'parseOptionText', 'parseConditionalRulesText', 'serializeConditionalRules',
@@ -91,7 +92,7 @@ const kernel = {
     get(name) { return name === 'policy' ? policy : null; },
     require(name) {
         if (name === 'memoryPlatformDomain') return { policy, review: null, retrieval: null, effects: null, lifecycle: null, tasks: null, feedback: null, quality: null, sidecar: null, schedule: {} };
-        if (name === 'memoryFoundationDomain') return { api, domain, workspace };
+        if (name === 'memoryFoundationDomain') return { api, domain, workspace, packageAdapter: { cloneTemplateWithFreshIds: value => ({ template: value, idMap: {} }), createImportPlan: () => ({ entries: [], summary: {} }), remapTableDataForImport: () => ({ data: {}, lockedFields: {} }), remapSidecarForImport: value => value || {}, remapQualityForImport: value => value || {}, portableImportPreview: () => '', freshRuntimeState: () => ({}) }, packageOrchestrator: useCaseFactory(['exportTemplate','exportTemplatePackage','exportCurrentMemoryPackage','exportAllTemplates','downloadJson','importTemplatesFromFile']) };
         if (name === 'memorySchemaDomain') return {
             model: { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, summarize: () => ({ tableCount: 0, fieldCount: 0, groupCount: 0 }), groupedFields: () => [], listScalarRows: () => [], getPath: () => undefined, setPath: () => false, updatePath: () => false, addTable: () => null, removeTable: () => false, moveTable: () => false, addField: () => null, removeField: () => false, moveField: () => false, applyRawJson: () => ({ tables: [] }) },
             editor: { prepare: value => value || { tables: [] }, normalize: value => value || { tables: [] }, render: () => '', updateRole: () => false, updatePath: () => false, mutate: () => false, applyRawJson: () => ({ tables: [] }) }
@@ -101,9 +102,9 @@ const kernel = {
             candidate: { approve: () => ({ changed: false }), setStatus: () => ({ changed: false }), isPending: () => false, statusText: () => '' },
             filter: { apply: rows => rows || [], renderToolbar: () => '', normalizeTagQuery: value => String(value || '') },
             queue: { setFilter: noop, setQuery: noop, toggleSelection: noop }, controller: { handle: async () => false },
-            inspector: { render: () => '' }, inspectorController: { handles: () => false, handleAction: async () => false, handleSubmit: async () => false }
+            inspector: { render: () => '' }, inspectorController: { handles: () => false, handleAction: async () => false, handleSubmit: async () => false }, integrity: { renderView: () => '', scan: () => ({ summary: {}, issues: [] }) }, reviewOrchestrator: useCaseFactory(['buildMemoryReviewBatches','buildMemoryReviewBatch','recordMemoryChangedFields','recordPendingReviewBatch','finalizeMemoryReviewBatch','cancelMemoryReviewBatch','rollbackMemoryReviewBatch','applyMemoryUpdatesFromXml'])
         };
-        if (name === 'memoryRetrievalDomain') return { audit: { render: () => '', setSelectedRound: () => true } };
+        if (name === 'memoryRetrievalDomain') return { audit: { render: () => '', setSelectedRound: () => true }, maintenance: {}, orchestrator: useCaseFactory(['rowToRetrievalItem','getMemoryContextBlock','collectRelevantRetrievalGroups','prepareMemoryTableContext','clearMemoryTableRetrievalIndex','rebuildMemoryTableRetrievalPreview']) }; 
         if (name === 'memoryUpdateDomain') return {
             tags: { parseRowNode: () => null, equals: () => true, applyToRow: () => ({ changed: false }), buildPromptInstructions: () => '', normalize: () => ({ topic: [], scene: [], entity: [], effect: 'historical_context' }), isLocked: () => false, setLocked: () => false },
             context: { assemble: () => ({ text: '', tables: [], rowCount: 0, chars: 0 }) },
@@ -151,6 +152,7 @@ const kernel = {
 const context = {
     window: null,
     console,
+    saveData: async () => true,
     Object, Array, String, Number, Boolean, Math, Date, JSON, Set, Map, Promise,
     Error, TypeError, ReferenceError,
     setTimeout, clearTimeout,

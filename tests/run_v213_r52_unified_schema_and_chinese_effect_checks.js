@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert.strictEqual(read('VERSION.txt').trim(), '2.13-R5.2');
+assert(['2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
 
 const schema = read('js/features/memory/schema_editor.js');
 const schemaCss = read('css/modules/memory_schema_editor.css');
@@ -19,7 +19,7 @@ for (const role of ['table-overlap-messages', 'table-allow-add', 'table-allow-up
 assert(schema.includes('选项、最小值和最大值都允许留空'));
 assert(schemaCss.includes('width:100vw'));
 assert(schemaCss.includes('height:100dvh'));
-assert(schemaCss.includes('min-width:3600px'));
+assert(/min-width:(?:4850|5300)px/.test(schemaCss));
 assert(schemaCss.includes('min-width:2500px'));
 
 const effectsSource = read('js/modules/memory_table_effects.js');

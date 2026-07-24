@@ -5,9 +5,10 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controller = read('js/modules/memory_table.js');
+const reviewUseCase = read('js/features/memory/review_orchestrator.js');
 assert(html.includes('js/features/memory/tag_vocabulary.js'));
 assert(html.includes('js/features/memory/tag_service.js'));
 assert(html.includes('js/features/memory/context_assembler.js'));
@@ -20,7 +21,7 @@ assert(controller.includes("Kernel.require('memoryUpdateDomain')"));
 assert(!controller.includes("Kernel.require('tagService')"));
 assert(!controller.includes("Kernel.require('contextAssembler')"));
 assert(!controller.includes("Kernel.require('updateService')"));
-assert(controller.includes('MemoryTagService.parseRowNode'));
+assert(reviewUseCase.includes('MemoryTagService.parseRowNode'));
 assert(controller.includes('relatedContextSummary'));
 assert(controller.includes("type: 'structured_archive_memory'"));
 assert(controller.includes('相关记忆表'));
@@ -63,7 +64,7 @@ vm.runInContext(read('js/features/memory/context_assembler.js'), context);
 vm.runInContext(read('js/features/memory/update_service.js'), context);
 
 const tagService = Kernel.get('tagService');
-assert(['2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2'].includes(tagService.VERSION));
+assert(['2.11-R1', '2.11-R2', '2.11-R3.1', '2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(tagService.VERSION));
 const fakeTagNode = {
     getAttribute(name) { return { topic: '睡眠,主动求助', scene: '睡前交流', entity: '用户,阿沉', effect: 'soft_preference' }[name] || ''; }
 };

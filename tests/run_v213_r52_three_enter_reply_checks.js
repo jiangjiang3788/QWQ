@@ -31,7 +31,7 @@ function event() {
   for (let i = 0; i < 3; i += 1) vm.runInContext('handleThreeEnterAiReply', sandbox)(event());
   await Promise.resolve();
   assert.strictEqual(replyCount, 1, 'cooldown should block a second trigger');
-  assert(toasts.some(text => text.includes('冷却中')));
+  assert.deepStrictEqual(toasts, [], 'three-enter gesture should stay completely silent');
 
   vm.runInContext('threeEnterReplyLastTriggeredAt = Date.now() - 31000', sandbox);
   for (let i = 0; i < 3; i += 1) vm.runInContext('handleThreeEnterAiReply', sandbox)(event());
@@ -55,5 +55,7 @@ function event() {
   assert(chatCode.includes('THREE_ENTER_REPLY_WINDOW_MS = 3000'));
   assert(chatCode.includes('THREE_ENTER_REPLY_COOLDOWN_MS = 30000'));
   assert(chatCode.includes("messageInput.addEventListener('keydown'"));
+  const handlerBlock = chatCode.slice(chatCode.indexOf('function handleThreeEnterAiReply'), chatCode.indexOf('async function saveCurrentChat'));
+  assert(!handlerBlock.includes('showToast'), 'three-enter handler must not show success, cooldown, busy, or failure messages');
   console.log('V2.13-R5.2 THREE ENTER AI REPLY CHECKS: PASS');
 })().catch(error => { console.error(error); process.exit(1); });

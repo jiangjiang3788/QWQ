@@ -12,7 +12,7 @@
     });
 
     const INBOX_VIEWS = new Set(['inbox_home', 'review', 'sidecar', 'reliability', 'tasks']);
-    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'usage_audit', 'quality', 'history']);
+    const MANAGE_VIEWS = new Set(['manage_home', 'templates', 'integrity', 'usage_audit', 'quality', 'history']);
 
     function getModules() {
         return {
@@ -118,6 +118,7 @@
         const latestRun = quality?.runs?.[quality.runs.length - 1];
         const cards = [
             ['templates', '表结构编辑器', `${counts.templates} 个已绑定模板`, '统一管理字段、表格和结构 JSON'],
+            ['integrity', '记忆完整性医生', '只读检查结构与引用', '发现孤立数据、失效目标、重复职责和游标断点'],
             ['usage_audit', '记忆引用与作用', '按表查看来源、原因与效果', '核对本轮实际使用的记忆'],
             ['quality', '质量与诊断', latestRun ? `最近得分 ${Math.round(latestRun.score || 0)}` : '尚未建立质量基线', '运行回归与质量测试'],
             ['history', '更新历史', '查看表格变更快照', '用于核对和回滚']
@@ -135,12 +136,12 @@
     function viewTitle(view) {
         return ({
             review: '更新确认', sidecar: '短期候选', reliability: '需要复核', tasks: '任务队列',
-            templates: '表结构编辑器', usage_audit: '记忆引用与作用', retrieval: '记忆引用与作用', feedback: '记忆引用与作用', quality: '质量与诊断', history: '更新历史'
+            templates: '表结构编辑器', integrity: '记忆完整性医生', usage_audit: '记忆引用与作用', retrieval: '记忆引用与作用', feedback: '记忆引用与作用', quality: '质量与诊断', history: '更新历史'
         })[view] || '';
     }
 
     Kernel.register('workspace', {
-        VERSION: '2.12-R3',
+        VERSION: '2.14-R0',
         WORKSPACES,
         canonicalView,
         getWorkspaceForView,

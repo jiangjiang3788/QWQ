@@ -1,0 +1,30 @@
+{
+  "version": "2.14-R5",
+  "input": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templateCount": 1,
+  "tableCount": 8,
+  "fieldCount": 94,
+  "rowCount": 234,
+  "initialRoleOverrideCount": 0,
+  "testedTable": "中期总结与成长经验",
+  "effectiveOverride": {
+    "captureMode": "scheduled",
+    "frequencySource": "global",
+    "triggerMode": "messages",
+    "messageInterval": 60,
+    "commitMode": "direct",
+    "injectionMode": "never",
+    "sources": {
+      "capture": "role",
+      "commit": "role",
+      "schedule": "global",
+      "injection": "role"
+    }
+  },
+  "resetToTemplate": true,
+  "templateUnchanged": true,
+  "formalDataHashBefore": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "formalDataHashAfter": "1ddde0ba6c8d6282d878680ee9121268e9690cc758e2c837dd01cebc2d9ffd17",
+  "formalDataUnchanged": true,
+  "sourcePackageUnchanged": true
+}

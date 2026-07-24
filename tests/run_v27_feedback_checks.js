@@ -32,6 +32,8 @@ function assert(condition, message) {
     usePolicy: { injectionEnabled:true, paused:false, allowedScenes:[], blockedScenes:[], maxInfluence:'low', cooldownRounds:0, allowProactiveMention:false, mentionPolicy:'relevant_only' },
     lifecycle: { status:'active', retentionMode:'permanent' },
     evidence: { primarySource:'user_explicit', userEvidenceCount:1, userConfirmed:true },
+    feedback: { helpfulCount:0, irrelevantCount:0, outdatedCount:0, inaccurateCount:0, sceneBlockedCount:0, pauseCount:0, forgetCount:0, weight:0, snoozedUntilRoundIndex:-1, sceneNegative:{}, lastType:'', lastAt:0, lastScene:'', lastRoundId:'' },
+    usage: { retrievalCount:0, injectionCount:0, lastRetrievedAt:0, lastInjectedAt:0, lastInjectedRoundIndex:-999999, correctionCount:0, helpfulCount:0 },
     createdAt: Date.now(), updatedAt: Date.now(), lastMentionedAt: Date.now(), importance:70, confidence:90, pinned:false
   }};
   const chat = { id:'chat1', memoryMode:'table', memoryTables: { boundTemplateIds:['tpl'], data:{tpl:{table_long:{__rows:[row]}}}, rounds:[], activeRound:{id:'round_current'} }, history:[] };

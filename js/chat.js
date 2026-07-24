@@ -21,19 +21,11 @@ function handleThreeEnterAiReply(event) {
     if (threeEnterReplyTimestamps.length < 3) return true;
     threeEnterReplyTimestamps = [];
     const remaining = THREE_ENTER_REPLY_COOLDOWN_MS - (now - threeEnterReplyLastTriggeredAt);
-    if (remaining > 0) {
-        if (typeof showToast === 'function') showToast(`连续回车触发冷却中，还需 ${Math.ceil(remaining / 1000)} 秒`);
-        return true;
-    }
-    if (isGenerating) {
-        if (typeof showToast === 'function') showToast('AI 正在回复，请稍后再试');
-        return true;
-    }
+    if (remaining > 0) return true;
+    if (isGenerating) return true;
     threeEnterReplyLastTriggeredAt = now;
-    if (typeof showToast === 'function') showToast('已通过连续 3 次回车触发 AI 回复');
     Promise.resolve().then(() => getAiReply(currentChatId, currentChatType)).catch(error => {
         console.error('[ThreeEnterReply] trigger failed:', error);
-        if (typeof showToast === 'function') showToast(`触发 AI 回复失败：${error?.message || '未知错误'}`);
     });
     return true;
 }

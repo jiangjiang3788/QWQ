@@ -1,0 +1,61 @@
+{
+  "version": "2.13-R5.4",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "sourceSha256": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceModified": false,
+  "templateCount": 1,
+  "tableCount": 8,
+  "tables": [
+    {
+      "tableName": "核心确认档案",
+      "inferredSystemRole": "core_profile",
+      "inferredCommitMode": "manual_only"
+    },
+    {
+      "tableName": "当前状态（3-7天）",
+      "inferredSystemRole": "current_state",
+      "inferredCommitMode": "direct"
+    },
+    {
+      "tableName": "待办、承诺与未完成事项",
+      "inferredSystemRole": "tasks",
+      "inferredCommitMode": "direct"
+    },
+    {
+      "tableName": "近期经历、想法与重要事件",
+      "inferredSystemRole": "recent_events",
+      "inferredCommitMode": "candidate"
+    },
+    {
+      "tableName": "日常观察（睡眠/饮水/身体）",
+      "inferredSystemRole": "daily_observation",
+      "inferredCommitMode": "candidate"
+    },
+    {
+      "tableName": "中期总结与成长经验",
+      "inferredSystemRole": "medium_summary",
+      "inferredCommitMode": "review"
+    },
+    {
+      "tableName": "长期候选审核队列",
+      "inferredSystemRole": "long_candidate",
+      "inferredCommitMode": "promotion"
+    },
+    {
+      "tableName": "稳定长期特征库",
+      "inferredSystemRole": "long_store",
+      "inferredCommitMode": "manual_only"
+    }
+  ],
+  "singleTableReviewTargets": [
+    "近期经历、想法与重要事件",
+    "日常观察（睡眠/饮水/身体）",
+    "中期总结与成长经验",
+    "长期候选审核队列"
+  ],
+  "manualOnlyTargets": [
+    "核心确认档案",
+    "稳定长期特征库"
+  ],
+  "result": "PASS"
+}

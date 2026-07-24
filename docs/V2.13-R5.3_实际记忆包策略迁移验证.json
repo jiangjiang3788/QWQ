@@ -1,0 +1,164 @@
+{
+  "version": "2.13-R5.3",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "sourceSha256": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceModified": false,
+  "templateCount": 1,
+  "tableCount": 8,
+  "duplicateUniqueRoles": [],
+  "tables": [
+    {
+      "tableId": "memory_table_1784414846228_6a5bpb",
+      "tableName": "核心确认档案",
+      "memoryLayer": "core",
+      "systemRole": "core_profile",
+      "capturePolicy": {
+        "mode": "manual",
+        "frequencySource": "table",
+        "apiMode": "summary"
+      },
+      "commitPolicy": {
+        "mode": "manual_only",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_wojbpz",
+      "tableName": "当前状态（3-7天）",
+      "memoryLayer": "short",
+      "systemRole": "current_state",
+      "capturePolicy": {
+        "mode": "sidecar",
+        "frequencySource": "table",
+        "apiMode": "none"
+      },
+      "commitPolicy": {
+        "mode": "direct",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_4ueq9q",
+      "tableName": "待办、承诺与未完成事项",
+      "memoryLayer": "short",
+      "systemRole": "tasks",
+      "capturePolicy": {
+        "mode": "sidecar",
+        "frequencySource": "table",
+        "apiMode": "none"
+      },
+      "commitPolicy": {
+        "mode": "direct",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_73dkfv",
+      "tableName": "近期经历、想法与重要事件",
+      "memoryLayer": "short",
+      "systemRole": "recent_events",
+      "capturePolicy": {
+        "mode": "sidecar",
+        "frequencySource": "table",
+        "apiMode": "none"
+      },
+      "commitPolicy": {
+        "mode": "candidate",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_8eq0q5",
+      "tableName": "日常观察（睡眠/饮水/身体）",
+      "memoryLayer": "short",
+      "systemRole": "daily_observation",
+      "capturePolicy": {
+        "mode": "sidecar",
+        "frequencySource": "table",
+        "apiMode": "none"
+      },
+      "commitPolicy": {
+        "mode": "candidate",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_4i21nd",
+      "tableName": "中期总结与成长经验",
+      "memoryLayer": "medium",
+      "systemRole": "medium_summary",
+      "capturePolicy": {
+        "mode": "manual",
+        "frequencySource": "table",
+        "apiMode": "summary"
+      },
+      "commitPolicy": {
+        "mode": "review",
+        "requireUserConfirmation": true
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_km3y66",
+      "tableName": "长期候选审核队列",
+      "memoryLayer": "review",
+      "systemRole": "long_candidate",
+      "capturePolicy": {
+        "mode": "manual",
+        "frequencySource": "table",
+        "apiMode": "summary"
+      },
+      "commitPolicy": {
+        "mode": "promotion",
+        "requireUserConfirmation": true
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    },
+    {
+      "tableId": "memory_table_1784414846228_3wlskf",
+      "tableName": "稳定长期特征库",
+      "memoryLayer": "long",
+      "systemRole": "long_store",
+      "capturePolicy": {
+        "mode": "disabled",
+        "frequencySource": "table",
+        "apiMode": "none"
+      },
+      "commitPolicy": {
+        "mode": "manual_only",
+        "requireUserConfirmation": false
+      },
+      "legacyUpdatePolicy": {
+        "enabled": false,
+        "triggerMode": "manual"
+      }
+    }
+  ],
+  "conclusion": "旧记忆包无需改动即可推导新职责与策略；只有用户保存表结构时才会把显式新策略写回模板。"
+}

@@ -51,6 +51,14 @@
     });
 
     const AUTOMATION_MODES = Object.freeze(['sidecar', 'engine', 'table', 'manual']);
+    const SYSTEM_ROLES = Object.freeze([
+        'general', 'core_profile', 'current_state', 'tasks', 'recent_events',
+        'daily_observation', 'medium_summary', 'long_candidate', 'long_store'
+    ]);
+    const CAPTURE_MODES = Object.freeze(['sidecar', 'scheduled', 'manual', 'disabled']);
+    const FREQUENCY_SOURCES = Object.freeze(['global', 'table']);
+    const API_MODES = Object.freeze(['none', 'main', 'summary']);
+    const COMMIT_MODES = Object.freeze(['direct', 'review', 'candidate', 'manual_only', 'promotion']);
 
     function normalizeAutomationMode(mode) {
         return AUTOMATION_MODES.includes(mode) ? mode : '';
@@ -65,6 +73,76 @@
         if (/当前|近期|事件|待办|日常|状态/.test(name)) return 'short';
         if (/周期|总结|成长|趋势/.test(name)) return 'medium';
         return 'long';
+    }
+
+
+    function inferSystemRole(table) {
+        const descriptor = table && typeof table === 'object' ? table : {};
+        const explicit = String(descriptor.systemRole || '').trim();
+        if (SYSTEM_ROLES.includes(explicit)) return explicit;
+        const identity = `${descriptor.id || ''} ${descriptor.name || ''}`;
+        if (/table_current_state|当前状态|近期状态/i.test(identity)) return 'current_state';
+        if (/table_tasks|待办|承诺|未完成事项/i.test(identity)) return 'tasks';
+        if (/table_recent_events|近期经历|重要事件/i.test(identity)) return 'recent_events';
+        if (/table_daily_observation|日常观察|睡眠.*饮水|饮水.*身体/i.test(identity)) return 'daily_observation';
+        if (/长期候选|审核队列/i.test(identity)) return 'long_candidate';
+        if (/稳定长期|长期特征库/i.test(identity)) return 'long_store';
+        if (/中期总结|成长经验|周期总结/i.test(identity)) return 'medium_summary';
+        if (/核心确认|核心档案/i.test(identity)) return 'core_profile';
+        return 'general';
+    }
+
+    function normalizeSystemRole(role, table) {
+        const raw = String(role || '').trim();
+        return SYSTEM_ROLES.includes(raw) ? raw : inferSystemRole(table);
+    }
+
+    function defaultCommitMode(systemRole, layer) {
+        if (systemRole === 'current_state' || systemRole === 'tasks') return 'direct';
+        if (systemRole === 'recent_events' || systemRole === 'daily_observation') return 'candidate';
+        if (systemRole === 'medium_summary') return 'review';
+        if (systemRole === 'long_candidate') return 'promotion';
+        if (systemRole === 'core_profile' || systemRole === 'long_store') return 'manual_only';
+        if (layer === 'review' || layer === 'medium') return 'review';
+        return layer === 'core' || layer === 'long' ? 'manual_only' : 'direct';
+    }
+
+    function normalizeCommitPolicy(raw, systemRole, layer) {
+        const source = raw && typeof raw === 'object' ? raw : {};
+        const mode = COMMIT_MODES.includes(source.mode) ? source.mode : defaultCommitMode(systemRole, layer);
+        return {
+            mode,
+            requireUserConfirmation: source.requireUserConfirmation !== undefined
+                ? !!source.requireUserConfirmation
+                : mode === 'review' || mode === 'promotion'
+        };
+    }
+
+    function inferCapturePolicy(table, updatePolicy) {
+        const descriptor = table && typeof table === 'object' ? table : {};
+        const role = inferSystemRole(descriptor);
+        if (role === 'current_state' || role === 'tasks' || role === 'recent_events' || role === 'daily_observation') {
+            return { mode: 'sidecar', frequencySource: 'table', apiMode: 'none' };
+        }
+        const legacyMode = normalizeAutomationMode(descriptor.automationMode);
+        if (legacyMode === 'sidecar') return { mode: 'sidecar', frequencySource: 'table', apiMode: 'none' };
+        if (legacyMode === 'engine') return { mode: 'scheduled', frequencySource: 'global', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' };
+        if (legacyMode === 'table') return { mode: 'scheduled', frequencySource: 'table', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' };
+        if (updatePolicy.enabled && updatePolicy.triggerMode !== 'manual') {
+            return { mode: 'scheduled', frequencySource: 'table', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' };
+        }
+        if (role === 'long_store') return { mode: 'disabled', frequencySource: 'table', apiMode: 'none' };
+        return { mode: 'manual', frequencySource: 'table', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' };
+    }
+
+    function normalizeCapturePolicy(raw, table, updatePolicy) {
+        const inferred = inferCapturePolicy(table, updatePolicy);
+        const source = raw && typeof raw === 'object' ? raw : {};
+        const mode = CAPTURE_MODES.includes(source.mode) ? source.mode : inferred.mode;
+        const frequencySource = FREQUENCY_SOURCES.includes(source.frequencySource) ? source.frequencySource : inferred.frequencySource;
+        let apiMode = API_MODES.includes(source.apiMode) ? source.apiMode : inferred.apiMode;
+        if (mode === 'sidecar' || mode === 'disabled') apiMode = 'none';
+        return { mode, frequencySource, apiMode };
     }
 
     function normalizeUpdatePolicy(raw, layer) {
@@ -105,23 +183,28 @@
     }
 
     function normalizeTablePolicy(table) {
-        const layer = normalizeLayer(table && table.memoryLayer, table && table.name);
+        const descriptor = table && typeof table === 'object' ? table : {};
+        const layer = normalizeLayer(descriptor.memoryLayer, descriptor.name);
+        const updatePolicy = normalizeUpdatePolicy(descriptor.updatePolicy, layer);
+        const systemRole = normalizeSystemRole(descriptor.systemRole, descriptor);
+        const capturePolicy = normalizeCapturePolicy(descriptor.capturePolicy, descriptor, updatePolicy);
+        const commitPolicy = normalizeCommitPolicy(descriptor.commitPolicy, systemRole, layer);
+        if (capturePolicy.apiMode === 'main') updatePolicy.useSummaryApi = false;
+        if (capturePolicy.apiMode === 'summary') updatePolicy.useSummaryApi = true;
         return {
             memoryLayer: layer,
-            updatePolicy: normalizeUpdatePolicy(table && table.updatePolicy, layer),
-            injectionPolicy: normalizeInjectionPolicy(table && table.injectionPolicy, layer)
+            systemRole,
+            capturePolicy,
+            commitPolicy,
+            updatePolicy,
+            injectionPolicy: normalizeInjectionPolicy(descriptor.injectionPolicy, layer)
         };
     }
 
     function inferAutomationMode(table) {
-        const descriptor = table && typeof table === 'object' ? table : {};
-        const policy = normalizeTablePolicy(descriptor);
-        const identity = `${descriptor.id || ''} ${descriptor.name || ''} ${policy.updatePolicy.instructions || ''}`;
-        if (/table_current_state|table_tasks|table_recent_events|table_daily_observation|memory_sidecar|聊天同请求/i.test(identity)) {
-            return 'sidecar';
-        }
-        if (policy.updatePolicy.enabled && policy.updatePolicy.triggerMode !== 'manual') return 'table';
-        if (policy.memoryLayer === 'medium') return 'engine';
+        const policy = normalizeTablePolicy(table);
+        if (policy.capturePolicy.mode === 'sidecar') return 'sidecar';
+        if (policy.capturePolicy.mode === 'scheduled') return policy.capturePolicy.frequencySource === 'global' ? 'engine' : 'table';
         return 'manual';
     }
 
@@ -282,12 +365,22 @@
         return { runtime, tableState, history, cursorIndex, nextStartIndex, unsyncedMessages, roundCursorIndex, unsyncedRounds };
     }
 
+    function materializeEffectiveTable(chat, templateId, table) {
+        const resolver = Kernel?.get?.('policyResolver');
+        return resolver?.materializeTable ? resolver.materializeTable(chat, templateId, table) : table;
+    }
+
     function resolveEffectiveUpdatePolicy(table, engineSettings, automationMode) {
-        const normalized = normalizeTablePolicy(table).updatePolicy;
+        const normalizedTable = normalizeTablePolicy(table);
+        const normalized = normalizedTable.updatePolicy;
         const engine = normalizeEngineSettings(engineSettings);
-        const mode = normalizeAutomationMode(automationMode) || inferAutomationMode(table);
+        const hasExplicitCapturePolicy = !!(table && table.capturePolicy && typeof table.capturePolicy === 'object');
+        const legacyMode = normalizeAutomationMode(automationMode);
+        const mode = hasExplicitCapturePolicy
+            ? inferAutomationMode(table)
+            : (legacyMode || inferAutomationMode(table));
         if (mode === 'manual' || mode === 'sidecar') {
-            return { ...normalized, enabled: false, triggerMode: 'manual', automationMode: mode };
+            return { ...normalized, enabled: false, triggerMode: 'manual', automationMode: mode, captureMode: normalizedTable.capturePolicy.mode };
         }
         if (mode === 'engine') {
             return {
@@ -298,7 +391,8 @@
                 messageInterval: engine.messageInterval,
                 maxSourceMessages: engine.maxSourceMessages,
                 overlapMessages: engine.overlapMessages,
-                automationMode: mode
+                automationMode: mode,
+                captureMode: normalizedTable.capturePolicy.mode
             };
         }
         return {
@@ -309,13 +403,16 @@
             messageInterval: normalized.messageInterval || engine.messageInterval,
             maxSourceMessages: normalized.maxSourceMessages || engine.maxSourceMessages,
             overlapMessages: normalized.overlapMessages ?? engine.overlapMessages,
-            automationMode: mode
+            automationMode: mode,
+            captureMode: normalizedTable.capturePolicy.mode
         };
     }
 
     function getAutomationMode(chat, templateId, table) {
-        const state = ensureTableState(chat, templateId, table.id, { table });
-        return normalizeAutomationMode(state.automationMode) || inferAutomationMode(table);
+        const effectiveTable = materializeEffectiveTable(chat, templateId, table);
+        const state = ensureTableState(chat, templateId, table.id, { table: effectiveTable });
+        if (effectiveTable?.capturePolicy && typeof effectiveTable.capturePolicy === 'object') return inferAutomationMode(effectiveTable);
+        return normalizeAutomationMode(state.automationMode) || inferAutomationMode(effectiveTable);
     }
 
     function setAutomationMode(chat, templateId, table, mode) {
@@ -323,14 +420,25 @@
         if (!normalizedMode) throw new Error('无效的自动整理模式');
         const state = ensureTableState(chat, templateId, table.id, { table });
         state.automationMode = normalizedMode;
+        if (table && typeof table === 'object') {
+            const updatePolicy = normalizeUpdatePolicy(table.updatePolicy || {}, normalizeLayer(table.memoryLayer, table.name));
+            table.capturePolicy = normalizedMode === 'sidecar'
+                ? { mode: 'sidecar', frequencySource: 'table', apiMode: 'none' }
+                : normalizedMode === 'engine'
+                    ? { mode: 'scheduled', frequencySource: 'global', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' }
+                    : normalizedMode === 'table'
+                        ? { mode: 'scheduled', frequencySource: 'table', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' }
+                        : { mode: 'manual', frequencySource: 'table', apiMode: updatePolicy.useSummaryApi === false ? 'main' : 'summary' };
+        }
         state.lastRunStatus = state.lastRunStatus === 'failed' ? 'idle' : state.lastRunStatus;
         state.lastError = '';
         return state;
     }
 
     function isTableDue(chat, templateId, table) {
-        const info = getUnprocessedInfo(chat, templateId, table);
-        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings, info.tableState.automationMode);
+        const effectiveTable = materializeEffectiveTable(chat, templateId, table);
+        const info = getUnprocessedInfo(chat, templateId, effectiveTable);
+        const policy = resolveEffectiveUpdatePolicy(effectiveTable, info.runtime.engineSettings, info.tableState.automationMode);
         if (!info.runtime.engineSettings.enabled || !policy.enabled || !info.tableState.enabled || policy.triggerMode === 'manual') return false;
         if (info.tableState.pendingReviewBatchId) return false;
         const roundDue = policy.roundInterval > 0 && info.unsyncedRounds >= policy.roundInterval;
@@ -341,8 +449,9 @@
     }
 
     function getTableUpdateRange(chat, templateId, table, options) {
-        const info = getUnprocessedInfo(chat, templateId, table);
-        const policy = resolveEffectiveUpdatePolicy(table, info.runtime.engineSettings, info.tableState.automationMode);
+        const effectiveTable = materializeEffectiveTable(chat, templateId, table);
+        const info = getUnprocessedInfo(chat, templateId, effectiveTable);
+        const policy = resolveEffectiveUpdatePolicy(effectiveTable, info.runtime.engineSettings, info.tableState.automationMode);
         const requestedStart = Number(options?.start);
         const requestedEnd = Number(options?.end);
         if (Number.isFinite(requestedStart) && Number.isFinite(requestedEnd)) {
@@ -509,6 +618,10 @@
         ENGINE_DEFAULTS,
         LAYER_DEFAULTS,
         normalizeLayer,
+        inferSystemRole,
+        normalizeSystemRole,
+        normalizeCapturePolicy,
+        normalizeCommitPolicy,
         normalizeUpdatePolicy,
         normalizeInjectionPolicy,
         normalizeTablePolicy,

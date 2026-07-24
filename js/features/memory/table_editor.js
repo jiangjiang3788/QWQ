@@ -7,6 +7,7 @@
     const Domain = Kernel.require('domain');
     const TableCache = Kernel.require('tableCache');
     const TablePersistence = Kernel.require('tablePersistence');
+    const WriteGateway = Kernel.get('writeGateway') || Kernel.require('writeCoordinator');
     const TableGrid = Kernel.require('tableGrid');
     const TableReconciler = Kernel.require('tableReconciler');
 
@@ -78,207 +79,210 @@
     async function commitField(options = {}) {
         const { chat, template, table, field, rowId = '', rawValue, writer, root, target } = options;
         if (!chat || !template || !table || !field) throw new Error('字段编辑上下文不完整');
-        const oldValue = clone(fieldValue(chat, template.id, table, field, rowId));
-        if (rowId && Domain.isRowsTable(table)) {
-            Domain.updateRowFieldValue(chat, template.id, table, rowId, field, rawValue, { source: 'manual' });
-        } else {
-            Domain.setFieldValue(chat, template.id, table.id, field, rawValue, { source: 'manual' });
-        }
-        const savedValue = clone(fieldValue(chat, template.id, table, field, rowId));
-        if (Domain.isSameMemoryValue(oldValue, savedValue)) {
-            metrics.noops += 1;
-            TableGrid.commitInput(root, target, field, savedValue);
-            return { changed: false, savedValue };
-        }
-        TableCache.touch(chat, template.id, table.id, 'field-commit');
-        pushUndo(chat, {
-            type: 'field', templateId: template.id, tableId: table.id, rowId, fieldId: field.id,
-            oldValue, newValue: savedValue, label: `${table.name} / ${field.key}`
-        });
         TableReconciler.markSaving(root, '保存中…');
-        await persist(chat, writer, { reason: 'field-edit', delay: options.delay });
-        TableGrid.commitInput(root, target, field, savedValue);
+        let result;
+        try {
+            result = await WriteGateway.run(chat, {
+                reason: 'field-edit', writer, persistRollback: true
+            }, () => {
+                const oldValue = clone(fieldValue(chat, template.id, table, field, rowId));
+                if (rowId && Domain.isRowsTable(table)) {
+                    Domain.updateRowFieldValue(chat, template.id, table, rowId, field, rawValue, { source: 'manual_v2_14_r2' });
+                } else {
+                    Domain.setFieldValue(chat, template.id, table.id, field, rawValue, { source: 'manual_v2_14_r2' });
+                }
+                const savedValue = clone(fieldValue(chat, template.id, table, field, rowId));
+                if (Domain.isSameMemoryValue(oldValue, savedValue)) return { changed: false, savedValue };
+                TableCache.touch(chat, template.id, table.id, 'field-commit');
+                return {
+                    changed: true,
+                    savedValue,
+                    undoEntry: {
+                        type: 'field', templateId: template.id, tableId: table.id, rowId, fieldId: field.id,
+                        oldValue, newValue: savedValue, label: `${table.name} / ${field.key}`
+                    }
+                };
+            });
+        } catch (error) {
+            TableReconciler.markSaved(root, '保存失败，已恢复');
+            throw error;
+        }
+        TableGrid.commitInput(root, target, field, result.savedValue);
+        if (!result.changed) {
+            metrics.noops += 1;
+            return { changed: false, savedValue: result.savedValue };
+        }
+        pushUndo(chat, result.undoEntry);
+        TableReconciler.markSaved(root, '已保存');
         syncUndoControls(chat);
         metrics.fieldCommits += 1;
-        return { changed: true, savedValue };
+        return { changed: true, savedValue: result.savedValue, transactionId: result.transactionId };
     }
-
 
     async function commitTagDimension(options = {}) {
         const { chat, template, table, rowId, dimension, rawValue, writer, root, target } = options;
         if (!chat || !template || !table || !rowId || !['topic', 'scene', 'entity', 'effect'].includes(dimension)) throw new Error('标签编辑上下文不完整');
-        const row = Domain.findRowById(chat, template.id, table, rowId);
-        if (!row) throw new Error('目标记忆不存在');
-        row.meta ||= {};
-        const oldBundle = normalizeTagBundle(clone(row.meta.tagBundle || {}));
-        const nextBundle = normalizeTagBundle(oldBundle);
-        nextBundle[dimension] = dimension === 'effect' ? String(rawValue || 'historical_context') : normalizeTagList(rawValue);
-        if (Domain.isSameMemoryValue(oldBundle, nextBundle)) {
-            metrics.noops += 1;
-            if (target) target.dataset.memorySaved = 'true';
-            return { changed: false, savedValue: nextBundle[dimension] };
-        }
-        row.meta.tagBundle = nextBundle;
-        row.meta.tagSource = 'manual_table_edit_v2_12_r5';
-        row.meta.updatedAt = Date.now();
-        row.meta.retrievalVector = [];
-        row.meta.retrievalVectorFingerprint = '';
-        row.meta.retrievalIndexedAt = 0;
-        Domain.pushMemoryHistory(chat, [{
-            templateId: template.id,
-            tableId: table.id,
-            rowId,
-            fieldId: '__tags__',
-            label: `${table.name} / 标签·${dimension}`,
-            oldValue: oldBundle,
-            newValue: nextBundle
-        }], { source: 'manual_tag_edit' });
-        TableCache.touch(chat, template.id, table.id, 'tag-commit');
-        pushUndo(chat, {
-            type: 'tags', templateId: template.id, tableId: table.id, rowId,
-            oldValue: oldBundle, newValue: clone(nextBundle), label: `${table.name} / 标签`
-        });
         TableReconciler.markSaving(root, '保存标签中…');
-        await persist(chat, writer, { reason: 'tag-edit', delay: options.delay });
+        let result;
+        try {
+            result = await WriteGateway.run(chat, {
+                reason: 'tag-edit', writer, persistRollback: true
+            }, () => {
+                const row = Domain.findRowById(chat, template.id, table, rowId);
+                if (!row) throw new Error('目标记忆不存在');
+                const oldBundle = normalizeTagBundle(clone(row.meta?.tagBundle || {}));
+                const nextBundle = normalizeTagBundle(oldBundle);
+                nextBundle[dimension] = dimension === 'effect' ? String(rawValue || 'historical_context') : normalizeTagList(rawValue);
+                if (Domain.isSameMemoryValue(oldBundle, nextBundle)) return { changed: false, savedValue: nextBundle[dimension] };
+                const tagChange = Domain.setRowTagBundle(chat, template.id, table, rowId, nextBundle, {
+                    source: 'manual_table_edit_v2_14_r2',
+                    label: `${table.name} / 标签·${dimension}`,
+                    skipHistory: true
+                });
+                Domain.pushMemoryHistory(chat, [tagChange.change], { source: 'manual_tag_edit_v2_14_r2' });
+                TableCache.touch(chat, template.id, table.id, 'tag-commit');
+                return {
+                    changed: true,
+                    savedValue: nextBundle[dimension],
+                    undoEntry: {
+                        type: 'tags', templateId: template.id, tableId: table.id, rowId,
+                        oldValue: oldBundle, newValue: clone(nextBundle), label: `${table.name} / 标签`
+                    }
+                };
+            });
+        } catch (error) {
+            TableReconciler.markSaved(root, '保存失败，已恢复');
+            throw error;
+        }
         if (target) {
             target.dataset.memorySaved = 'true';
-            const saved = nextBundle[dimension];
-            const normalized = Array.isArray(saved) ? saved.join(', ') : String(saved || '');
+            const normalized = Array.isArray(result.savedValue) ? result.savedValue.join(', ') : String(result.savedValue || '');
             if (target.value !== normalized) target.value = normalized;
         }
+        if (!result.changed) {
+            metrics.noops += 1;
+            return { changed: false, savedValue: result.savedValue };
+        }
+        pushUndo(chat, result.undoEntry);
         TableReconciler.markSaved(root, '标签已保存');
         syncUndoControls(chat);
         metrics.fieldCommits += 1;
-        return { changed: true, savedValue: nextBundle[dimension] };
+        return { changed: true, savedValue: result.savedValue, transactionId: result.transactionId };
     }
 
     async function commitRecord(options = {}) {
         const { chat, template, table, rowId = '', values = {}, tagBundle = null, writer, root } = options;
         if (!chat || !template || !table) throw new Error('整行编辑上下文不完整');
-        let row = rowId && Domain.isRowsTable(table) ? Domain.findRowById(chat, template.id, table, rowId) : null;
-        if (rowId && !row) throw new Error('目标记忆行不存在');
-        const snapshot = {
-            data: clone(chat.memoryTables?.data || {}),
-            history: clone(chat.memoryTables?.history || []),
-            lastChangedFieldPaths: clone(chat.memoryTables?.lastChangedFieldPaths || [])
-        };
-        const oldValues = {};
-        const newValues = {};
-        const changes = [];
-        (table.columns || []).forEach(field => {
-            if (!Object.prototype.hasOwnProperty.call(values, field.id)) return;
-            const oldValue = clone(fieldValue(chat, template.id, table, field, rowId));
-            const nextValue = Domain.normalizeFieldValue(field, values[field.id]);
-            if (Domain.isSameMemoryValue(oldValue, nextValue)) return;
-            oldValues[field.id] = oldValue;
-            if (row) Domain.updateRowFieldValue(chat, template.id, table, rowId, field, nextValue, { source: 'manual_row_modal_v2_13_r5', skipHistory: true });
-            else Domain.setFieldValue(chat, template.id, table.id, field, nextValue, { source: 'manual_row_modal_v2_13_r5', skipHistory: true });
-            const savedValue = clone(fieldValue(chat, template.id, table, field, rowId));
-            newValues[field.id] = savedValue;
-            changes.push({
-                templateId: template.id,
-                tableId: table.id,
-                rowId,
-                fieldId: field.id,
-                label: `${table.name} / ${field.key}（整行编辑）`,
-                oldValue,
-                newValue: savedValue
-            });
-        });
-        let oldTags = null;
-        let newTags = null;
-        if (rowId && Domain.isRowsTable(table)) row = Domain.findRowById(chat, template.id, table, rowId);
-        if (row && tagBundle) {
-            oldTags = normalizeTagBundle(clone(row.meta?.tagBundle || {}));
-            newTags = normalizeTagBundle(tagBundle);
-            if (!Domain.isSameMemoryValue(oldTags, newTags)) {
-                row.meta ||= {};
-                row.meta.tagBundle = clone(newTags);
-                row.meta.tagSource = 'manual_row_modal_v2_13_r5';
-                row.meta.updatedAt = Date.now();
-                row.meta.retrievalVector = [];
-                row.meta.retrievalVectorFingerprint = '';
-                row.meta.retrievalIndexedAt = 0;
-                changes.push({
-                    templateId: template.id,
-                    tableId: table.id,
-                    rowId,
-                    fieldId: '__tags__',
-                    label: `${table.name} / 整行标签`,
-                    oldValue: oldTags,
-                    newValue: clone(newTags)
+        if (rowId && !Domain.findRowById(chat, template.id, table, rowId)) throw new Error('目标记忆行不存在');
+        TableReconciler.markSaving(root, '保存整行中…');
+        let result;
+        try {
+            result = await WriteGateway.run(chat, {
+                reason: 'record-modal-edit', writer, persistRollback: true
+            }, ({ snapshot }) => {
+                let row = rowId && Domain.isRowsTable(table) ? Domain.findRowById(chat, template.id, table, rowId) : null;
+                const oldValues = {};
+                const newValues = {};
+                const changes = [];
+                (table.columns || []).forEach(field => {
+                    if (!Object.prototype.hasOwnProperty.call(values, field.id)) return;
+                    const oldValue = clone(fieldValue(chat, template.id, table, field, rowId));
+                    const nextValue = Domain.normalizeFieldValue(field, values[field.id]);
+                    if (Domain.isSameMemoryValue(oldValue, nextValue)) return;
+                    oldValues[field.id] = oldValue;
+                    if (row) Domain.updateRowFieldValue(chat, template.id, table, rowId, field, nextValue, { source: 'manual_row_modal_v2_14_r2', skipHistory: true });
+                    else Domain.setFieldValue(chat, template.id, table.id, field, nextValue, { source: 'manual_row_modal_v2_14_r2', skipHistory: true });
+                    const savedValue = clone(fieldValue(chat, template.id, table, field, rowId));
+                    newValues[field.id] = savedValue;
+                    changes.push({ templateId: template.id, tableId: table.id, rowId, fieldId: field.id, label: `${table.name} / ${field.key}（整行编辑）`, oldValue, newValue: savedValue });
                 });
-            }
+                let oldTags = null;
+                let newTags = null;
+                if (rowId && Domain.isRowsTable(table)) row = Domain.findRowById(chat, template.id, table, rowId);
+                if (row && tagBundle) {
+                    oldTags = normalizeTagBundle(clone(row.meta?.tagBundle || {}));
+                    newTags = normalizeTagBundle(tagBundle);
+                    if (!Domain.isSameMemoryValue(oldTags, newTags)) {
+                        const tagChange = Domain.setRowTagBundle(chat, template.id, table, rowId, newTags, {
+                            source: 'manual_row_modal_v2_14_r2',
+                            label: `${table.name} / 整行标签`,
+                            skipHistory: true
+                        });
+                        if (tagChange.changed) changes.push(tagChange.change);
+                    }
+                }
+                if (!changes.length) return { changed: false, changes: [] };
+                Domain.pushMemoryHistory(chat, changes, { source: 'manual_row_modal_v2_14_r2', snapshot: clone(snapshot?.data || {}) });
+                TableCache.touch(chat, template.id, table.id, 'record-modal-commit');
+                return {
+                    changed: true,
+                    changes,
+                    undoEntry: { type: 'record', templateId: template.id, tableId: table.id, rowId, oldValues, newValues, oldTags, newTags, label: `${table.name} / ${row ? '整行' : '档案项'}编辑` }
+                };
+            });
+        } catch (error) {
+            TableCache.touch(chat, template.id, table.id, 'record-modal-rollback');
+            TableReconciler.markSaved(root, '保存失败，已恢复');
+            throw error;
         }
-        if (!changes.length) {
+        if (!result.changed) {
             metrics.noops += 1;
             return { changed: false, changes: [] };
         }
-        Domain.pushMemoryHistory(chat, changes, { source: 'manual_row_modal_v2_13_r5', snapshot: snapshot.data });
-        TableCache.touch(chat, template.id, table.id, 'record-modal-commit');
-        TableReconciler.markSaving(root, '保存整行中…');
-        try {
-            await persist(chat, writer, { immediate: true, reason: 'record-modal-edit' });
-        } catch (error) {
-            chat.memoryTables.data = clone(snapshot.data);
-            chat.memoryTables.history = clone(snapshot.history);
-            chat.memoryTables.lastChangedFieldPaths = clone(snapshot.lastChangedFieldPaths);
-            TableCache.touch(chat, template.id, table.id, 'record-modal-rollback');
-            TableReconciler.markSaved(root, '保存失败，已恢复');
-            error.memoryRollbackApplied = true;
-            throw error;
-        }
-        pushUndo(chat, {
-            type: 'record', templateId: template.id, tableId: table.id, rowId,
-            oldValues, newValues, oldTags, newTags,
-            label: `${table.name} / ${row ? '整行' : '档案项'}编辑`
-        });
+        pushUndo(chat, result.undoEntry);
         TableReconciler.markSaved(root, '整行已保存');
-        metrics.fieldCommits += changes.length;
-        return { changed: true, changes };
+        metrics.fieldCommits += result.changes.length;
+        return { changed: true, changes: result.changes, transactionId: result.transactionId };
     }
 
     async function addRow(options = {}) {
         const { chat, template, table, writer } = options;
-        const row = Domain.addRow(chat, template.id, table, options.initialValues || {}, { source: options.source || 'manual' });
-        TableCache.touch(chat, template.id, table.id, 'row-add');
-        await persist(chat, writer, { immediate: true, reason: 'row-add' });
+        const result = await WriteGateway.run(chat, { reason: 'row-add', writer, persistRollback: true }, () => {
+            const row = Domain.addRow(chat, template.id, table, options.initialValues || {}, { source: options.source || 'manual_v2_14_r2' });
+            TableCache.touch(chat, template.id, table.id, 'row-add');
+            return { changed: true, row };
+        });
         metrics.structuralMutations += 1;
-        return row;
+        return result.row;
     }
 
     async function deleteRow(options = {}) {
         const { chat, template, table, rowId, writer } = options;
-        const changed = Domain.deleteRow(chat, template.id, table, rowId, { source: options.source || 'manual' });
-        if (!changed) return false;
-        TableCache.touch(chat, template.id, table.id, 'row-delete');
-        await persist(chat, writer, { immediate: true, reason: 'row-delete' });
-        metrics.structuralMutations += 1;
-        return true;
+        const result = await WriteGateway.run(chat, { reason: 'row-delete', writer, persistRollback: true }, () => {
+            const changed = Domain.deleteRow(chat, template.id, table, rowId, { source: options.source || 'manual_v2_14_r2' });
+            if (!changed) return { changed: false };
+            TableCache.touch(chat, template.id, table.id, 'row-delete');
+            return { changed: true };
+        });
+        if (result.changed) metrics.structuralMutations += 1;
+        return result.changed;
     }
 
     async function moveRow(options = {}) {
         const { chat, template, table, rowId, delta, writer } = options;
-        const changed = Domain.moveRow(chat, template.id, table, rowId, delta);
-        if (!changed) return false;
-        TableCache.touch(chat, template.id, table.id, 'row-move');
-        await persist(chat, writer, { immediate: true, reason: 'row-move' });
-        metrics.structuralMutations += 1;
-        return true;
+        const result = await WriteGateway.run(chat, { reason: 'row-move', writer, persistRollback: true }, () => {
+            const changed = Domain.moveRow(chat, template.id, table, rowId, delta);
+            if (!changed) return { changed: false };
+            TableCache.touch(chat, template.id, table.id, 'row-move');
+            return { changed: true };
+        });
+        if (result.changed) metrics.structuralMutations += 1;
+        return result.changed;
     }
 
     function resolveEntry(chat, templates, entry) {
         const template = (templates || []).find(item => item.id === entry.templateId);
         const table = template?.tables?.find(item => item.id === entry.tableId);
-        const field = entry.type === 'tags' ? null : table?.columns?.find(item => item.id === entry.fieldId);
-        if (!chat || !template || !table || (entry.type !== 'tags' && !field)) return null;
+        const needsField = !['tags', 'record'].includes(entry.type);
+        const field = needsField ? table?.columns?.find(item => item.id === entry.fieldId) : null;
+        if (!chat || !template || !table || (needsField && !field)) return null;
         return { template, table, field };
     }
 
     async function undoLast(options = {}) {
         const { chat, templates, writer, root } = options;
         const stack = stackFor(chat?.id);
-        const entry = stack.pop();
+        const entry = stack.at(-1);
         if (!entry) return { changed: false };
         const resolved = resolveEntry(chat, templates, entry);
         if (!resolved) {
@@ -286,52 +290,60 @@
             return { changed: false, missing: true };
         }
         const { template, table, field } = resolved;
-        if (entry.type === 'record') {
-            let row = entry.rowId ? Domain.findRowById(chat, template.id, table, entry.rowId) : null;
-            if (entry.rowId && !row) return { changed: false, missing: true };
-            const changes = [];
-            Object.entries(entry.oldValues || {}).forEach(([fieldId, oldValue]) => {
-                const recordField = (table.columns || []).find(item => item.id === fieldId);
-                if (!recordField) return;
-                const currentValue = clone(fieldValue(chat, template.id, table, recordField, entry.rowId));
-                if (entry.rowId) Domain.updateRowFieldValue(chat, template.id, table, entry.rowId, recordField, clone(oldValue), { source: 'manual_record_undo', skipHistory: true });
-                else Domain.setFieldValue(chat, template.id, table.id, recordField, clone(oldValue), { source: 'manual_record_undo', skipHistory: true });
-                changes.push({ templateId: template.id, tableId: table.id, rowId: entry.rowId, fieldId, label: `${table.name} / ${recordField.key}（整行撤销）`, oldValue: currentValue, newValue: clone(oldValue) });
-            });
-            if (entry.rowId) row = Domain.findRowById(chat, template.id, table, entry.rowId);
-            if (row && entry.oldTags) {
-                const currentTags = normalizeTagBundle(clone(row.meta?.tagBundle || {}));
-                row.meta ||= {};
-                row.meta.tagBundle = normalizeTagBundle(clone(entry.oldTags));
-                row.meta.updatedAt = Date.now();
-                row.meta.retrievalVector = [];
-                row.meta.retrievalVectorFingerprint = '';
-                row.meta.retrievalIndexedAt = 0;
-                changes.push({ templateId: template.id, tableId: table.id, rowId: entry.rowId, fieldId: '__tags__', label: `${table.name} / 整行标签（撤销）`, oldValue: currentTags, newValue: clone(entry.oldTags) });
-            }
-            Domain.pushMemoryHistory(chat, changes, { source: 'manual_record_undo' });
-        } else if (entry.type === 'tags') {
-            const row = Domain.findRowById(chat, template.id, table, entry.rowId);
-            if (!row) return { changed: false, missing: true };
-            row.meta ||= {};
-            row.meta.tagBundle = normalizeTagBundle(clone(entry.oldValue));
-            row.meta.updatedAt = Date.now();
-            row.meta.retrievalVector = [];
-            row.meta.retrievalVectorFingerprint = '';
-            row.meta.retrievalIndexedAt = 0;
-            Domain.pushMemoryHistory(chat, [{ templateId: template.id, tableId: table.id, rowId: entry.rowId, fieldId: '__tags__', label: `${table.name} / 标签（撤销）`, oldValue: entry.newValue, newValue: entry.oldValue }], { source: 'manual_tag_undo' });
-        } else if (entry.rowId && Domain.isRowsTable(table)) {
-            Domain.updateRowFieldValue(chat, template.id, table, entry.rowId, field, clone(entry.oldValue), { source: 'manual_undo' });
-        } else {
-            Domain.setFieldValue(chat, template.id, table.id, field, clone(entry.oldValue), { source: 'manual_undo' });
-        }
-        TableCache.touch(chat, template.id, table.id, 'field-undo');
         TableReconciler.markSaving(root, '撤销并保存中…');
-        await persist(chat, writer, { immediate: true, reason: 'field-undo' });
+        let result;
+        try {
+            result = await WriteGateway.run(chat, { reason: 'field-undo', writer, persistRollback: true }, () => {
+                if (entry.type === 'record') {
+                    let row = entry.rowId ? Domain.findRowById(chat, template.id, table, entry.rowId) : null;
+                    if (entry.rowId && !row) return { changed: false, missing: true };
+                    const changes = [];
+                    Object.entries(entry.oldValues || {}).forEach(([fieldId, oldValue]) => {
+                        const recordField = (table.columns || []).find(item => item.id === fieldId);
+                        if (!recordField) return;
+                        const currentValue = clone(fieldValue(chat, template.id, table, recordField, entry.rowId));
+                        if (entry.rowId) Domain.updateRowFieldValue(chat, template.id, table, entry.rowId, recordField, clone(oldValue), { source: 'manual_record_undo_v2_14_r2', skipHistory: true });
+                        else Domain.setFieldValue(chat, template.id, table.id, recordField, clone(oldValue), { source: 'manual_record_undo_v2_14_r2', skipHistory: true });
+                        changes.push({ templateId: template.id, tableId: table.id, rowId: entry.rowId, fieldId, label: `${table.name} / ${recordField.key}（整行撤销）`, oldValue: currentValue, newValue: clone(oldValue) });
+                    });
+                    if (entry.rowId) row = Domain.findRowById(chat, template.id, table, entry.rowId);
+                    if (row && entry.oldTags) {
+                        const currentTags = normalizeTagBundle(clone(row.meta?.tagBundle || {}));
+                        const tagChange = Domain.setRowTagBundle(chat, template.id, table, entry.rowId, normalizeTagBundle(clone(entry.oldTags)), {
+                            source: 'manual_record_undo_v2_14_r2',
+                            label: `${table.name} / 整行标签（撤销）`,
+                            skipHistory: true
+                        });
+                        if (tagChange.changed) changes.push(tagChange.change);
+                    }
+                    Domain.pushMemoryHistory(chat, changes, { source: 'manual_record_undo_v2_14_r2' });
+                } else if (entry.type === 'tags') {
+                    const row = Domain.findRowById(chat, template.id, table, entry.rowId);
+                    if (!row) return { changed: false, missing: true };
+                    const tagChange = Domain.setRowTagBundle(chat, template.id, table, entry.rowId, normalizeTagBundle(clone(entry.oldValue)), {
+                        source: 'manual_tag_undo_v2_14_r2',
+                        label: `${table.name} / 标签（撤销）`,
+                        skipHistory: true
+                    });
+                    if (tagChange.changed) Domain.pushMemoryHistory(chat, [tagChange.change], { source: 'manual_tag_undo_v2_14_r2' });
+                } else if (entry.rowId && Domain.isRowsTable(table)) {
+                    Domain.updateRowFieldValue(chat, template.id, table, entry.rowId, field, clone(entry.oldValue), { source: 'manual_undo_v2_14_r2' });
+                } else {
+                    Domain.setFieldValue(chat, template.id, table.id, field, clone(entry.oldValue), { source: 'manual_undo_v2_14_r2' });
+                }
+                TableCache.touch(chat, template.id, table.id, 'field-undo');
+                return { changed: true, entry };
+            });
+        } catch (error) {
+            TableReconciler.markSaved(root, '撤销失败，已恢复');
+            throw error;
+        }
+        if (!result.changed) return result;
+        if (stack.at(-1) === entry) stack.pop();
         TableReconciler.markSaved(root, '已撤销');
         syncUndoControls(chat, root || global.document);
         metrics.undos += 1;
-        return { changed: true, entry };
+        return { changed: true, entry, transactionId: result.transactionId };
     }
 
     function clearUndo(chatId) {
@@ -349,7 +361,7 @@
     }
 
     Kernel.register('tableEditor', Object.freeze({
-        VERSION: '2.13-R5',
+        VERSION: '2.14-R2',
         MAX_UNDO,
         commitField,
         commitTagDimension,

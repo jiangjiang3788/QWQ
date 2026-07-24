@@ -11,6 +11,7 @@
     const MemoryTasks = Kernel.get('tasks');
     const MemoryFeedback = Kernel.get('feedback');
     const MemoryQuality = Kernel.get('quality');
+    const FieldPolicy = Kernel.get('fieldPolicy');
     const MEMORY_TABLE_HISTORY_LIMIT = 20;
     const deepClone = Core.clone;
     const createMemoryId = Core.createId;
@@ -150,6 +151,7 @@
             min: 0,
             max: 100,
             aiEditable: true,
+            writePolicy: { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 },
             aiHint: '',
             displayFormat: '{value}',
             important: true,
@@ -159,16 +161,20 @@
     }
 
     function createEmptyTableDraft() {
-        return {
+        const base = {
             id: createMemoryId('memory_table'),
             name: '新表格',
             mode: 'keyValue',
             memoryLayer: 'short',
+            systemRole: 'general',
+            capturePolicy: { mode: 'manual', frequencySource: 'table', apiMode: 'summary' },
+            commitPolicy: { mode: 'review', requireUserConfirmation: true },
             updatePolicy: MemoryPolicy ? MemoryPolicy.normalizeUpdatePolicy({}, 'short') : {},
             injectionPolicy: MemoryPolicy ? MemoryPolicy.normalizeInjectionPolicy({}, 'short') : {},
             extractPrompt: '',
             columns: [createEmptyFieldDraft()]
         };
+        return MemoryPolicy ? { ...base, ...MemoryPolicy.normalizeTablePolicy(base) } : base;
     }
 
     function normalizeConditionalRule(rule) {
@@ -208,6 +214,9 @@
                 name: (table.name || '').trim() || `表格 ${tableIndex + 1}`,
                 mode: table.mode === 'rows' ? 'rows' : 'keyValue',
                 memoryLayer: tablePolicy.memoryLayer,
+                systemRole: tablePolicy.systemRole || 'general',
+                capturePolicy: tablePolicy.capturePolicy || { mode: 'manual', frequencySource: 'table', apiMode: 'summary' },
+                commitPolicy: tablePolicy.commitPolicy || { mode: 'review', requireUserConfirmation: true },
                 updatePolicy: tablePolicy.updatePolicy,
                 injectionPolicy: tablePolicy.injectionPolicy,
                 promotionPolicy: table.promotionPolicy && typeof table.promotionPolicy === 'object'
@@ -242,6 +251,7 @@
                 min: typeof field.min === 'number' ? field.min : (normalizeFieldType(field.type) === 'progress' ? 0 : undefined),
                 max: typeof field.max === 'number' ? field.max : (normalizeFieldType(field.type) === 'progress' ? 100 : undefined),
                 aiEditable: field.aiEditable !== false,
+                writePolicy: FieldPolicy ? FieldPolicy.normalizeFieldPolicy(field, normalizedTable) : (field.writePolicy || { subject: 'user', evidence: 'explicit', commitMode: 'inherit', minConfidence: 60 }),
                 aiHint: typeof field.aiHint === 'string' ? field.aiHint : '',
                 displayFormat: typeof field.displayFormat === 'string' ? field.displayFormat : '{value}',
                 important: field.important !== false,
@@ -665,6 +675,63 @@
         }
     }
 
+
+    function replaceFormalData(chat, nextData, options = {}) {
+        ensureMemoryTableState(chat);
+        const oldData = deepClone(chat.memoryTables.data || {});
+        const normalized = nextData && typeof nextData === 'object' ? deepClone(nextData) : {};
+        if (isSameMemoryValue(oldData, normalized)) return false;
+        chat.memoryTables.data = normalized;
+        chat.memoryTables.lastChangedFieldPaths = [];
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+        if (options.historyEntry && Array.isArray(options.changedFields) && options.changedFields.length) {
+            pushMemoryHistory(chat, options.changedFields, {
+                source: options.source || 'formal-data-replace',
+                snapshot: oldData,
+                skipHistory: options.skipHistory === true
+            });
+        }
+        return true;
+    }
+
+    function replaceTemplateData(chat, templateId, nextData, options = {}) {
+        ensureMemoryTableState(chat);
+        const oldValue = deepClone(chat.memoryTables.data?.[templateId] || {});
+        const normalized = nextData && typeof nextData === 'object' ? deepClone(nextData) : {};
+        if (isSameMemoryValue(oldValue, normalized)) return false;
+        chat.memoryTables.data[templateId] = normalized;
+        chat.memoryTables.lastChangedFieldPaths = [];
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+        return true;
+    }
+
+    function setRowTagBundle(chat, templateId, table, rowId, tagBundle, options = {}) {
+        const row = findRowById(chat, templateId, table, rowId);
+        if (!row) return { changed: false, reason: '目标记忆不存在' };
+        const oldValue = deepClone(row.meta?.tagBundle || {});
+        const nextValue = deepClone(tagBundle || {});
+        if (isSameMemoryValue(oldValue, nextValue)) return { changed: false, oldValue, newValue: nextValue, row };
+        row.meta ||= {};
+        row.meta.tagBundle = nextValue;
+        row.meta.tagSource = options.source || row.meta.tagSource || 'manual';
+        row.meta.updatedAt = Date.now();
+        row.meta.retrievalVector = [];
+        row.meta.retrievalVectorFingerprint = '';
+        row.meta.retrievalIndexedAt = 0;
+        if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+        const change = {
+            templateId,
+            tableId: table.id,
+            rowId,
+            fieldId: '__tags__',
+            label: options.label || `${table.name} / 标签`,
+            oldValue,
+            newValue: deepClone(nextValue)
+        };
+        if (options.skipHistory !== true) pushMemoryHistory(chat, [change], { source: options.source || 'manual' });
+        return { changed: true, oldValue, newValue: nextValue, row, change };
+    }
+
     function getFieldDisplayValue(field, value) {
         const normalized = normalizeFieldValue(field, value);
         const type = normalizeFieldType(field.type);
@@ -767,6 +834,9 @@
         updateRowFieldValue,
         deleteRow,
         moveRow,
+        replaceFormalData,
+        replaceTemplateData,
+        setRowTagBundle,
         isFieldLocked,
         toggleFieldLock,
         getFieldDisplayValue,

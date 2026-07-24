@@ -117,7 +117,10 @@
                 if (!winnerField || !loserField) return;
                 const oldValue = clone(winner.row.cells?.[winnerField.id]);
                 const newValue = clone(loser.row.cells?.[loserField.id]);
-                winner.row.cells[winnerField.id] = newValue;
+                Domain.updateRowFieldValue(chat, winner.template.id, winner.table, winner.row.id, winnerField, newValue, {
+                    source: 'manual_memory_merge_v2_14_r2',
+                    skipHistory: true
+                });
                 changedFields.push({ key: item.key, fieldId: winnerField.id, oldValue, newValue });
             });
         }

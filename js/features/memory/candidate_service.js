@@ -7,6 +7,7 @@
     const Domain = Kernel.require('domain');
     const Policy = Kernel.get('policy');
     const Lifecycle = Kernel.get('lifecycle');
+    const WriteGateway = Kernel.get('writeGateway') || Kernel.require('writeCoordinator');
 
     function fieldByKey(table, key) {
         return (table?.columns || []).find(field => String(field.key || '').trim() === String(key || '').trim()) || null;
@@ -15,6 +16,12 @@
     function rowValueByKey(table, row, key) {
         const field = fieldByKey(table, key);
         return field ? row?.cells?.[field.id] : undefined;
+    }
+
+    function findFormalRow(chat, templateId, table, rowId) {
+        if (typeof Domain.findRowById === 'function') return Domain.findRowById(chat, templateId, table, rowId);
+        const rows = typeof Domain.getRows === 'function' ? Domain.getRows(chat, templateId, table) : [];
+        return (rows || []).find(item => item?.id === rowId) || null;
     }
 
     function statusText(table, row) {
@@ -36,7 +43,7 @@
             source: options.source || 'candidate_review_v2_13_r5',
             skipHistory: options.skipHistory === true
         });
-        const currentRow = Domain.findRowById(chat, template.id, table, row.id) || row;
+        const currentRow = findFormalRow(chat, template.id, table, row.id) || row;
         return changed
             ? { changed: true, oldValue, newValue: currentRow.cells?.[field.id] }
             : { changed: false, reason: '状态未变化', oldValue, newValue: currentRow.cells?.[field.id] };
@@ -50,7 +57,13 @@
         if (!template || !sourceTable) throw new Error('长期候选上下文不完整');
         let targetId = String(sourceTable.promotionPolicy?.targetTableId || '').trim();
         if (!targetId) {
-            const legacyTargets = (template.tables || []).filter(table => table.id !== sourceTable.id && normalizedLayer(table) === 'long' && Domain.isRowsTable(table));
+            const roleTargets = (template.tables || []).filter(table => {
+                const role = Policy?.normalizeSystemRole?.(table.systemRole, table) || table.systemRole;
+                return table.id !== sourceTable.id && role === 'long_store' && normalizedLayer(table) === 'long' && Domain.isRowsTable(table);
+            });
+            const legacyTargets = roleTargets.length
+                ? roleTargets
+                : (template.tables || []).filter(table => table.id !== sourceTable.id && normalizedLayer(table) === 'long' && Domain.isRowsTable(table));
             if (legacyTargets.length !== 1) {
                 throw new Error(legacyTargets.length ? '长期候选未配置唯一晋升目标' : '当前模板没有可接收候选的长期表');
             }
@@ -157,12 +170,16 @@
             }
         }
 
+        let sourceRow = row;
         if (statusField) {
-            row.cells ||= {};
-            row.cells[statusField.id] = Domain.normalizeFieldValue(statusField, '已批准');
+            Domain.updateRowFieldValue(chat, template.id, sourceTable, row.id, statusField, '已批准', {
+                source: 'candidate_approve_v2_14_r2',
+                skipHistory: true
+            });
+            sourceRow = findFormalRow(chat, template.id, sourceTable, row.id) || row;
         }
         const now = Date.now();
-        const workflow = ensureWorkflow(row);
+        const workflow = ensureWorkflow(sourceRow);
         Object.assign(workflow, {
             status: 'approved',
             operationId,
@@ -171,7 +188,11 @@
             approvedAt: now,
             approvedBy: options.approvedBy || 'user'
         });
-        row.meta.updatedAt = now;
+        sourceRow.meta.updatedAt = now;
+        if (sourceRow !== row) {
+            row.cells = sourceRow.cells;
+            row.meta = sourceRow.meta;
+        }
 
         const changedFields = [];
         if (!duplicate) {
@@ -188,14 +209,14 @@
                 });
             });
         }
-        if (statusField && !Domain.isSameMemoryValue(oldStatus, row.cells[statusField.id])) changedFields.push({
+        if (statusField && !Domain.isSameMemoryValue(oldStatus, sourceRow.cells[statusField.id])) changedFields.push({
             templateId: template.id,
             tableId: sourceTable.id,
             rowId: row.id,
             fieldId: statusField.id,
             label: `${sourceTable.name} / 审核状态`,
             oldValue: oldStatus,
-            newValue: row.cells[statusField.id]
+            newValue: sourceRow.cells[statusField.id]
         });
         if (!Domain.isSameMemoryValue(oldWorkflow, workflow)) changedFields.push({
             templateId: template.id,
@@ -223,20 +244,16 @@
         };
     }
 
-    function snapshotState(chat, sourceTable) {
+    function captureApprovalState(chat, sourceTable) {
         return {
-            data: Core.clone(chat.memoryTables?.data || {}),
-            history: Core.clone(chat.memoryTables?.history || []),
-            lastChangedFieldPaths: Core.clone(chat.memoryTables?.lastChangedFieldPaths || []),
+            memoryTables: Core.clone(chat.memoryTables || {}),
             promotionPolicy: Core.clone(sourceTable?.promotionPolicy || null)
         };
     }
 
-    function restoreState(chat, sourceTable, snapshot) {
-        chat.memoryTables.data = Core.clone(snapshot.data || {});
-        chat.memoryTables.history = Core.clone(snapshot.history || []);
-        chat.memoryTables.lastChangedFieldPaths = Core.clone(snapshot.lastChangedFieldPaths || []);
-        if (snapshot.promotionPolicy) sourceTable.promotionPolicy = Core.clone(snapshot.promotionPolicy);
+    function restoreApprovalState(chat, sourceTable, snapshot) {
+        chat.memoryTables = Core.clone(snapshot?.memoryTables || {});
+        if (snapshot?.promotionPolicy) sourceTable.promotionPolicy = Core.clone(snapshot.promotionPolicy);
         else delete sourceTable.promotionPolicy;
         Policy?.clearRetrievalCache?.(chat);
     }
@@ -244,26 +261,32 @@
     async function approveAtomic(chat, descriptor, row, options = {}) {
         const sourceTable = descriptor?.table;
         if (!chat || !sourceTable) return { changed: false, reason: '候选不存在' };
-        const snapshot = snapshotState(chat, sourceTable);
         const runtime = global.OVOOperationRuntime;
         const operation = runtime?.start?.('memory.candidate.promote', {
             title: '批准长期候选',
-            source: options.source || 'candidate_approve_v2_13_r5',
+            source: options.source || 'candidate_approve_v2_14_r2',
             scope: { chatId: chat.id, templateId: descriptor?.template?.id || '', tableId: sourceTable.id, rowId: row?.id || '' },
             stage: '校验晋升目标'
         });
         try {
-            const result = applyApproval(chat, descriptor, row, {
+            const writer = typeof options.persist === 'function'
+                ? (_characterId, currentChat) => options.persist(currentChat)
+                : options.writer;
+            const result = await WriteGateway.run(chat, {
+                reason: 'candidate-promotion',
+                writer,
+                capture: currentChat => captureApprovalState(currentChat, sourceTable),
+                restore: (currentChat, snapshot) => restoreApprovalState(currentChat, sourceTable, snapshot),
+                persistRollback: true
+            }, ({ transactionId, snapshot }) => applyApproval(chat, descriptor, row, {
                 ...options,
-                operationId: operation?.id || Core.createId('memory_candidate_promotion'),
-                beforeSnapshot: snapshot.data
-            });
+                operationId: operation?.id || transactionId,
+                beforeSnapshot: Core.clone(snapshot?.memoryTables?.data || {})
+            }));
             if (!result.changed) {
                 runtime?.skip?.(operation?.id, result.reason || (result.idempotent ? '候选已经完成晋升' : '候选未变化'), { result });
                 return result;
             }
-            runtime?.stage?.(operation?.id, '保存长期记忆');
-            if (typeof options.persist === 'function') await options.persist(chat);
             result.changedFields?.forEach(item => runtime?.recordMutation?.(operation?.id, {
                 action: item.oldValue === '' ? 'create' : 'update',
                 entityType: 'memory',
@@ -274,14 +297,12 @@
                 after: item.newValue
             }));
             runtime?.complete?.(operation?.id, {
-                summary: result.duplicate ? '长期库已有对应记录，候选已关联并批准' : '候选已原子晋升到长期记忆',
+                summary: result.duplicate ? '长期库已有对应记录，候选已关联并批准' : '候选已通过统一事务晋升到长期记忆',
                 result: { targetTableId: result.targetTable?.id, targetRowId: result.targetRow?.id, duplicate: result.duplicate }
             });
             return result;
         } catch (error) {
-            restoreState(chat, sourceTable, snapshot);
-            runtime?.fail?.(operation?.id, error, { stage: '晋升失败，已回滚' });
-            error.memoryRollbackApplied = true;
+            runtime?.fail?.(operation?.id, error, { stage: '晋升失败，已统一回滚' });
             throw error;
         }
     }
@@ -291,7 +312,7 @@
     }
 
     Kernel.register('candidateService', Object.freeze({
-        VERSION: '2.13-R5',
+        VERSION: '2.14-R2',
         fieldByKey,
         rowValueByKey,
         statusText,
