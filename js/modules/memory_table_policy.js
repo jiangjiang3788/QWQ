@@ -270,6 +270,11 @@
     function beginRound(chat, options) {
         if (!chat || options?.isBackground || options?.isSummary) return null;
         const runtime = ensureRuntimeState(chat);
+        // “本次更新”是轮次级瞬时状态。每轮开始即刷新；本轮没有写入时不显示旧轮次标记。
+        if (chat.memoryTables && typeof chat.memoryTables === 'object') {
+            chat.memoryTables.currentUpdateEntryId = null;
+            chat.memoryTables.lastChangedFieldPaths = [];
+        }
         const history = Array.isArray(chat.history) ? chat.history : [];
         let startIndex = history.length;
         for (let i = history.length - 1; i >= 0; i--) {

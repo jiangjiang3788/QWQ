@@ -48,8 +48,19 @@
         return fieldsByTable;
     }
 
+    function currentEntry(chat) {
+        const memoryTables = chat?.memoryTables;
+        // 兼容旧数据：字段尚不存在时沿用最近历史；一旦进入新轮次，beginRound 会写入 null 并关闭旧高亮。
+        if (!memoryTables || !Object.prototype.hasOwnProperty.call(memoryTables, 'currentUpdateEntryId')) {
+            return entries(chat)[0] || null;
+        }
+        const id = String(memoryTables.currentUpdateEntryId || '');
+        if (!id) return null;
+        return entries(chat).find(entry => String(entry?.id || '') === id) || null;
+    }
+
     function latest(chat) {
-        const entry = entries(chat)[0] || null;
+        const entry = currentEntry(chat);
         return { entry, counts: tableCounts(entry), fieldCounts: tableFieldCounts(entry) };
     }
 
@@ -58,7 +69,7 @@
     }
 
     function latestCellPaths(chat) {
-        const entry = entries(chat)[0] || null;
+        const entry = currentEntry(chat);
         if (chat && typeof chat === 'object') {
             const cached = latestCellCache.get(chat);
             if (cached?.entry === entry) return cached.paths;
@@ -85,7 +96,7 @@
     function tableCellCount(chat, tableId) {
         const id = String(tableId || '');
         const paths = new Set();
-        const entry = entries(chat)[0] || null;
+        const entry = currentEntry(chat);
         (entry?.changedFields || []).forEach(change => {
             if (String(change?.tableId || '') !== id || !change?.fieldId) return;
             paths.add(cellPath(change.templateId, change.tableId, change.fieldId, change.rowId));
@@ -153,6 +164,7 @@
         recordCount,
         tableCounts,
         tableFieldCounts,
+        currentEntry,
         latest,
         cellPath,
         latestCellPaths,

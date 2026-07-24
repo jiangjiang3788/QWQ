@@ -552,6 +552,9 @@
                 changedFields
             };
             chat.memoryTables.history.unshift(entry);
+            // 历史记录长期保留；当前更新标记仅指向本轮最近一次实际写入。
+            // beginRound 会先清空该标记，避免无更新轮次继续展示上一轮结果。
+            chat.memoryTables.currentUpdateEntryId = entry.id;
             if (chat.memoryTables.history.length > MEMORY_TABLE_HISTORY_LIMIT) {
                 chat.memoryTables.history = chat.memoryTables.history.slice(0, MEMORY_TABLE_HISTORY_LIMIT);
             }
