@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
+assert(['2.11-R4', '2.11-R5', '2.11-R6', '2.11-R7', '2.12-R0', '2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const controllerText = read('js/modules/memory_table.js');
 const workspaceText = read('js/features/memory/workspace.js');
@@ -99,13 +99,16 @@ Kernel.register('domain', domain);
 Kernel.register('policy', { normalizeTablePolicy: table => ({ memoryLayer: table.memoryLayer || 'long' }), clearRetrievalCache() {} });
 Kernel.register('lifecycle', lifecycle);
 vm.runInContext(read('js/features/memory/write_coordinator.js'), context);
-Kernel.register('review', { getPendingBatches: () => [{ id: 'batch-1', tableName: '当前状态', proposals: [{ risk: 'high' }, { risk: 'low' }], sourceMessageCount: 12, relatedContext: { rowCount: 6 }, createdAt: 20 }], setActiveBatch() {} });
-Kernel.register('tasks', { getCounts: () => ({ failed: 1, queued: 2, paused: 0 }) });
-Kernel.register('sidecar', { ensureState: () => ({ candidates: [{ status: 'pending' }] }) });
+Kernel.register('review', { getPendingBatches: () => [{ id: 'batch-1', tableName: '当前状态', proposals: [{ risk: 'high' }, { risk: 'low' }], sourceMessageCount: 12, relatedContext: { rowCount: 6 }, createdAt: 20 }], getBatchChangeSummary: batch => ({ recordCount: 1, fieldCount: batch.proposals.length }), setActiveBatch() {} });
+Kernel.register('tasks', { getCounts: () => ({ failed: 1, queued: 2, paused: 0 }), ensureState: () => ({ tasks: [{ id: 'task-fail', status: 'failed', title: '失败任务', attempts: 1, maxAttempts: 3, createdAt: 5, lastError: '模拟失败' }] }) });
+const sidecarState = { candidates: [{ id: 'short-1', type: 'experience', status: 'pending', summary: '聊天中的近期经历候选', confidence: 80, createdAt: 6 }] };
+Kernel.register('sidecar', { ensureState: () => sidecarState });
 Kernel.register('feedback', { getPendingCount: () => 1 });
 
 for (const rel of [
   'js/features/memory/candidate_service.js',
+  'js/features/memory/sidecar_candidate_service.js',
+  'js/features/memory/work_item.js',
   'js/features/memory/table_filter.js',
   'js/features/memory/governance_queue.js',
   'js/features/memory/governance_controller.js'
@@ -115,23 +118,25 @@ const candidates = Kernel.get('candidateService');
 const filters = Kernel.get('tableFilter');
 const queue = Kernel.get('governanceQueue');
 const governance = Kernel.get('governanceController');
-assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(candidates.VERSION));
+assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(candidates.VERSION));
 assert.strictEqual(filters.VERSION, '2.11-R4');
-assert.strictEqual(queue.VERSION, '2.11-R4');
-assert.strictEqual(governance.VERSION, '2.13-R5');
+assert.strictEqual(queue.VERSION, '2.14-R8');
+assert.strictEqual(governance.VERSION, '2.14-R8');
 
 const items = queue.scan(chat, [template]);
 const counts = queue.countByCategory(items);
 assert.strictEqual(counts.review, 1);
-assert.strictEqual(counts.candidate, 1);
+assert.strictEqual(counts.candidate, 2);
 assert.strictEqual(counts.reliability, 2);
-assert.strictEqual(counts.system, 3);
-assert.strictEqual(items[0].priority, 'high');
+assert.strictEqual(counts.system, 2);
+assert.strictEqual(items.length, 7);
+assert.strictEqual(items[0].risk, 'high');
+items.forEach(item => assert(Kernel.require('workItem').validate(item).ok));
 const home = queue.renderHome(chat, [template]);
 assert(home.includes('memory-governance-list'));
 assert(home.includes('统一排序'));
 assert(!home.includes('memory-workbench-card-grid'));
-assert(!items.find(item => item.rowId === 'conflict-1').selectable, 'conflicts must not be bulk-confirmed');
+assert(!items.find(item => item.sourceRef?.rowId === 'conflict-1').selectable, 'conflicts must not be bulk-confirmed');
 
 assert.deepStrictEqual(Array.from(filters.apply([uncertain, conflict, active, archived], stateTable, { filter: 'attention' })).map(row => row.id), ['uncertain-1', 'conflict-1']);
 assert.deepStrictEqual(Array.from(filters.apply([uncertain, conflict, active, archived], stateTable, { filter: 'pinned' })).map(row => row.id), ['active-1']);
@@ -139,19 +144,19 @@ assert.deepStrictEqual(Array.from(filters.apply([uncertain, conflict, active, ar
 const toolbar = filters.renderToolbar([uncertain, conflict, active, archived], stateTable, { filter: 'attention', tagQuery: '' });
 assert(toolbar.includes('memory-table-filterbar') && toolbar.includes('待复核'));
 
-const candidateItem = items.find(item => item.kind === 'candidate');
-const approved = candidates.approve(chat, candidateItem, candidateItem.row);
+const candidateItem = items.find(item => item.type === 'long_candidate');
+const approved = candidates.approve(chat, { template: candidateItem.payload.template, table: candidateItem.payload.table }, candidateItem.payload.row);
 assert(approved.changed && !approved.duplicate);
 assert.strictEqual(domain.getRows(chat, 'tpl', longTable).length, 1);
 assert.strictEqual(candidate.cells.candidate_status, '已批准');
 assert.strictEqual(domain.getRows(chat, 'tpl', longTable)[0].cells.long_content, '用户在身体不适时会主动表达需求。');
 assert(chat.memoryTables.history.length > 0);
 
-const uncertainItem = queue.scan(chat, [template]).find(item => item.rowId === 'uncertain-1');
+const uncertainItem = queue.scan(chat, [template]).find(item => item.sourceRef?.rowId === 'uncertain-1');
 assert(governance.confirmItem(chat, uncertainItem));
 assert.strictEqual(uncertain.meta.lifecycle.status, 'active');
 assert.strictEqual(uncertain.meta.evidence.userConfirmed, true);
-const conflictItem = queue.scan(chat, [template]).find(item => item.rowId === 'conflict-1');
+const conflictItem = queue.scan(chat, [template]).find(item => item.sourceRef?.rowId === 'conflict-1');
 assert(governance.snoozeItem(chat, conflictItem, 30));
 assert(conflict.meta.lifecycle.reviewAt > Date.now());
 assert(governance.archiveItem(chat, conflictItem));

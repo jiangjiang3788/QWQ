@@ -5508,7 +5508,8 @@
 <div class="memory-workbench-tools" id="memory-workbench-manage-tools" hidden>
 <button class="btn btn-small btn-secondary" id="memory-table-import-btn" type="button">导入</button>
 <button class="btn btn-small btn-secondary" id="memory-table-export-all-btn" type="button">导出模板</button>
-<button class="btn btn-small btn-secondary" id="memory-table-export-package-btn" type="button">导出记忆包</button>
+<button class="btn btn-small btn-secondary" id="memory-table-export-package-btn" type="button" title="跨角色迁移：重建内部 ID，并清空源角色运行游标">迁移快照</button>
+<button class="btn btn-small btn-secondary" id="memory-table-export-full-backup-btn" type="button" title="原角色恢复：保留全部 ID、审核、候选、索引与运行状态">完整备份</button>
 <button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转档案</button>
 <button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">档案转日记</button>
 <input accept=".json,application/json" id="memory-table-import-input" hidden type="file"/>
@@ -6744,8 +6745,10 @@
 <script src="js/modules/memory_table_tasks.js"></script>
 <script src="js/modules/memory_table_quality.js"></script>
 <script src="js/features/memory/api_adapter.js"></script>
+<script src="js/features/memory/record_identity.js"></script>
 <script src="js/features/memory/domain.js"></script>
 <script src="js/features/memory/package_adapter.js"></script>
+<script src="js/features/memory/schema_migrator.js"></script>
 <script src="js/features/memory/package_orchestrator.js"></script>
 <script src="js/features/memory/write_coordinator.js"></script>
 <script src="js/features/memory/write_gateway.js"></script>
@@ -6760,6 +6763,7 @@
 <script src="js/features/memory/relation_service.js"></script>
 <script src="js/features/memory/merge_review_service.js"></script>
 <script src="js/features/memory/candidate_service.js"></script>
+<script src="js/features/memory/work_item.js"></script>
 <script src="js/features/memory/integrity_doctor.js"></script>
 <script src="js/features/memory/table_filter.js"></script>
 <script src="js/features/memory/governance_queue.js"></script>

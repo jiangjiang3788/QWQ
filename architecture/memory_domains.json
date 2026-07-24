@@ -1,5 +1,5 @@
 {
-  "version": "2.14-R6",
+  "version": "2.14-R8.1",
   "controller": "js/modules/memory_table.js",
   "publicFacades": {
     "memoryPlatformDomain": {
@@ -25,11 +25,13 @@
       "owns": [
         "api",
         "domain",
+        "recordIdentity",
         "fieldWidth",
         "workspace",
         "packageAdapter",
         "writeCoordinator",
         "writeGateway",
+        "schemaMigrator",
         "packageOrchestrator"
       ]
     },
@@ -47,6 +49,7 @@
         "relationService",
         "mergeReviewService",
         "candidateService",
+        "workItem",
         "tableFilter",
         "governanceQueue",
         "governanceController",
@@ -116,7 +119,10 @@
     "js/settings.js": 500,
     "js/features/memory/review_orchestrator.js": 750,
     "js/features/memory/retrieval_orchestrator.js": 260,
-    "js/features/memory/package_orchestrator.js": 260
+    "js/features/memory/package_orchestrator.js": 430,
+    "js/features/memory/schema_migrator.js": 260,
+    "js/features/memory/record_identity.js": 360,
+    "js/features/memory/work_item.js": 380
   },
   "formalWriteGate": {
     "gateway": "writeGateway",
@@ -132,7 +138,8 @@
       "js/features/memory/table_editor.js",
       "js/features/memory/candidate_service.js",
       "js/features/memory/sidecar_candidate_controller.js",
-      "js/features/memory/review_orchestrator.js"
+      "js/features/memory/review_orchestrator.js",
+      "js/features/memory/package_orchestrator.js"
     ]
   }
 }

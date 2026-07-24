@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
 
 function createBox() {
   const box = {
@@ -144,7 +144,7 @@ function createBox() {
   assert(controller.includes('MemoryRetrievalMaintenance?.recordUsage'));
   assert(controller.includes('Promise.resolve(saveCharacter(chat.id))'));
   const contract = JSON.parse(read('architecture/memory_domains.json'));
-  assert(['2.14-R4', '2.14-R5', '2.14-R6'].includes(contract.version));
+  assert(['2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(contract.version));
   assert(contract.publicFacades.memoryRetrievalDomain.owns.includes('retrievalMaintenance'));
   const html = read('index.html');
   assert(html.indexOf('retrieval_maintenance.js') < html.indexOf('memory_table_retrieval.js'));

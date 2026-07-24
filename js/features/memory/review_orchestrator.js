@@ -3,12 +3,12 @@
 
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
-    const VERSION = '2.14-R6';
+    const VERSION = '2.14-R8';
 
     function create(env = {}) {
         const {
             MemoryFieldPolicy, MemoryLifecycle, MemoryPolicy, MemoryRetrieval, MemoryReview, MemoryTagService,
-            MemoryTasks, MemoryUpdateActivity, MemoryWriteCoordinator, MemoryWriteGateway, addRow, createMemoryId,
+            MemoryTasks, MemoryUpdateActivity, MemoryWriteCoordinator, MemoryWriteGateway, addRow, upsertRow, createMemoryId,
             db, deepClone, deleteRow, ensureMemoryTableState, ensureTemplateDataForChat, findRowById,
             getEffectiveTableDescriptor, getFieldDisplayValue, getFieldValue, getRows, getTableRuntimePolicy, isEmptyMemoryValue,
             isFieldLocked, isRowsTable, isSameMemoryValue, normalizeFieldValue, pushMemoryHistory, renderMemoryTableScreen,
@@ -288,11 +288,19 @@
                         return;
                     }
                     if (policy.allowAdd === false) return;
-                    const added = addRow(chat, template.id, table, proposal.fieldValues || {}, { source: 'review_v2_2', skipHistory: true });
-                    (table.columns || []).forEach(field => {
-                        if (proposal.fieldValues?.[field.id] === undefined) return;
-                        changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: field.id, label: `${table.name} / ${field.key}（审核新增）`, oldValue: '', newValue: added.cells[field.id] });
+                    const upserted = upsertRow(chat, template.id, table, proposal.fieldValues || {}, {
+                        source: 'review_upsert_v2_14_r8',
+                        skipHistory: true,
+                        sourceRoundId: batch.roundId || batch.sourceRoundId || '',
+                        sourceMessageIds: batch.sourceMessageIds || [],
+                        recordKey: proposal.recordKey || '',
+                        mergeStrategy: 'replace_non_empty'
                     });
+                    const added = upserted.row;
+                    (upserted.changedFields || []).forEach(change => changedFields.push({
+                        ...change,
+                        label: `${table.name} / ${(table.columns || []).find(field => field.id === change.fieldId)?.key || change.fieldId}${upserted.created ? '（审核新增）' : '（审核匹配更新）'}`
+                    }));
                     if (proposal.tagBundle) {
                         const tagChange = MemoryTagService.applyToRow(added, proposal.tagBundle, { chat, source: 'review_v2_11_r1' });
                         if (tagChange.changed) changedFields.push({ templateId: template.id, tableId: table.id, rowId: added.id, fieldId: '__tags__', label: `${table.name} / 模型标签（审核新增）`, oldValue: tagChange.oldValue, newValue: tagChange.newValue });
@@ -556,17 +564,23 @@
                             const initialValues = {};
                             entries.filter(entry => entry.assessment.route === 'direct').forEach(entry => { initialValues[entry.field.id] = entry.value; });
                             if (!Object.keys(initialValues).length) return;
-                            const addedRow = addRow(chat, templateId, table, initialValues, { source: options.source || 'api_v2_14_r3', skipHistory: true });
+                            const upserted = upsertRow(chat, templateId, table, initialValues, {
+                                source: options.source || 'api_upsert_v2_14_r8',
+                                skipHistory: true,
+                                sourceRoundId: options.roundId || options.sourceRoundId || '',
+                                sourceMessageIds: options.sourceMessageIds || [],
+                                mergeStrategy: 'merge_non_empty'
+                            });
+                            const addedRow = upserted.row;
                             entries.forEach(entry => {
                                 if (entry.assessment.route === 'runtime_only') {
                                     storeRuntimeField(chat, templateId, tableId, addedRow.id, entry.field, entry.value, entry.assessment);
-                                    return;
                                 }
-                                changedFields.push({
-                                    templateId, tableId, rowId: addedRow.id, fieldId: entry.field.id,
-                                    label: `${table.name} / ${entry.field.key}（新增行）`, oldValue: '', newValue: addedRow.cells[entry.field.id]
-                                });
                             });
+                            (upserted.changedFields || []).forEach(change => changedFields.push({
+                                ...change,
+                                label: `${table.name} / ${(table.columns || []).find(field => field.id === change.fieldId)?.key || change.fieldId}${upserted.created ? '（新增行）' : '（匹配更新）'}`
+                            }));
                             const tagBundle = MemoryTagService.parseRowNode(rowNode);
                             if (tagBundle) {
                                 const tagChange = MemoryTagService.applyToRow(addedRow, tagBundle, { chat, source: options.source || 'api' });

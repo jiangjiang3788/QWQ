@@ -3,19 +3,27 @@
 
     const Kernel = global.OvoMemoryKernel;
     if (!Kernel) throw new Error('记忆内核未加载');
-    const VERSION = '2.14-R6';
+    const VERSION = '2.14-R8.1';
 
     function create(env = {}) {
         const {
-            MemoryFeedback, MemoryPolicy, MemoryRetrieval, MemoryRetrievalMaintenance, MemorySidecar, ensureMemoryTableState,
+            MemoryFeedback, MemoryFieldPolicy, MemoryPolicy, MemoryRetrieval, MemoryRetrievalMaintenance, MemorySidecar, ensureMemoryTableState,
             getBoundTemplates, getFieldDefaultValue, getFieldDisplayValue, getRowSearchText, getRowTimestamp, getTableRuntimePolicy,
             isEmptyMemoryValue, isRowsTable, normalizeFieldValue, renderMemoryTableScreen, saveCharacter, selectMemoryView
         } = env;
 
-        function getRowStatusText(table, row) {
+        function readEffectiveValue(chat, templateId, table, field, formalValue, rowId) {
+            if (!MemoryFieldPolicy || MemoryFieldPolicy.effectiveCommitMode(field, table) !== 'runtime_only') return formalValue;
+            const runtimeId = rowId ? `${rowId}::${field.id}` : field.id;
+            return MemoryFieldPolicy.getRuntimeEntry(chat, templateId, table.id, runtimeId)?.value;
+        }
+        function getRowStatusText(chat, templateId, table, row) {
             return (table.columns || [])
                 .filter(field => /状态|进度|结果/.test(field.key || ''))
-                .map(field => getFieldDisplayValue(field, row.cells?.[field.id]))
+                .map(field => {
+                    const value = readEffectiveValue(chat, templateId, table, field, row.cells?.[field.id], row.id);
+                    return getFieldDisplayValue(field, value);
+                })
                 .filter(Boolean)
                 .join(' ');
         }
@@ -23,13 +31,17 @@
             const rows = chat?.memoryTables?.data?.[templateId]?.[table.id]?.__rows;
             return Array.isArray(rows) ? rows : [];
         }
-        function readFieldValueForRetrieval(chat, templateId, tableId, field) {
-            const raw = chat?.memoryTables?.data?.[templateId]?.[tableId]?.[field.id];
-            return raw === undefined ? getFieldDefaultValue(field) : normalizeFieldValue(field, raw);
+        function readFieldValueForRetrieval(chat, templateId, table, field) {
+            const raw = chat?.memoryTables?.data?.[templateId]?.[table.id]?.[field.id];
+            const formal = raw === undefined ? getFieldDefaultValue(field) : normalizeFieldValue(field, raw);
+            return readEffectiveValue(chat, templateId, table, field, formal);
         }
-        function rowToRetrievalItem(table, row, rowIndex) {
-            const searchText = getRowSearchText(table, row);
-            const statusText = getRowStatusText(table, row);
+        function rowToRetrievalItem(chat, templateId, table, row, rowIndex) {
+            const searchText = (table.columns || []).map(field => {
+                const value = readEffectiveValue(chat, templateId, table, field, row.cells?.[field.id], row.id);
+                return isEmptyMemoryValue(field, value) ? '' : `${field.key}: ${getFieldDisplayValue(field, value)}`;
+            }).filter(Boolean).join('\n');
+            const statusText = getRowStatusText(chat, templateId, table, row);
             const expiresAt = Number(row?.meta?.expiresAt) || 0;
             const completed = MemoryPolicy ? MemoryPolicy.isCompletedText(statusText) : /已完成|已取消|已过期|已解决/.test(statusText);
             return { id: row.id, row, table, rowIndex, searchText, text: searchText, updatedAt: getRowTimestamp(table, row),
@@ -37,11 +49,12 @@
                 confidence: Number(row?.meta?.confidence) || 70, pinned: !!row?.meta?.pinned,
                 completed, active: !completed && !(expiresAt > 0 && expiresAt < Date.now()), expiredByMeta: expiresAt > 0 && expiresAt < Date.now() };
         }
+
         function isKeyValueTableActive(chat, template, table, policy) {
             if (!policy.maxAgeDays) return true;
             let newest = 0, explicitExpiry = 0;
             (table.columns || []).forEach(field => {
-                const value = readFieldValueForRetrieval(chat, template.id, table.id, field);
+                const value = readFieldValueForRetrieval(chat, template.id, table, field);
                 if (/有效期|过期/.test(field.key || '')) explicitExpiry = Math.max(explicitExpiry, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
                 if (/记录时间|更新时间|日期|时间/.test(field.key || '')) newest = Math.max(newest, MemoryPolicy ? MemoryPolicy.parseDateLike(value) : Date.parse(String(value || '')) || 0);
             });
@@ -50,7 +63,7 @@
         }
         function selectRowsForInjection(chat, template, table, queryText, forceFull) {
             const rows = readRowsForRetrieval(chat, template.id, table);
-            const items = rows.map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex));
+            const items = rows.map((row, rowIndex) => rowToRetrievalItem(chat, template.id, table, row, rowIndex));
             if (forceFull) return items;
             const policy = getTableRuntimePolicy(table, chat, template.id).injectionPolicy;
             if (policy.mode === 'never') return [];
@@ -83,19 +96,19 @@
                 selected.forEach((item, selectedIndex) => {
                     text += `  - 记录 ${selectedIndex + 1}${item._score !== undefined ? `（相关度 ${item._score.toFixed(2)}）` : ''}\n`;
                     (table.columns || []).filter(field => forceFull || field.important !== false).forEach(field => {
-                        const raw = item.row.cells?.[field.id];
+                        const raw = readEffectiveValue(chat, template.id, table, field, item.row.cells?.[field.id], item.row.id);
                         if (!isEmptyMemoryValue(field, raw)) text += `    - ${field.summaryLabel || field.key}: ${getFieldDisplayValue(field, raw)}\n`;
                     });
                 });
             } else {
                 if (!forceFull && injectionPolicy.mode === 'active' && !isKeyValueTableActive(chat, template, table, injectionPolicy)) return '';
-                const fields = (table.columns || []).filter(field => forceFull || field.important !== false).filter(field => !isEmptyMemoryValue(field, readFieldValueForRetrieval(chat, template.id, table.id, field)));
+                const fields = (table.columns || []).filter(field => forceFull || field.important !== false).filter(field => !isEmptyMemoryValue(field, readFieldValueForRetrieval(chat, template.id, table, field)));
                 if (!fields.length) return '';
                 if (!forceFull && injectionPolicy.mode === 'relevant' && MemoryPolicy) {
-                    const aggregate = fields.map(field => `${field.key}: ${getFieldDisplayValue(field, readFieldValueForRetrieval(chat, template.id, table.id, field))}`).join('\n');
+                    const aggregate = fields.map(field => `${field.key}: ${getFieldDisplayValue(field, readFieldValueForRetrieval(chat, template.id, table, field))}`).join('\n');
                     if (MemoryPolicy.computeLexicalScore(aggregate, queryText) < injectionPolicy.threshold) return '';
                 }
-                fields.forEach(field => { text += `  - ${field.summaryLabel || field.key}: ${getFieldDisplayValue(field, readFieldValueForRetrieval(chat, template.id, table.id, field))}\n`; });
+                fields.forEach(field => { text += `  - ${field.summaryLabel || field.key}: ${getFieldDisplayValue(field, readFieldValueForRetrieval(chat, template.id, table, field))}\n`; });
             }
             return MemoryPolicy ? MemoryPolicy.trimToBudget(text.trim(), injectionPolicy.budget, table.name) : text.trim();
         }
@@ -131,7 +144,7 @@
                 const policy = getTableRuntimePolicy(table, chat, template.id).injectionPolicy;
                 if (policy.mode !== 'relevant') return;
                 groups.push({ key: `${template.id}::${table.id}`, templateName: template.name, tableName: table.name, policy,
-                    items: readRowsForRetrieval(chat, template.id, table).map((row, rowIndex) => rowToRetrievalItem(table, row, rowIndex)) });
+                    items: readRowsForRetrieval(chat, template.id, table).map((row, rowIndex) => rowToRetrievalItem(chat, template.id, table, row, rowIndex)) });
             }));
             return groups;
         }

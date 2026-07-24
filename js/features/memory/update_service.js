@@ -92,7 +92,7 @@
                     ...(effectiveTable.columns || []).map(field => {
                         const formalValue = Domain.isRowsTable(effectiveTable) ? undefined : Domain.getFieldValue(chat, template.id, effectiveTable.id, field);
                         const effectiveValue = FieldPolicy.effectiveCommitMode(field, effectiveTable) === 'runtime_only'
-                            ? (FieldPolicy.getRuntimeEntry(chat, template.id, effectiveTable.id, field.id)?.value ?? formalValue)
+                            ? FieldPolicy.getRuntimeEntry(chat, template.id, effectiveTable.id, field.id)?.value
                             : formalValue;
                         const currentValue = Domain.isRowsTable(effectiveTable) ? '见候选行' : Domain.getFieldDisplayValue(field, effectiveValue);
                         const locked = Domain.isFieldLocked(chat, template.id, effectiveTable.id, field.id);
@@ -121,6 +121,6 @@
     }
 
     Kernel.register('updateService', Object.freeze({
-        VERSION: '2.14-R5', collectMessages, buildHistoryText, buildTemplateDefinition, buildUpdatePrompt
+        VERSION: '2.14-R8.1', collectMessages, buildHistoryText, buildTemplateDefinition, buildUpdatePrompt
     }), { legacyGlobal: 'MemoryUpdateService' });
 })(window);

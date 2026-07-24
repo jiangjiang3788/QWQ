@@ -1,0 +1,44 @@
+{
+  "version": "2.14-R7",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "sourceSchemaVersion": "2.8",
+  "targetSchemaVersion": "3.0",
+  "migrationSteps": [
+    "memory-package-2.8-to-2.9",
+    "memory-package-2.9-to-3.0"
+  ],
+  "countsBefore": {
+    "templates": 1,
+    "tables": 8,
+    "fields": 94,
+    "rows": 234
+  },
+  "countsAfterMigration": {
+    "templates": 1,
+    "tables": 8,
+    "fields": 94,
+    "rows": 234
+  },
+  "exportProfiles": {
+    "templateBundle": {
+      "schemaVersion": "3.0",
+      "templates": 1,
+      "includesBinding": false
+    },
+    "portableSnapshot": {
+      "schemaVersion": "3.0",
+      "rows": 234,
+      "remapAllInternalIds": true
+    },
+    "fullBackup": {
+      "schemaVersion": "3.0",
+      "rows": 234,
+      "preservesIds": true,
+      "pendingReviewBatches": 1
+    }
+  },
+  "sourceSha256Before": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceSha256After": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceUnchanged": true,
+  "result": "PASS"
+}

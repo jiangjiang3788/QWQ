@@ -12,6 +12,12 @@
     const MemoryFeedback = Kernel.get('feedback');
     const MemoryQuality = Kernel.get('quality');
     const FieldPolicy = Kernel.get('fieldPolicy');
+    const RecordIdentity = Kernel.get('recordIdentity') || Object.freeze({
+        ensure() { return null; },
+        touch() { return null; },
+        findMatch() { return null; },
+        mergeValue(_field, _current, incoming) { return incoming; }
+    });
     const MEMORY_TABLE_HISTORY_LIMIT = 20;
     const deepClone = Core.clone;
     const createMemoryId = Core.createId;
@@ -397,7 +403,10 @@
                 sourceCandidateId: typeof rawMeta.sourceCandidateId === 'string' ? rawMeta.sourceCandidateId : '',
                 sourceRoundId: typeof rawMeta.sourceRoundId === 'string' ? rawMeta.sourceRoundId : '',
                 tagSource: typeof rawMeta.tagSource === 'string' ? rawMeta.tagSource : '',
-                workflow: rawMeta.workflow && typeof rawMeta.workflow === 'object' ? rawMeta.workflow : null
+                workflow: rawMeta.workflow && typeof rawMeta.workflow === 'object' ? rawMeta.workflow : null,
+                identity: rawMeta.identity && typeof rawMeta.identity === 'object' ? deepClone(rawMeta.identity) : null,
+                recordKey: typeof rawMeta.recordKey === 'string' ? rawMeta.recordKey : '',
+                sourceFingerprint: typeof rawMeta.sourceFingerprint === 'string' ? rawMeta.sourceFingerprint : ''
             }
         };
         (table.columns || []).forEach(field => {
@@ -410,6 +419,7 @@
         if (MemoryEffects) MemoryEffects.ensureRowMeta(row, table, searchText);
         if (MemoryFeedback) MemoryFeedback.ensureRowMeta(row);
         if (MemoryLifecycle) MemoryLifecycle.ensureRowMeta(row, table, searchText);
+        RecordIdentity.ensure(table, row);
         return row;
     }
 
@@ -441,6 +451,7 @@
                 } else {
                     tableData.__rows = tableData.__rows.map(row => normalizeRowShape(table, row));
                 }
+                RecordIdentity.ensureUnique?.(table, chat.memoryTables.data[template.id][table.id].__rows);
                 return;
             }
 
@@ -576,6 +587,7 @@
             }
         });
         rows.push(row);
+        RecordIdentity.ensureUnique?.(table, rows);
         if (MemoryLifecycle) {
             const sourceMap = { manual: 'manual', api: 'summary_api', review_v2_2: 'summary_api', candidate_approve_v2_1: 'manual', candidate_approve_v2_13_r5: 'manual', sidecar: 'assistant_inferred' };
             MemoryLifecycle.ensureRowMeta(row, table, getRowSearchText(table, row));
@@ -584,6 +596,13 @@
         if (options.meta && typeof options.meta === 'object') {
             row.meta = { ...(row.meta || {}), ...deepClone(options.meta) };
         }
+        RecordIdentity.ensure(table, row, {
+            recordKey: options.recordKey,
+            sourceMessageId: options.sourceMessageId,
+            sourceMessageIds: options.sourceMessageIds,
+            sourceRoundId: options.sourceRoundId,
+            sourceCandidateId: options.sourceCandidateId || options.meta?.sourceCandidateId
+        });
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         pushMemoryHistory(chat, (table.columns || []).map(field => ({
             templateId,
@@ -595,6 +614,55 @@
             newValue: row.cells[field.id]
         })), options);
         return row;
+    }
+
+    function upsertRow(chat, templateId, table, initialValues = {}, options = {}) {
+        const rows = getRows(chat, templateId, table);
+        const match = RecordIdentity.findMatch(rows, table, initialValues, {
+            recordKey: options.recordKey,
+            sourceMessageId: options.sourceMessageId,
+            sourceMessageIds: options.sourceMessageIds,
+            sourceRoundId: options.sourceRoundId,
+            sourceCandidateId: options.sourceCandidateId || options.meta?.sourceCandidateId,
+            meta: options.meta
+        });
+        if (!match) {
+            const row = addRow(chat, templateId, table, initialValues, options);
+            return { row, created: true, matched: false, matchedBy: '', changedFields: (table.columns || []).filter(field => initialValues[field.id] !== undefined).map(field => ({
+                templateId, tableId: table.id, rowId: row.id, fieldId: field.id,
+                label: `${table.name} / ${field.key}（新增行）`, oldValue: '', newValue: row.cells[field.id]
+            })) };
+        }
+        let row = match.row;
+        const changedFields = [];
+        (table.columns || []).forEach(field => {
+            if (initialValues[field.id] === undefined) return;
+            row = findRowById(chat, templateId, table, row.id) || row;
+            const oldValue = deepClone(row.cells?.[field.id]);
+            const incoming = normalizeFieldValue(field, initialValues[field.id]);
+            const nextValue = normalizeFieldValue(field, RecordIdentity.mergeValue(field, oldValue, incoming, options.mergeStrategy || 'replace_non_empty'));
+            if (isSameMemoryValue(oldValue, nextValue)) return;
+            updateRowFieldValue(chat, templateId, table, row.id, field, nextValue, {
+                ...options,
+                source: options.source || 'upsert_v2_14_r8',
+                skipHistory: true
+            });
+            row = findRowById(chat, templateId, table, row.id) || row;
+            changedFields.push({
+                templateId, tableId: table.id, rowId: row.id, fieldId: field.id,
+                label: `${table.name} / ${field.key}（匹配更新）`, oldValue, newValue: nextValue
+            });
+        });
+        if (options.meta && typeof options.meta === 'object') row.meta = { ...(row.meta || {}), ...deepClone(options.meta) };
+        RecordIdentity.touch(table, row, {
+            matched: true,
+            sourceMessageId: options.sourceMessageId,
+            sourceMessageIds: options.sourceMessageIds,
+            sourceRoundId: options.sourceRoundId,
+            sourceCandidateId: options.sourceCandidateId || options.meta?.sourceCandidateId
+        });
+        if (changedFields.length && options.skipHistory !== true) pushMemoryHistory(chat, changedFields, { source: options.source || 'upsert_v2_14_r8', snapshot: options.snapshot });
+        return { row, created: false, matched: true, matchedBy: match.matchedBy, confidence: match.confidence, changedFields };
     }
 
     function updateRowFieldValue(chat, templateId, table, rowId, field, value, options = {}) {
@@ -610,6 +678,12 @@
             const source = options.source === 'manual' ? 'manual' : (String(options.source || '').includes('review') || options.source === 'api' ? 'summary_api' : 'manual');
             MemoryLifecycle.recordSource(row, source, { type: 'manual', id: options.source || source, at: Date.now() }, { verified: options.source === 'manual' });
         }
+        RecordIdentity.touch(table, row, {
+            sourceMessageId: options.sourceMessageId,
+            sourceMessageIds: options.sourceMessageIds,
+            sourceRoundId: options.sourceRoundId,
+            sourceCandidateId: options.sourceCandidateId
+        });
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
         if (isSameMemoryValue(oldValue, normalized)) {
             return false;
@@ -831,6 +905,7 @@
         isSameMemoryValue,
         buildFieldPath,
         addRow,
+        upsertRow,
         updateRowFieldValue,
         deleteRow,
         moveRow,

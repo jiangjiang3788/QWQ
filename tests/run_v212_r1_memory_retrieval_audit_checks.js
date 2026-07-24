@@ -6,13 +6,14 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R1', '2.12-R2', '2.12-R3', '2.12-R4', '2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const auditSource = read('js/features/memory/retrieval_audit.js');
 const auditCss = read('css/modules/memory_retrieval_audit.css');
 const workspaceSource = read('js/features/memory/workspace.js');
 const controllerSource = read('js/modules/memory_table.js');
 const queueSource = read('js/features/memory/governance_queue.js');
+const workItemSource = read('js/features/memory/work_item.js');
 
 assert(html.includes('css/modules/memory_retrieval_audit.css'));
 assert(html.includes('js/features/memory/retrieval_audit.js'));
@@ -22,7 +23,7 @@ assert(!html.includes('data-tab="feedback"'));
 assert(html.includes('memory-usage-audit-tab-count'));
 assert(workspaceSource.includes("['retrieval', 'feedback'].includes(view) ? 'usage_audit'"));
 assert(workspaceSource.includes("['usage_audit', '记忆引用与作用'"));
-assert(queueSource.includes("targetView: 'usage_audit'"));
+assert(workItemSource.includes("params: { view: 'usage_audit' }"));
 assert(controllerSource.includes("['usage_audit', 'retrieval', 'feedback'].includes(view)"));
 assert(!controllerSource.includes('MemoryFeedback.renderView(chat)'));
 assert(!controllerSource.includes('MemoryRetrieval.renderDiagnostics(chat)'));

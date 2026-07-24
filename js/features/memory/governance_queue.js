@@ -12,6 +12,7 @@
     const Feedback = Kernel.get('feedback');
     const Policy = Kernel.get('policy');
     const CandidateService = Kernel.require('candidateService');
+    const WorkItem = Kernel.require('workItem');
 
     const viewState = {
         filter: 'all',
@@ -38,110 +39,14 @@
 
 
     function scan(chat, templates, options = {}) {
-        const now = Number(options.now) || Date.now();
-        const items = [];
-        (Review?.getPendingBatches?.(chat) || []).forEach(batch => {
-            const proposals = batch.proposals || [];
-            const highRisk = proposals.filter(item => item.risk === 'high').length;
-            items.push({
-                id: `review:${batch.id}`,
-                kind: 'review_batch',
-                category: 'review',
-                priority: highRisk ? 'high' : 'medium',
-                title: batch.tableName || '结构化档案更新',
-                detail: `${proposals.length} 项建议${highRisk ? ` · ${highRisk} 项高风险` : ''}`,
-                meta: `${batch.sourceMessageCount || 0} 条消息 · ${batch.relatedContext?.rowCount || 0} 行相关记忆`,
-                createdAt: batch.createdAt || now,
-                batchId: batch.id,
-                selectable: false
-            });
-        });
-
-        (templates || []).forEach(template => {
-            (template.tables || []).forEach(table => {
-                if (!Domain.isRowsTable(table)) return;
-                const policy = tablePolicy(table);
-                Domain.getRows(chat, template.id, table).forEach((row, rowIndex) => {
-                    if (policy.memoryLayer === 'review' && CandidateService.isPending(table, row)) {
-                        items.push({
-                            id: `candidate:${row.id}`,
-                            kind: 'candidate',
-                            category: 'candidate',
-                            priority: 'medium',
-                            title: table.name,
-                            detail: rowText(table, row).slice(0, 220) || '长期记忆候选',
-                            meta: `第 ${rowIndex + 1} 行 · ${CandidateService.statusText(table, row) || '待审核'}`,
-                            createdAt: row.meta?.updatedAt || row.meta?.createdAt || now,
-                            templateId: template.id,
-                            tableId: table.id,
-                            rowId: row.id,
-                            template,
-                            table,
-                            row,
-                            selectable: false
-                        });
-                        return;
-                    }
-                    const meta = Lifecycle?.ensureRowMeta?.(row, table, rowText(table, row)) || row.meta || {};
-                    const life = meta.lifecycle || {};
-                    const status = life.status || meta.status || 'active';
-                    const due = !!((life.reviewAt && life.reviewAt <= now) || (life.expiresAt && life.expiresAt <= now));
-                    if (!(['uncertain', 'conflicting', 'expired'].includes(status) || due)) return;
-                    const reason = status === 'conflicting' ? '存在未解决冲突'
-                        : status === 'expired' ? '记忆已过期'
-                            : status === 'uncertain' ? '记忆可信度待确认'
-                                : '到达复核日期';
-                    items.push({
-                        id: `reliability:${row.id}`,
-                        kind: 'reliability',
-                        category: 'reliability',
-                        priority: ['conflicting', 'expired'].includes(status) ? 'high' : 'medium',
-                        title: table.name,
-                        detail: rowText(table, row).slice(0, 220) || reason,
-                        meta: `${reason} · 第 ${rowIndex + 1} 行`,
-                        createdAt: life.reviewAt || life.expiresAt || row.meta?.updatedAt || now,
-                        templateId: template.id,
-                        tableId: table.id,
-                        rowId: row.id,
-                        template,
-                        table,
-                        row,
-                        status,
-                        due,
-                        selectable: status !== 'conflicting'
-                    });
-                });
-            });
-        });
-
-        const taskCounts = Tasks?.getCounts?.(chat) || {};
-        const taskAttention = (taskCounts.failed || 0) + (taskCounts.queued || 0) + (taskCounts.paused || 0);
-        if (taskAttention) items.push({
-            id: 'system:tasks', kind: 'system', category: 'system', priority: taskCounts.failed ? 'high' : 'low',
-            title: '后台任务队列', detail: `失败 ${taskCounts.failed || 0} · 排队 ${taskCounts.queued || 0} · 暂停 ${taskCounts.paused || 0}`,
-            meta: '集中处理失败、重试与暂停任务', createdAt: now, targetView: 'tasks', selectable: false
-        });
-        const sidecarState = Sidecar?.ensureState?.(chat);
-        const sidecarCount = (sidecarState?.candidates || []).filter(item => item.status === 'pending').length;
-        if (sidecarCount) items.push({
-            id: 'system:sidecar', kind: 'system', category: 'system', priority: 'low', title: '短期记忆候选',
-            detail: `${sidecarCount} 条聊天候选等待整理`, meta: '近期经历、观察与待办入口', createdAt: now, targetView: 'sidecar', selectable: false
-        });
-        const feedbackCount = Feedback?.getPendingCount?.(chat) || 0;
-        if (feedbackCount) items.push({
-            id: 'system:feedback', kind: 'system', category: 'system', priority: 'low', title: '记忆引用与作用',
-            detail: `${feedbackCount} 项本轮引用等待反馈`, meta: '按来源表核对引用原因和使用效果', createdAt: now, targetView: 'usage_audit', selectable: false
-        });
-
-        const order = { high: 0, medium: 1, low: 2 };
-        return items.sort((a, b) => (order[a.priority] ?? 9) - (order[b.priority] ?? 9) || (b.createdAt || 0) - (a.createdAt || 0));
+        return WorkItem.collect(chat, templates, options);
     }
 
     function filterItems(items) {
         const query = String(viewState.query || '').trim().toLowerCase();
         return (items || []).filter(item => {
             if (viewState.filter !== 'all' && item.category !== viewState.filter) return false;
-            if (query && !`${item.title} ${item.detail} ${item.meta}`.toLowerCase().includes(query)) return false;
+            if (query && !`${item.title} ${item.reason || ''} ${item.detail} ${item.meta}`.toLowerCase().includes(query)) return false;
             return true;
         });
     }
@@ -174,23 +79,41 @@
         return result;
     }
 
+    function actionAttributes(action, item) {
+        const params = { ...(action.params || {}) };
+        params.itemId ||= item.id;
+        if (item.sourceRef?.batchId) params.batchId ||= item.sourceRef.batchId;
+        return Object.entries(params).map(([key, value]) => {
+            const attr = key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+            return `data-${attr}="${Core.escapeAttribute(value)}"`;
+        }).join(' ');
+    }
+
     function renderActions(item) {
-        if (item.kind === 'review_batch') return `<button type="button" class="btn btn-small btn-primary" data-governance-action="open-review" data-batch-id="${Core.escapeAttribute(item.batchId)}">进入审核</button>`;
-        if (item.kind === 'candidate') return `<button type="button" class="btn btn-small btn-primary" data-governance-action="approve-candidate" data-item-id="${Core.escapeAttribute(item.id)}">批准</button><button type="button" class="btn btn-small btn-secondary" data-governance-action="open-row" data-item-id="${Core.escapeAttribute(item.id)}">查看</button><button type="button" class="memory-governance-text-danger" data-governance-action="reject-candidate" data-item-id="${Core.escapeAttribute(item.id)}">拒绝</button>`;
-        if (item.kind === 'reliability') {
-            const confirm = item.status === 'conflicting' ? '' : `<button type="button" class="btn btn-small btn-primary" data-governance-action="confirm-row" data-item-id="${Core.escapeAttribute(item.id)}">确认有效</button>`;
-            return `${confirm}<button type="button" class="btn btn-small btn-secondary" data-governance-action="open-row" data-item-id="${Core.escapeAttribute(item.id)}">查看</button><button type="button" class="memory-governance-text" data-governance-action="snooze-row" data-item-id="${Core.escapeAttribute(item.id)}">30 天后</button><button type="button" class="memory-governance-text-danger" data-governance-action="archive-row" data-item-id="${Core.escapeAttribute(item.id)}">归档</button>`;
-        }
-        if (item.id === 'system:feedback') return `<button type="button" class="btn btn-small btn-secondary" data-governance-action="open-view" data-view="usage_audit">打开</button><button type="button" class="memory-governance-text-danger" data-governance-action="clear-feedback-tasks">清空待反馈</button>`;
-        return `<button type="button" class="btn btn-small btn-secondary" data-governance-action="open-view" data-view="${Core.escapeAttribute(item.targetView || 'tasks')}">打开</button>`;
+        return (item.availableActions || []).map(action => {
+            const attrs = `data-governance-action="${Core.escapeAttribute(action.id)}" ${actionAttributes(action, item)}`;
+            if (action.tone === 'text-danger') return `<button type="button" class="memory-governance-text-danger" ${attrs}>${Core.escapeHtml(action.label)}</button>`;
+            if (action.tone === 'text') return `<button type="button" class="memory-governance-text" ${attrs}>${Core.escapeHtml(action.label)}</button>`;
+            const tone = action.tone === 'primary' ? 'btn-primary' : action.tone === 'danger' ? 'btn-danger' : action.tone === 'neutral' ? 'btn-neutral' : 'btn-secondary';
+            return `<button type="button" class="btn btn-small ${tone}" ${attrs}>${Core.escapeHtml(action.label)}</button>`;
+        }).join('');
+    }
+
+    function itemTypeLabel(item) {
+        const labels = {
+            update_review: '更新确认', short_candidate: '短期候选', long_candidate: '长期晋升',
+            reliability_review: '可靠性复核', conflict_review: '冲突复核', failed_task: '失败任务',
+            paused_task: '暂停任务', retrieval_feedback: '召回反馈'
+        };
+        return labels[item.type] || WorkItem.CATEGORIES[item.category] || '待处理';
     }
 
     function renderItem(item) {
         const checked = viewState.selected.has(item.id);
         const checkbox = item.selectable ? `<label class="memory-governance-check"><input type="checkbox" data-governance-select="${Core.escapeAttribute(item.id)}" ${checked ? 'checked' : ''}><span></span></label>` : '<span class="memory-governance-check is-empty"></span>';
-        return `<article class="memory-governance-item priority-${item.priority}" data-governance-item="${Core.escapeAttribute(item.id)}">
+        return `<article class="memory-governance-item priority-${item.risk}" data-governance-item="${Core.escapeAttribute(item.id)}">
             ${checkbox}
-            <div class="memory-governance-copy"><div class="memory-governance-title"><strong>${Core.escapeHtml(item.title)}</strong><span>${item.category === 'review' ? '更新' : item.category === 'candidate' ? '长期候选' : item.category === 'reliability' ? '需要复核' : '系统队列'}</span></div><p>${Core.escapeHtml(item.detail)}</p><small>${Core.escapeHtml(item.meta || '')}</small></div>
+            <div class="memory-governance-copy"><div class="memory-governance-title"><strong>${Core.escapeHtml(item.title)}</strong><span>${itemTypeLabel(item)}</span></div><p>${Core.escapeHtml(item.detail)}</p><small>${Core.escapeHtml(item.meta || '')}</small></div>
             <div class="memory-governance-actions">${renderActions(item)}</div>
         </article>`;
     }
@@ -212,6 +135,6 @@
     }
 
     Kernel.register('governanceQueue', Object.freeze({
-        VERSION: '2.11-R4', FILTERS, viewState, scan, filterItems, setFilter, setQuery, toggleSelection, clearSelection, selectedItems, countByCategory, renderHome
+        VERSION: '2.14-R8', FILTERS, viewState, scan, filterItems, setFilter, setQuery, toggleSelection, clearSelection, selectedItems, countByCategory, renderHome
     }));
 })(window);

@@ -186,3 +186,25 @@ V2.14-R1 单人版记忆写入协调：
 - 验证同一角色写入串行、完整 memoryTables 快照回滚、无变化不落盘。
 - 验证表格字段/整行、Sidecar 候选、聊天 Sidecar、更新审核、API 直接更新和长期晋升接入统一写入协调器。
 - 本版面向单人本地使用，不引入多人版本合并、远程锁或复杂 revision 协议。
+
+V2.14-R7 Schema 迁移与三种导出格式：
+- node tests/run_v214_r7_schema_migration_and_export_profiles_checks.js
+- 验证 2.8→2.9→3.0 迁移链、源对象只读、未来版本拒绝
+- 验证模板、迁移快照、完整备份的包含范围和 ID 策略
+- 验证完整备份仅可恢复原角色并通过写入网关持久化
+
+V2.14-R8 统一待处理协议与记录身份去重：
+- node tests/run_v214_r8_work_item_and_record_upsert_checks.js
+- 验证审核、候选、冲突、可靠性、失败任务和召回反馈统一生成合法 WorkItem。
+- 验证 recordKey、来源指纹、首次/最近出现时间和匹配次数。
+- 验证显式业务 ID、来源指纹、日期标题和内容指纹匹配顺序。
+- 验证重复自动写入执行 Upsert，不新增第二行；旧数据补身份时 recordKey 保持唯一。
+
+
+V2.14-R8.1 直接写入分流闭环修复：
+- node tests/run_v214_r81_sidecar_policy_closure_checks.js
+- 验证 Sidecar 逐字段 evidence/confidence，明确事实和模型推断分开路由。
+- 验证当前状态推断只进入运行态，旧重复审核按字段保留最新值并收敛。
+- 验证当前角色直接写入覆盖作用到明确候选，字段阈值和仅人工门禁仍有效。
+- 验证日常观察按日期 Upsert，同日重复写入不新增第二行。
+- 验证 runtime-only 旧正式值不再注入上下文，设置页显示字段实际分流。

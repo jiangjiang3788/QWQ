@@ -6,6 +6,7 @@
     const Core = Kernel.core;
     const Domain = Kernel.require('domain');
     const Policy = Kernel.require('policy');
+    const FieldPolicy = Kernel.get('fieldPolicy') || Object.freeze({ effectiveCommitMode: () => 'direct', getRuntimeEntry: () => null });
 
     const ROLE_RELATIONS = Object.freeze({
         core: ['current', 'long'],
@@ -75,12 +76,21 @@
         return best;
     }
 
-    function rowItem(table, row, index) {
-        const searchText = Domain.getRowSearchText(table, row);
-        const statusText = (table.columns || [])
-            .filter(field => /状态|进度|结果/.test(field.key || ''))
-            .map(field => Domain.getFieldDisplayValue(field, row?.cells?.[field.id]))
-            .filter(Boolean).join(' ');
+    function effectiveValue(chat, template, table, field, formalValue, rowId) {
+        if (FieldPolicy.effectiveCommitMode(field, table) !== 'runtime_only') return formalValue;
+        const runtimeId = rowId ? `${rowId}::${field.id}` : field.id;
+        return FieldPolicy.getRuntimeEntry(chat, template.id, table.id, runtimeId)?.value;
+    }
+
+    function rowItem(chat, template, table, row, index) {
+        const searchText = (table.columns || []).map(field => {
+            const value = effectiveValue(chat, template, table, field, row?.cells?.[field.id], row?.id);
+            return Domain.isEmptyMemoryValue(field, value) ? '' : `${field.key}: ${Domain.getFieldDisplayValue(field, value)}`;
+        }).filter(Boolean).join('\n');
+        const statusText = (table.columns || []).filter(field => /状态|进度|结果/.test(field.key || '')).map(field => {
+            const value = effectiveValue(chat, template, table, field, row?.cells?.[field.id], row?.id);
+            return Domain.getFieldDisplayValue(field, value);
+        }).filter(Boolean).join(' ');
         return {
             id: row.id,
             row,
@@ -97,23 +107,31 @@
         };
     }
 
-    function renderRow(table, item, index) {
+    function renderRow(chat, template, table, item, index) {
         const row = item.row;
         const fields = (table.columns || []).filter(field => {
-            const value = row?.cells?.[field.id];
+            const value = effectiveValue(chat, template, table, field, row?.cells?.[field.id], row?.id);
             return !Domain.isEmptyMemoryValue(field, value) && (field.important !== false || index < 2);
         }).slice(0, 8);
         const tags = row?.meta?.tagBundle || {};
-        return `    <row id="${xml(row.id)}" relevance="${Number(item._score || 0).toFixed(2)}">\n${fields.map(field => `      <field name="${xml(field.key)}">${xml(clip(Domain.getFieldDisplayValue(field, row.cells?.[field.id]), 320))}</field>`).join('\n')}${(tags.topic || tags.scene || tags.entity) ? `\n      <existing_tags topic="${xml((tags.topic || []).join(','))}" scene="${xml((tags.scene || []).join(','))}" entity="${xml((tags.entity || []).join(','))}" effect="${xml(tags.effect || '')}"/>` : ''}\n    </row>`;
+        return `    <row id="${xml(row.id)}" relevance="${Number(item._score || 0).toFixed(2)}">\n${fields.map(field => {
+            const value = effectiveValue(chat, template, table, field, row.cells?.[field.id], row.id);
+            return `      <field name="${xml(field.key)}">${xml(clip(Domain.getFieldDisplayValue(field, value), 320))}</field>`;
+        }).join('\n')}${(tags.topic || tags.scene || tags.entity) ? `\n      <existing_tags topic="${xml((tags.topic || []).join(','))}" scene="${xml((tags.scene || []).join(','))}" entity="${xml((tags.entity || []).join(','))}" effect="${xml(tags.effect || '')}"/>` : ''}\n    </row>`;
     }
 
     function renderKeyValue(chat, template, table) {
         const fields = (table.columns || []).filter(field => {
-            const value = Domain.getFieldValue(chat, template.id, table.id, field);
+            const formal = Domain.getFieldValue(chat, template.id, table.id, field);
+            const value = effectiveValue(chat, template, table, field, formal);
             return !Domain.isEmptyMemoryValue(field, value) && field.important !== false;
         }).slice(0, 8);
         if (!fields.length) return '';
-        return fields.map(field => `    <field id="${xml(field.id)}" name="${xml(field.key)}">${xml(clip(Domain.getFieldDisplayValue(field, Domain.getFieldValue(chat, template.id, table.id, field)), 360))}</field>`).join('\n');
+        return fields.map(field => {
+            const formal = Domain.getFieldValue(chat, template.id, table.id, field);
+            const value = effectiveValue(chat, template, table, field, formal);
+            return `    <field id="${xml(field.id)}" name="${xml(field.key)}">${xml(clip(Domain.getFieldDisplayValue(field, value), 360))}</field>`;
+        }).join('\n');
     }
 
     function getDescriptors(chat) {
@@ -141,7 +159,7 @@
             let body = '';
             let rowCount = 0;
             if (Domain.isRowsTable(descriptor.table)) {
-                const items = Domain.getRows(chat, descriptor.template.id, descriptor.table).map((row, index) => rowItem(descriptor.table, row, index));
+                const items = Domain.getRows(chat, descriptor.template.id, descriptor.table).map((row, index) => rowItem(chat, descriptor.template, descriptor.table, row, index));
                 if (!items.length) return;
                 const selected = Policy.selectRelevantItems(items, queryText, {
                     mode: 'relevant', topK, threshold: 0.015, includeCompleted: true,
@@ -153,7 +171,7 @@
                 const rows = Array.from(merged.values()).slice(0, topK);
                 if (!rows.length) return;
                 rowCount = rows.length;
-                body = rows.map((item, index) => renderRow(descriptor.table, item, index)).join('\n');
+                body = rows.map((item, index) => renderRow(chat, descriptor.template, descriptor.table, item, index)).join('\n');
             } else {
                 body = renderKeyValue(chat, descriptor.template, descriptor.table);
                 if (!body) return;
@@ -172,7 +190,7 @@
         const text = chunks.length ? `<related_memory_tables targetRole="${xml(targetRole)}">\n${chunks.join('\n')}\n</related_memory_tables>` : '';
         const runtime = Policy.ensureRuntimeState(chat);
         runtime.lastUpdateContextDiagnostic = {
-            version: '2.11-R1', preparedAt: Date.now(), targetTemplateId: targetTemplate.id,
+            version: '2.14-R8.1', preparedAt: Date.now(), targetTemplateId: targetTemplate.id,
             targetTableId: targetTable.id, targetRole, queryChars: queryText.length,
             tableCount: chunks.length, rowCount: selectedTables.slice(0, chunks.length).reduce((sum, item) => sum + item.rowCount, 0),
             tables: selectedTables.slice(0, chunks.length).map(item => ({ tableId: item.table.id, tableName: item.table.name, role: item.role, reason: item.reason, rowCount: item.rowCount })),
@@ -182,7 +200,7 @@
     }
 
     Kernel.register('contextAssembler', Object.freeze({
-        VERSION: '2.11-R1',
+        VERSION: '2.14-R8.1',
         inferRole,
         assemble,
         relationMap: ROLE_RELATIONS

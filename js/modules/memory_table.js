@@ -33,6 +33,7 @@
         domain: MemoryDomain,
         workspace: MemoryWorkspace,
         packageAdapter: MemoryPackageAdapter,
+        schemaMigrator: MemorySchemaMigrator,
         packageOrchestrator: MemoryPackageOrchestratorFactory,
         writeCoordinator: MemoryWriteCoordinator,
         writeGateway: MemoryWriteGateway
@@ -75,7 +76,7 @@
         parseConditionalRulesText, serializeConditionalRules, getDefaultValueByType, getFieldDefaultValue,
         getBoundTemplates, isRowsTable, createEmptyRow, normalizeRowShape, ensureTemplateDataForChat, getRows,
         findRowById, normalizeFieldValue, clampFieldValue, getFieldValue, pushMemoryHistory, setFieldValue,
-        isSameMemoryValue, addRow, updateRowFieldValue, deleteRow, moveRow, isFieldLocked,
+        isSameMemoryValue, addRow, upsertRow, updateRowFieldValue, deleteRow, moveRow, isFieldLocked,
         toggleFieldLock, replaceFormalData, replaceTemplateData, setRowTagBundle, getFieldDisplayValue, isEmptyMemoryValue, getRowSearchText
     } = MemoryDomain;
     const deepClone = Core.clone;
@@ -555,8 +556,8 @@
                 <div class="memory-template-list-actions">
                     <label class="kkt-switch" title="绑定到当前角色"><input type="checkbox" class="memory-template-bind-toggle" data-template-id="${escapeAttribute(template.id)}" ${bound ? 'checked' : ''}><span class="kkt-slider"></span></label>
                     <button class="btn btn-small btn-primary memory-template-edit-structure" data-action="open-schema-editor" data-template-id="${escapeAttribute(template.id)}">编辑结构</button>
-                    <button class="btn btn-small btn-secondary" data-action="export-template" data-template-id="${escapeAttribute(template.id)}">导出</button>
-                    <button class="btn btn-small btn-secondary" data-action="export-template-package" data-template-id="${escapeAttribute(template.id)}">导出记忆包</button>
+                    <button class="btn btn-small btn-secondary" data-action="export-template" data-template-id="${escapeAttribute(template.id)}">导出模板</button>
+                    <button class="btn btn-small btn-secondary" data-action="export-template-package" data-template-id="${escapeAttribute(template.id)}">迁移快照</button>
                     <button class="btn btn-small btn-danger" data-action="delete-template" data-template-id="${escapeAttribute(template.id)}">删除</button>
                 </div>
             </div>`;
@@ -921,6 +922,7 @@
     }
     const MemoryRetrievalUseCases = MemoryRetrievalOrchestratorFactory.create({
             MemoryFeedback,
+            MemoryFieldPolicy,
             MemoryPolicy,
             MemoryRetrieval,
             MemoryRetrievalMaintenance,
@@ -1747,6 +1749,7 @@ ${tableContext}`;
             MemoryWriteCoordinator,
             MemoryWriteGateway,
             addRow,
+            upsertRow,
             createMemoryId,
             db,
             deepClone,
@@ -1860,6 +1863,7 @@ ${tableContext}`;
             MemoryReview,
             MemorySidecar,
             MemoryTasks,
+            MemoryWriteGateway,
             db,
             deepClone,
             ensureMemoryTableState,
@@ -1874,7 +1878,7 @@ ${tableContext}`;
             showToast
     });
     const {
-        exportTemplate, exportTemplatePackage, exportCurrentMemoryPackage, exportAllTemplates,
+        exportTemplate, exportTemplatePackage, exportCurrentMemoryPackage, exportFullBackup, exportAllTemplates,
         downloadJson, importTemplatesFromFile
     } = MemoryPackageUseCases;
     async function handleFieldInputChange(target) {
@@ -2131,6 +2135,8 @@ ${tableContext}`;
         if (exportAllBtn) exportAllBtn.addEventListener('click', exportAllTemplates);
         const exportPackageBtn = document.getElementById('memory-table-export-package-btn');
         if (exportPackageBtn) exportPackageBtn.addEventListener('click', exportCurrentMemoryPackage);
+        const exportFullBackupBtn = document.getElementById('memory-table-export-full-backup-btn');
+        if (exportFullBackupBtn) exportFullBackupBtn.addEventListener('click', exportFullBackup);
         const fromJournalBtn = document.getElementById('memory-table-from-journal-btn');
         if (fromJournalBtn) fromJournalBtn.addEventListener('click', convertJournalsToTables);
         const toJournalBtn = document.getElementById('memory-table-to-journal-btn');

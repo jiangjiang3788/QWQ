@@ -49,8 +49,10 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/modules/memory_table_tasks.js',
   'js/modules/memory_table_quality.js',
   'js/features/memory/api_adapter.js',
+  'js/features/memory/record_identity.js',
   'js/features/memory/domain.js',
   'js/features/memory/package_adapter.js',
+  'js/features/memory/schema_migrator.js',
   'js/features/memory/package_orchestrator.js',
   'js/features/memory/write_coordinator.js',
   'js/features/memory/write_gateway.js',
@@ -65,6 +67,7 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/features/memory/relation_service.js',
   'js/features/memory/merge_review_service.js',
   'js/features/memory/candidate_service.js',
+  'js/features/memory/work_item.js',
   'js/features/memory/integrity_doctor.js',
   'js/features/memory/table_filter.js',
   'js/features/memory/governance_queue.js',
@@ -107,7 +110,7 @@ assert(OvoMemoryKernel.core.hashFingerprint('abc').startsWith('3:'), 'fingerprin
   'js/features/memory/maintenance.js'
 ].forEach(load);
 
-const expected = ['policy', 'policyResolver', 'fieldPolicy', 'lifecycle', 'effects', 'feedback', 'review', 'reviewOrchestrator', 'retrievalMaintenance', 'retrievalOrchestrator', 'retrieval', 'retrievalAudit', 'sidecar', 'sidecarCandidateService', 'sidecarCandidateController', 'tasks', 'quality', 'api', 'domain', 'packageAdapter', 'packageOrchestrator', 'writeCoordinator', 'writeGateway', 'fieldWidth', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'integrityDoctor', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'rowEditModal', 'tableEditor', 'tableEditController', 'rowEditController', 'updateActivity', 'tableWorkspace'];
+const expected = ['policy', 'policyResolver', 'fieldPolicy', 'lifecycle', 'effects', 'feedback', 'review', 'reviewOrchestrator', 'retrievalMaintenance', 'retrievalOrchestrator', 'retrieval', 'retrievalAudit', 'sidecar', 'sidecarCandidateService', 'sidecarCandidateController', 'tasks', 'quality', 'api', 'recordIdentity', 'domain', 'packageAdapter', 'schemaMigrator', 'packageOrchestrator', 'writeCoordinator', 'writeGateway', 'fieldWidth', 'workspace', 'tagVocabulary', 'tagService', 'relationService', 'mergeReviewService', 'candidateService', 'workItem', 'integrityDoctor', 'tableFilter', 'tableSort', 'governanceQueue', 'governanceController', 'rowInspector', 'rowInspectorController', 'contextAssembler', 'updateService', 'tableViewport', 'tableSession', 'tableGrouping', 'tableGesture', 'tableCache', 'tablePersistence', 'rowCommandMenu', 'tableInteraction', 'tableView', 'tablePresenter', 'tableReconciler', 'tableGrid', 'rowEditModal', 'tableEditor', 'tableEditController', 'rowEditController', 'updateActivity', 'tableWorkspace'];
 expected.forEach(name => assert(OvoMemoryKernel.has(name), `module not registered: ${name}`));
 ['memoryPlatformDomain', 'memoryFoundationDomain', 'memorySchemaDomain', 'memoryGovernanceDomain', 'memoryRetrievalDomain', 'memoryUpdateDomain', 'memoryTablesDomain', 'memoryArchitecture', 'memoryMaintenance']
   .forEach(name => assert(OvoMemoryKernel.has(name), `domain facade not registered: ${name}`));

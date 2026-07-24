@@ -17,7 +17,7 @@
     function snapshot() {
         const health = Kernel.health(REQUIRED);
         return Object.freeze({
-            version: '2.14-R6',
+            version: '2.14-R7',
             healthy: health.ok,
             missing: health.missing.slice(),
             domains: Object.fromEntries(Object.entries(DOMAIN_MODULES).map(([name, modules]) => [name, {
@@ -35,7 +35,7 @@
     }
 
     Kernel.register('memoryArchitecture', Object.freeze({
-        VERSION: '2.14-R6',
+        VERSION: '2.14-R7',
         domains: DOMAIN_MODULES,
         required: REQUIRED,
         snapshot,

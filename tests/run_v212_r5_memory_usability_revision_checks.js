@@ -5,7 +5,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 
-assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
+assert(['2.12-R5', '2.12-R5.1', '2.12-R5.2', '2.12-R5.3', '2.13-R0', '2.13-R1', '2.13-R4', '2.13-R5', '2.13-R5.1', '2.13-R5.2', '2.13-R5.3', '2.13-R5.4', '2.14-R0', '2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
 const html = read('index.html');
 const fieldWidth = read('js/features/memory/field_width.js');
 const schema = read('js/features/memory/schema_editor.js');
@@ -18,6 +18,7 @@ const workspace = read('js/features/memory/table_workspace.js');
 const feedbackSource = read('js/modules/memory_table_feedback.js');
 const retrievalAudit = read('js/features/memory/retrieval_audit.js');
 const governanceQueue = read('js/features/memory/governance_queue.js');
+const workItem = read('js/features/memory/work_item.js');
 const chatOps = read('js/modules/chat_ops.js');
 const chatJs = read('js/chat.js');
 const controller = read('js/modules/memory_table.js');
@@ -66,7 +67,7 @@ assert(chatJs.includes("getElementById('select-to-message-btn')"));
 // All pending feedback can be cleared from both audit and governance surfaces.
 assert(feedbackSource.includes('function clearPendingTasks(chat)'));
 assert(retrievalAudit.includes('清空全部待反馈'));
-assert(governanceQueue.includes('清空待反馈'));
+assert(workItem.includes('清空待反馈'));
 assert(controller.includes("feedbackAction === 'clear-pending-tasks'"));
 
 // Latest updated tables and history are directly visible.

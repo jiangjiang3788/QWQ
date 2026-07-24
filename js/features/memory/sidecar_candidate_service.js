@@ -5,8 +5,10 @@
     const Core = Kernel?.core;
     if (!Core) throw new Error('记忆内核未加载');
     const Domain = Kernel.require('domain');
+    const FieldPolicy = Kernel.get('fieldPolicy') || Object.freeze({ assess: field => ({ allowed: field?.aiEditable !== false, route: field?.aiEditable === false ? 'blocked' : 'direct', reasons: [] }) });
+    const PolicyResolver = Kernel.get('policyResolver');
 
-    const VERSION = '2.13-R5.3';
+    const VERSION = '2.14-R8.1';
     const STATUS = Object.freeze({
         PENDING: 'pending',
         PROMOTED: 'promoted',
@@ -198,6 +200,47 @@
             : buildExperienceValues(candidate, table);
     }
 
+    function assessAutoCommit(chat, candidate) {
+        const descriptor = resolveTarget(chat, candidate);
+        if (!descriptor) return { direct: false, reason: 'target_missing', descriptor: null, decisions: [] };
+        const resolution = PolicyResolver?.resolve
+            ? PolicyResolver.resolve(chat, descriptor.template.id, descriptor.table)
+            : null;
+        const table = resolution?.materializedTable || descriptor.table;
+        if (table?.commitPolicy?.mode !== 'direct') {
+            return { direct: false, reason: 'table_not_direct', descriptor, resolution, table, decisions: [] };
+        }
+        const source = candidate?.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred';
+        const confidence = Math.max(0, Math.min(100, Number(candidate?.confidence) || 0));
+        if (source !== 'user_explicit') {
+            return { direct: false, reason: 'not_user_explicit', descriptor, resolution, table, decisions: [] };
+        }
+        const values = buildValues(candidate, table);
+        const preferTableDirect = resolution?.sourceSummary?.commit === 'role';
+        const decisions = (table.columns || []).filter(field => values[field.id] !== undefined && values[field.id] !== '').map(field => {
+            const policy = FieldPolicy.normalizeFieldPolicy?.(field, table) || {};
+            const generatedSystemField = field?.aiEditable === false && policy.subject === 'system';
+            return {
+                field,
+                value: values[field.id],
+                assessment: generatedSystemField
+                    ? { allowed: true, route: 'direct', policy, sourceEvidence: 'inferred', confidence: 100, reasons: ['系统生成字段'] }
+                    : FieldPolicy.assess(field, table, { source, confidence, preferTableDirect })
+            };
+        });
+        const blocked = decisions.filter(item => !item.assessment.allowed || item.assessment.route !== 'direct');
+        return {
+            direct: decisions.length > 0 && blocked.length === 0,
+            reason: blocked.length ? 'field_policy' : 'direct',
+            descriptor,
+            resolution,
+            table,
+            values,
+            decisions,
+            blocked
+        };
+    }
+
     function buildRowMeta(candidate) {
         const tags = candidate.tags || {};
         return {
@@ -259,15 +302,19 @@
             markResolved(candidate, STATUS.PROMOTED, descriptor, existing, options);
             return { changed: true, duplicate: true, action: 'promote', candidate, descriptor, row: existing, message: `正式档案已存在，已重新关联到 ${descriptor.table.name}` };
         }
-        const row = Domain.addRow(chat, descriptor.template.id, descriptor.table, buildValues(candidate, descriptor.table), {
-            source: 'sidecar_candidate_promote_v2_13_r4',
+        const upserted = Domain.upsertRow(chat, descriptor.template.id, descriptor.table, buildValues(candidate, descriptor.table), {
+            source: 'sidecar_candidate_upsert_v2_14_r81',
             userConfirmed: true,
             sourceMessageId: candidate.sourceRoundId || '',
+            sourceRoundId: candidate.sourceRoundId || '',
+            sourceCandidateId: candidate.id,
+            mergeStrategy: 'merge_non_empty',
             meta: buildRowMeta(candidate)
         });
+        const row = upserted.row;
         if (!row) throw new Error('正式档案行创建失败');
         markResolved(candidate, STATUS.PROMOTED, descriptor, row, options);
-        return { changed: true, duplicate: false, action: 'promote', candidate, descriptor, row, message: `已保存到 ${descriptor.table.name}` };
+        return { changed: true, duplicate: !upserted.created, matchedBy: upserted.matchedBy || '', action: 'promote', candidate, descriptor, row, message: upserted.created ? `已保存到 ${descriptor.table.name}` : `已匹配并更新 ${descriptor.table.name} 中的原记录` };
     }
 
     function mergeValue(field, current, incoming) {
@@ -393,6 +440,8 @@
         normalizeCandidate,
         migrateLegacyCandidates,
         resolveTarget,
+        buildValues,
+        assessAutoCommit,
         listMergeTargets,
         statusLabel,
         execute,

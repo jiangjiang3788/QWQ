@@ -116,7 +116,17 @@
     function renderEffectiveSummary(resolution) {
         if (!resolution) return '<span class="memory-schema-effective-empty">保存后计算</span>';
         const labels = resolution.labels || {};
-        return `<div class="memory-schema-effective-summary"><strong>${escapeHtml(labels.capture || '')}</strong><span>${escapeHtml(labels.commit || '')}</span><span>${escapeHtml(labels.schedule || '')}</span><span>${escapeHtml(labels.injection || '')}</span></div>`;
+        const counts = FieldPolicy?.summarizeRoutes?.(resolution.materializedTable) || {};
+        const parts = [
+            counts.direct ? `${counts.direct}直接` : '',
+            counts.review ? `${counts.review}审核` : '',
+            counts.candidate ? `${counts.candidate}候选` : '',
+            counts.runtime_only ? `${counts.runtime_only}运行态` : '',
+            counts.manual_only ? `${counts.manual_only}人工` : '',
+            counts.blocked ? `${counts.blocked}禁写` : ''
+        ].filter(Boolean);
+        const fieldSummary = parts.length ? `字段：${parts.join(' · ')}` : '字段：无可写字段';
+        return `<div class="memory-schema-effective-summary"><strong>${escapeHtml(labels.capture || '')}</strong><span>${escapeHtml(labels.commit || '')}</span><span>${escapeHtml(labels.schedule || '')}</span><span>${escapeHtml(labels.injection || '')}</span><small class="memory-schema-field-route-summary">${escapeHtml(fieldSummary)}</small></div>`;
     }
 
     function renderSourceSummary(resolution) {

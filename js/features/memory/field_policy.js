@@ -6,6 +6,7 @@
     const Core = Kernel.core;
     const TablePolicy = Kernel.require('policy');
 
+    const VERSION = '2.14-R8.1';
     const SUBJECTS = Object.freeze(['user', 'assistant', 'relationship', 'system']);
     const EVIDENCE_MODES = Object.freeze(['explicit', 'inferred', 'manual']);
     const COMMIT_MODES = Object.freeze(['inherit', 'direct', 'review', 'candidate', 'runtime_only', 'manual_only']);
@@ -117,6 +118,21 @@
             reasons.push(`置信度低于 ${policy.minConfidence}`);
             if (route === 'direct') route = 'review';
         }
+        const tableDirect = tableCommitMode(table) === 'direct';
+        if (context.inferredRuntimeOnly === true
+            && sourceEvidence === 'inferred'
+            && !['blocked', 'manual_only', 'runtime_only'].includes(route)) {
+            route = 'runtime_only';
+            reasons.push(context.runtimeReason || '模型推断仅保留在会话运行态');
+        }
+        if (context.preferTableDirect === true
+            && tableDirect
+            && sourceEvidence === 'explicit'
+            && confidence >= policy.minConfidence
+            && policy.commitMode === 'candidate') {
+            route = 'direct';
+            reasons.length = 0;
+        }
         if (route === 'promotion') route = 'review';
         return { allowed: route !== 'blocked', route, policy, sourceEvidence, confidence, reasons };
     }
@@ -148,10 +164,25 @@
         return chat?.memoryTables?.runtimeState?.fieldValues?.[templateId]?.[tableId]?.[fieldId] || null;
     }
 
-    function getDisplayValue(chat, templateId, tableId, table, field, formalValue) {
-        return effectiveCommitMode(field, table) === 'runtime_only'
-            ? (getRuntimeEntry(chat, templateId, tableId, field?.id)?.value ?? formalValue)
-            : formalValue;
+    function getDisplayValue(chat, templateId, tableId, table, field, formalValue, options = {}) {
+        if (effectiveCommitMode(field, table) !== 'runtime_only') return formalValue;
+        const runtimeEntry = getRuntimeEntry(chat, templateId, tableId, field?.id);
+        if (runtimeEntry) return runtimeEntry.value;
+        return options.allowLegacyFormalFallback === true ? formalValue : undefined;
+    }
+
+    function summarizeRoutes(table) {
+        const counts = { direct: 0, review: 0, candidate: 0, runtime_only: 0, manual_only: 0, blocked: 0 };
+        (table?.columns || []).forEach(field => {
+            if (field?.aiEditable === false) {
+                counts.blocked += 1;
+                return;
+            }
+            const mode = effectiveCommitMode(field, table);
+            if (Object.prototype.hasOwnProperty.call(counts, mode)) counts[mode] += 1;
+            else counts.review += 1;
+        });
+        return counts;
     }
 
     function describe(field, table) {
@@ -164,7 +195,7 @@
     }
 
     Kernel.register('fieldPolicy', Object.freeze({
-        VERSION: '2.14-R3',
+        VERSION,
         SUBJECTS,
         EVIDENCE_MODES,
         COMMIT_MODES,
@@ -176,6 +207,7 @@
         setRuntimeValue,
         getRuntimeEntry,
         getDisplayValue,
+        summarizeRoutes,
         describe
     }), { legacyGlobal: 'MemoryFieldPolicy' });
 })(window);

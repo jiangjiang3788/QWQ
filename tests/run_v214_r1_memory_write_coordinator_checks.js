@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(read('VERSION.txt').trim()));
+assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(read('VERSION.txt').trim()));
 
 function createSandbox() {
   const sandbox = {
@@ -28,7 +28,7 @@ function createSandbox() {
   const sandbox = createSandbox();
   const Kernel = sandbox.OvoMemoryKernel;
   const Coordinator = Kernel.require('writeCoordinator');
-  assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(Coordinator.VERSION));
+  assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(Coordinator.VERSION));
 
   const chat = { id: 'chat-serial', memoryTables: { data: { value: 0 }, history: [] } };
   const order = [];
@@ -94,7 +94,7 @@ function createSandbox() {
   vm.runInContext(read('js/features/memory/table_editor.js'), editorSandbox, { filename: 'table_editor.js' });
   const Domain = EK.require('domain');
   const Editor = EK.require('tableEditor');
-  assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6'].includes(Editor.VERSION));
+  assert(['2.14-R1', '2.14-R2', '2.14-R3', '2.14-R4', '2.14-R5', '2.14-R6', '2.14-R7', '2.14-R8', '2.14-R8.1'].includes(Editor.VERSION));
   const table = { id: 'table', name: '近期经历', mode: 'rows', columns: [{ id: 'content', key: '内容', type: 'longtext', default: '' }] };
   const template = { id: 'tpl', name: '记忆', tables: [table] };
   editorSandbox.db.memoryTableTemplates = [template];

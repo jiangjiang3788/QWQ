@@ -15,6 +15,11 @@
         'confirm-row', 'snooze-row', 'archive-row', 'bulk-confirm', 'bulk-snooze', 'bulk-archive', 'clear-selection', 'clear-feedback-tasks'
     ]);
 
+    function itemPayload(item) { return item?.payload && typeof item.payload === 'object' ? item.payload : item || {}; }
+    function itemRow(item) { return itemPayload(item).row || null; }
+    function itemTable(item) { return itemPayload(item).table || null; }
+    function itemTemplate(item) { return itemPayload(item).template || null; }
+
     function ensureEvidence(row) {
         row.meta ||= {};
         row.meta.evidence ||= {};
@@ -24,31 +29,34 @@
     }
 
     function confirmItem(chat, item) {
-        if (!item?.row || !Lifecycle) return false;
-        const meta = Lifecycle.ensureRowMeta(item.row, item.table, '');
-        ensureEvidence(item.row);
+        const row = itemRow(item), table = itemTable(item);
+        if (!row || !Lifecycle) return false;
+        const meta = Lifecycle.ensureRowMeta(row, table, '');
+        ensureEvidence(row);
         if (meta.lifecycle.status !== 'conflicting' && !['archived', 'superseded'].includes(meta.lifecycle.status)) {
-            Lifecycle.setStatus(item.row, 'active', '用户在统一待处理队列中确认有效');
-            item.row.meta.lifecycle.reviewAt = 0;
-            item.row.meta.lifecycle.expiresAt = 0;
+            Lifecycle.setStatus(row, 'active', '用户在统一待处理队列中确认有效');
+            row.meta.lifecycle.reviewAt = 0;
+            row.meta.lifecycle.expiresAt = 0;
         }
         Policy?.clearRetrievalCache?.(chat);
         return true;
     }
 
     function snoozeItem(chat, item, days = 30) {
-        if (!item?.row || !Lifecycle) return false;
-        const meta = Lifecycle.ensureRowMeta(item.row, item.table, '');
+        const row = itemRow(item), table = itemTable(item);
+        if (!row || !Lifecycle) return false;
+        const meta = Lifecycle.ensureRowMeta(row, table, '');
         meta.lifecycle.reviewAt = Date.now() + Math.max(1, days) * 86400000;
         meta.lifecycle.statusReason = `用户延后 ${days} 天复核`;
-        item.row.meta.updatedAt = Date.now();
+        row.meta.updatedAt = Date.now();
         Policy?.clearRetrievalCache?.(chat);
         return true;
     }
 
     function archiveItem(chat, item) {
-        if (!item?.row || !Lifecycle) return false;
-        Lifecycle.setStatus(item.row, 'archived', '用户在统一待处理队列中归档');
+        const row = itemRow(item);
+        if (!row || !Lifecycle) return false;
+        Lifecycle.setStatus(row, 'archived', '用户在统一待处理队列中归档');
         Policy?.clearRetrievalCache?.(chat);
         return true;
     }
@@ -90,14 +98,15 @@
         }
         const item = lookup(chat, templates, element.dataset.itemId || '');
         if (action === 'open-row') {
-            if (item) context.openRow?.(item);
+            if (item) context.openRow?.({ ...item, ...itemPayload(item) });
             return true;
         }
         if (action === 'approve-candidate') {
             if (!item) return true;
             try {
-                const result = await CandidateService.approveAtomic(chat, item, item.row, {
-                    source: 'governance_queue_v2_13_r5',
+                const descriptor = { template: itemTemplate(item), table: itemTable(item) };
+                const result = await CandidateService.approveAtomic(chat, descriptor, itemRow(item), {
+                    source: 'governance_queue_v2_14_r8',
                     persist: currentChat => context.save?.(currentChat.id)
                 });
                 context.render?.();
@@ -113,7 +122,7 @@
         }
         if (action === 'reject-candidate') {
             if (!item) return true;
-            const result = CandidateService.setStatus(chat, item, item.row, '已拒绝', { source: 'governance_queue_v2_11_r4' });
+            const result = CandidateService.setStatus(chat, { template: itemTemplate(item), table: itemTable(item) }, itemRow(item), '已拒绝', { source: 'governance_queue_v2_14_r8' });
             await persist(context, result.changed ? '候选已拒绝' : (result.reason || '候选未改变'));
             return true;
         }
@@ -143,6 +152,6 @@
     }
 
     Kernel.register('governanceController', Object.freeze({
-        VERSION: '2.13-R5', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
+        VERSION: '2.14-R8', handles: action => ACTIONS.has(action), handle, confirmItem, snoozeItem, archiveItem
     }));
 })(window);

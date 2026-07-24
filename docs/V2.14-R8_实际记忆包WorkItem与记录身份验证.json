@@ -1,0 +1,79 @@
+{
+  "version": "2.14-R8",
+  "sourceFile": "阿沉_memory_package_逻辑收敛修正版.json",
+  "templates": 1,
+  "tables": 8,
+  "fields": 94,
+  "formalRows": 234,
+  "identityRows": 234,
+  "duplicateRecordKeys": 0,
+  "upsert": {
+    "tableName": "待办、承诺与未完成事项",
+    "rowsBefore": 33,
+    "rowsAfter": 33,
+    "matchedBy": "strong_key",
+    "created": false,
+    "changedFields": 1
+  },
+  "workItems": {
+    "total": 4,
+    "byType": {
+      "short_candidate": 4
+    },
+    "legacyCandidatesExposed": 4
+  },
+  "sourceSha256Before": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceSha256After": "63125017b3bb3e502535e7445ed3af91fa86dc1342989707eed86b12014a9c65",
+  "sourceUnchanged": true,
+  "tablesDetail": [
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_4ueq9q",
+      "tableName": "待办、承诺与未完成事项",
+      "rows": 33,
+      "identities": 33,
+      "duplicateRecordKeys": 0
+    },
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_73dkfv",
+      "tableName": "近期经历、想法与重要事件",
+      "rows": 7,
+      "identities": 7,
+      "duplicateRecordKeys": 0
+    },
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_8eq0q5",
+      "tableName": "日常观察（睡眠/饮水/身体）",
+      "rows": 3,
+      "identities": 3,
+      "duplicateRecordKeys": 0
+    },
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_4i21nd",
+      "tableName": "中期总结与成长经验",
+      "rows": 12,
+      "identities": 12,
+      "duplicateRecordKeys": 0
+    },
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_km3y66",
+      "tableName": "长期候选审核队列",
+      "rows": 0,
+      "identities": 0,
+      "duplicateRecordKeys": 0
+    },
+    {
+      "templateId": "memory_tpl_1784414846228_08yhkm",
+      "tableId": "memory_table_1784414846228_3wlskf",
+      "tableName": "稳定长期特征库",
+      "rows": 179,
+      "identities": 179,
+      "duplicateRecordKeys": 0
+    }
+  ],
+  "result": "PASS"
+}
