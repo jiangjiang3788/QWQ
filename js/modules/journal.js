@@ -843,6 +843,10 @@ function renderJournalList(searchQuery = '') {
 }
 
 async function generateJournal(start, end, includeFavorited = false, silent = false, nodeInfo = null, options = {}) {
+    if (nodeInfo && nodeInfo.isNodeSummary) {
+        if (!silent && typeof showToast === 'function') showToast('节点摘要功能已停用');
+        return null;
+    }
     if (!silent) {
         showToast('正在生成日记，请稍候...');
     }

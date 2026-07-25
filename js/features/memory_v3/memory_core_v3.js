@@ -2,7 +2,7 @@
     'use strict';
 
     const M = global.MemoryV5 = global.MemoryV5 || {};
-    const VERSION = '5.1.0';
+    const VERSION = '5.4.2';
     const STORE_VERSION = 3;
 
     const GROUPS = new Set(['core', 'current', 'short', 'medium', 'long']);
@@ -109,11 +109,12 @@
             roundNoticeEnabled: true,
             contextMaxRecords: 32,
             relevantMaxPerTable: 5,
+            tablePageSize: 100,
             tagBehaviors: {
                 alwaysInject: ['始终注入'],
                 neverInject: ['不进入上下文']
             },
-            stage: 'V5.1：完整轮次与短期自动写入'
+            stage: 'V5.4.2：其他AI任务统一请求与来源登记'
         };
     }
 
@@ -184,7 +185,7 @@
             extractPrompt: '同一分类和标题更新原记录；只有真实变化才更新，未变化时不改时间。',
             categoryHints: ['用户状态', '角色状态', '关系状态', '当前需求', '当前风险', '当前策略'],
             tagHints: ['当前', '短期有效', '需关注'],
-            behavior: { writePolicy: 'auto', contextPolicy: 'always', allowAiWrite: true, retentionDays: 7, chatStatus: true }
+            behavior: { writePolicy: 'auto', contextPolicy: 'always', allowAiWrite: true, retentionDays: 0, chatStatus: true }
         });
         current.behavior.identityFieldIds = [fieldId(current, 'category'), fieldId(current, 'title')];
         current.behavior.contextFieldIds = [fieldId(current, 'title'), fieldId(current, 'content'), fieldId(current, 'tags')];
@@ -368,31 +369,85 @@
         return record.values?.[field.id];
     }
 
-    function setFieldValue(record, field, value) {
+    function normalizeFieldInput(field, value) {
+        if (!field) return { ok: false, reason: '字段不存在' };
         if (field.scope === 'common') {
-            if (field.commonKey === 'tags') record.tags = unique(value);
-            else if (field.commonKey === 'title') record.title = clampTitle(value);
-            else if (field.commonKey === 'source') record.source = SOURCES.has(text(value)) ? text(value) : '用户明确';
-            else record[field.commonKey] = text(value);
-            return;
+            if (field.commonKey === 'tags') return { ok: true, value: unique(value) };
+            if (field.commonKey === 'title') return { ok: true, value: clampTitle(value) };
+            if (field.commonKey === 'source') {
+                const normalized = text(value);
+                return SOURCES.has(normalized)
+                    ? { ok: true, value: normalized }
+                    : { ok: false, reason: `来源必须是：${Array.from(SOURCES).join('、')}` };
+            }
+            return { ok: true, value: text(value) };
         }
-        record.values ||= {};
         if (field.type === 'number') {
             const number = Number(value);
-            if (Number.isFinite(number)) record.values[field.id] = number;
-            else delete record.values[field.id];
-            return;
+            return Number.isFinite(number)
+                ? { ok: true, value: number }
+                : { ok: false, reason: '必须是有效数字' };
         }
         if (field.type === 'boolean') {
-            record.values[field.id] = value === true || value === 'true' || value === '是' || value === 1;
-            return;
+            const accepted = [true, false, 'true', 'false', '是', '否', 1, 0];
+            if (!accepted.includes(value)) return { ok: false, reason: '必须是布尔值' };
+            return { ok: true, value: value === true || value === 'true' || value === '是' || value === 1 };
         }
-        if (field.type === 'multiselect') {
-            record.values[field.id] = unique(value);
-            return;
+        if (field.type === 'multiselect') return { ok: true, value: unique(value) };
+        if (field.type === 'select') {
+            const normalized = text(value);
+            if (field.options.length && normalized && !field.options.includes(normalized)) {
+                return { ok: false, reason: `必须从选项中选择：${field.options.join('、')}` };
+            }
+            return { ok: true, value: normalized };
         }
-        if (field.type === 'select' && field.options.length && text(value) && !field.options.includes(text(value))) return;
-        record.values[field.id] = clone(value);
+        if (field.type === 'date') {
+            const normalized = text(value);
+            if (normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return { ok: false, reason: '日期格式必须为 YYYY-MM-DD' };
+            return { ok: true, value: normalized };
+        }
+        if (field.type === 'datetime') {
+            const normalized = text(value);
+            if (normalized && !/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(normalized)) {
+                return { ok: false, reason: '时间格式必须为 YYYY-MM-DD HH:mm:ss' };
+            }
+            return { ok: true, value: normalized };
+        }
+        return { ok: true, value: text(value) };
+    }
+
+    function comparisonValue(table, field, value) {
+        const normalized = normalizeFieldInput(field, value);
+        if (!normalized.ok) return { __invalid: normalized.reason };
+        let result = normalized.value;
+        if (field.type === 'multiselect' || (field.scope === 'common' && field.commonKey === 'tags')) {
+            result = unique(result).slice().sort((a, b) => a.localeCompare(b, 'zh-CN'));
+        }
+        if (table?.id === 'v5_daily_observation' && field.scope === 'common' && field.commonKey === 'time') {
+            const match = text(result).match(/^\d{4}-\d{2}-\d{2}/);
+            result = match ? match[0] : text(result);
+        }
+        return result;
+    }
+
+    function fieldValuesEqual(table, field, left, right) {
+        return JSON.stringify(comparisonValue(table, field, left)) === JSON.stringify(comparisonValue(table, field, right));
+    }
+
+    function setFieldValue(record, field, value, options = {}) {
+        const normalized = normalizeFieldInput(field, value);
+        if (!normalized.ok) return { status: 'rejected', reason: normalized.reason };
+        const previous = getFieldValue(record, field);
+        if (fieldValuesEqual(options.table || null, field, previous, normalized.value)) {
+            return { status: 'unchanged', value: clone(normalized.value) };
+        }
+        if (field.scope === 'common') {
+            record[field.commonKey] = clone(normalized.value);
+        } else {
+            record.values ||= {};
+            record.values[field.id] = clone(normalized.value);
+        }
+        return { status: 'changed', value: clone(normalized.value) };
     }
 
     function normalizeRecord(record, table) {
@@ -411,11 +466,14 @@
             createdAt,
             updatedAt,
             roundId: record?.roundId || null,
-            changedFieldIds: unique(record?.changedFieldIds || [])
+            changedFieldIds: unique(record?.changedFieldIds || []),
+            compressedAt: text(record?.compressedAt),
+            compressedBy: text(record?.compressedBy),
+            compressionBatchId: text(record?.compressionBatchId)
         };
         table.fields.filter(field => field.scope === 'custom').forEach(field => {
-            if (record?.values && Object.prototype.hasOwnProperty.call(record.values, field.id)) setFieldValue(out, field, record.values[field.id]);
-            else if (record && Object.prototype.hasOwnProperty.call(record, field.name)) setFieldValue(out, field, record[field.name]);
+            if (record?.values && Object.prototype.hasOwnProperty.call(record.values, field.id)) setFieldValue(out, field, record.values[field.id], { table });
+            else if (record && Object.prototype.hasOwnProperty.call(record, field.name)) setFieldValue(out, field, record[field.name], { table });
         });
         return out;
     }
@@ -425,8 +483,24 @@
         const previousStage = text(store?.settings?.stage);
         settings.tagBehaviors = Object.assign(defaultSettings().tagBehaviors, clone(store?.settings?.tagBehaviors || {}));
         if (!previousStage || previousStage.startsWith('V5.0')) settings.roundNoticeEnabled = true;
+        settings.tablePageSize = Math.max(20, Math.min(500, parseInt(settings.tablePageSize, 10) || 100));
         settings.stage = defaultSettings().stage;
         const tables = (Array.isArray(store?.tables) ? store.tables : []).map(normalizeTable);
+        const protectedGroups = new Set(['core', 'medium', 'long']);
+        tables.forEach(table => {
+            if (protectedGroups.has(table.group)) table.behavior.allowAiWrite = false;
+            if (table.id === 'v5_current_state') {
+                table.behavior.retentionDays = 0;
+                table.behavior.chatStatus = true;
+            }
+            if (table.id === 'v5_daily_observation') {
+                table.behavior.identityFieldIds = unique([
+                    fieldId(table, 'time'),
+                    fieldId(table, 'category'),
+                    fieldId(table, 'title')
+                ]).filter(Boolean);
+            }
+        });
         const records = {};
         tables.forEach(table => {
             records[table.id] = (Array.isArray(store?.records?.[table.id]) ? store.records[table.id] : []).map(record => normalizeRecord(record, table));
@@ -490,7 +564,7 @@
         if (!entries.length) return false;
         return entries.every(([fieldId, value]) => {
             const field = table.fields.find(item => item.id === fieldId);
-            return field && JSON.stringify(getFieldValue(record, field)) === JSON.stringify(value);
+            return field && fieldValuesEqual(table, field, getFieldValue(record, field), value);
         });
     }
 
@@ -500,7 +574,7 @@
         return ids.every(fieldId => {
             const field = table.fields.find(item => item.id === fieldId);
             return field && Object.prototype.hasOwnProperty.call(values, fieldId)
-                && JSON.stringify(getFieldValue(record, field)) === JSON.stringify(values[fieldId]);
+                && fieldValuesEqual(table, field, getFieldValue(record, field), values[fieldId]);
         });
     }
 
@@ -571,8 +645,11 @@
             if (existingIndex >= 0 && conflictMode === 'replace') {
                 const oldId = store.tables[existingIndex].id;
                 table.id = oldId;
+                const previousRows = Array.isArray(store.records[oldId]) ? store.records[oldId] : [];
                 store.tables[existingIndex] = table;
-                store.records[oldId] = includeRecords ? (plan.records[sourceTable.id] || []).map(record => normalizeRecord(record, table)) : [];
+                store.records[oldId] = includeRecords
+                    ? (plan.records[sourceTable.id] || []).map(record => normalizeRecord(record, table))
+                    : previousRows.map(record => normalizeRecord(record, table));
                 result.replaced += 1;
                 result.records += store.records[oldId].length;
                 return;
@@ -620,6 +697,8 @@
         visibleFields,
         getFieldValue,
         setFieldValue,
+        normalizeFieldInput,
+        fieldValuesEqual,
         resolveInputValues,
         recordMatches,
         identityMatch,

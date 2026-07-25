@@ -1091,3 +1091,86 @@ function renderCategorizedWorldBookList(container, books, selectedIds, idPrefix)
         });
     });
 }
+
+
+// V5.4.1：世界书命中、预算和诊断归入世界书领域。
+(function (global) {
+    'use strict';
+    function provideWorldBookContext(character) {
+        if (!character) return { before: '', middle: '', after: '' };
+        const policy = Object.assign({ worldBookEnabled: true, worldBookBudget: 2400, worldBookPriority: 20 },
+            (typeof db !== 'undefined' && db.magicRoom && db.magicRoom.contextPolicy) || {});
+        const linkedChar = (character.source === 'forum' && character.linkedCharId && typeof db !== 'undefined' && db.characters)
+            ? db.characters.find(c => c.id === character.linkedCharId) : null;
+        const effectiveChar = linkedChar || character;
+        let associatedIds = effectiveChar.worldBookIds || [];
+        let isOfflineNode = false;
+        if (character.activeNodeId && character.nodes) {
+            const activeNode = character.nodes.find(n => n.id === character.activeNodeId);
+            if (activeNode) {
+                const baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode :
+                    (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
+                isOfflineNode = baseMode === 'offline';
+            }
+        }
+        if (isOfflineNode) associatedIds = (effectiveChar.offlineWorldBookIds && effectiveChar.offlineWorldBookIds.length > 0) ? effectiveChar.offlineWorldBookIds : (effectiveChar.worldBookIds || []);
+
+        const allBooks = typeof db !== 'undefined' && Array.isArray(db.worldBooks) ? db.worldBooks : [];
+        const globalBooks = allBooks.filter(wb => wb.isGlobal && !wb.disabled);
+        const globalIds = globalBooks.map(wb => wb.id);
+        const allBookIds = [...new Set([...associatedIds, ...globalIds])];
+        const recentMsgs = (character.history || []).filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'char').slice(-15);
+        const recentText = recentMsgs.map(m => m.parts && m.parts.length ? m.parts.map(p => p.text || '').join(' ') : (m.content || '')).join('\n');
+
+        const items = allBookIds.map(id => allBooks.find(wb => wb.id === id)).map(wb => {
+            if (!wb) return { id:'', name:'缺失条目', eligible:false, included:false, reason:'关联 ID 对应的世界书不存在', position:'unknown', weight:100, chars:0, injectedChars:0, matchedKeywords:[] };
+            const keywords = Array.isArray(wb.keywords) ? wb.keywords.filter(Boolean) : [];
+            const matchedKeywords = keywords.filter(kw => recentText.includes(kw));
+            let eligible = true;
+            let reason = '常驻条目';
+            if (!policy.worldBookEnabled) { eligible = false; reason = 'Proment 已关闭世界书注入'; }
+            else if (wb.disabled) { eligible = false; reason = '条目已停用'; }
+            else if (wb.alwaysOn === false) {
+                if (!keywords.length) { eligible = false; reason = '非常驻且未设置关键词'; }
+                else if (!matchedKeywords.length) { eligible = false; reason = '关键词未命中'; }
+                else reason = `关键词命中：${matchedKeywords.join('、')}`;
+            }
+            return { id:wb.id, name:wb.name || wb.title || '未命名世界书', eligible, included:false, reason, isGlobal:!!wb.isGlobal,
+                position:wb.position || 'after', weight:wb.weight !== undefined ? wb.weight : 100, chars:String(wb.content || '').length,
+                injectedChars:0, clipped:false, keywords, matchedKeywords, content:String(wb.content || '') };
+        });
+
+        const order = { before:0, middle:1, after:2 };
+        const eligible = items.filter(i => i.eligible).sort((a,b) => (order[a.position] ?? 9) - (order[b.position] ?? 9) || a.weight - b.weight);
+        let remaining = Math.max(0, Number(policy.worldBookBudget) || 0);
+        const buckets = { before:[], middle:[], after:[] };
+        eligible.forEach(item => {
+            if (remaining <= 0) { item.reason = '命中但超出世界书预算'; return; }
+            const slice = item.content.slice(0, remaining);
+            item.injectedChars = slice.length;
+            item.included = slice.length > 0;
+            item.clipped = slice.length < item.content.length;
+            if (item.clipped) item.reason += `；按预算裁剪 ${item.content.length - slice.length} 字符`;
+            if (item.included) (buckets[item.position] || buckets.after).push(slice);
+            remaining -= slice.length;
+        });
+        const result = { before:buckets.before.join('\n'), middle:buckets.middle.join('\n'), after:buckets.after.join('\n') };
+        const diagnostic = {
+            capturedAt:new Date().toISOString(), characterId:character.id || '', characterName:character.remarkName || character.name || '未命名角色',
+            mode:isOfflineNode ? 'offline':'online', recentMessageCount:recentMsgs.length, recentTextChars:recentText.length,
+            linkedCount:associatedIds.length, globalCount:globalIds.length, candidateCount:items.length,
+            eligibleCount:items.filter(i=>i.eligible).length, includedCount:items.filter(i=>i.included).length,
+            excludedCount:items.filter(i=>!i.included).length, budget:Number(policy.worldBookBudget)||0, remainingBudget:remaining,
+            priority:Number(policy.worldBookPriority)||20,
+            outputChars:String(result.before).length + String(result.middle).length + String(result.after).length,
+            sections:{ before:String(result.before).length, middle:String(result.middle).length, after:String(result.after).length }, items
+        };
+        try { window.__ovoLastWorldBookDiagnostic = diagnostic; sessionStorage.setItem('ovo_last_worldbook_diagnostic', JSON.stringify(diagnostic)); } catch (_) {}
+        return result;
+    }
+
+    global.WorldBookContextProvider = Object.freeze({
+        VERSION: 'worldbook-context.v1',
+        provide: provideWorldBookContext
+    });
+})(window);

@@ -857,13 +857,16 @@ function getMixedContent(responseData) {
     return results;
 }
 
-// 过滤聊天记录用于 AI 上下文 (包含状态栏剔除和双语格式化)
+// 过滤聊天记录用于 AI 上下文（状态栏、思考过程及已停用协议清理）
 function filterHistoryForAI(chat, historySlice, ignoreContextDisabled = false) {
     // 1. 基础过滤：深度克隆并过滤掉被屏蔽上下文的消息
     let filteredHistory = JSON.parse(JSON.stringify(historySlice || chat.history));
     if (!ignoreContextDisabled) {
         filteredHistory = filteredHistory.filter(m => !m.isContextDisabled);
     }
+    // V5.4：节点摘要已停用，旧摘要只保留在本地数据中，不再进入 AI 上下文。
+    filteredHistory = filteredHistory.filter(m => !m.isNodeSummaryMsg);
+    filteredHistory.forEach(m => { if (m && typeof m === 'object') delete m.nodeSummary; });
 
     // 头像操作消息：转换为 system 格式供 AI 理解
     filteredHistory.forEach(msg => {
@@ -890,24 +893,9 @@ function filterHistoryForAI(chat, historySlice, ignoreContextDisabled = false) {
         }
     });
 
-    // 2. 双语模式格式标准化
-    if (chat.bilingualModeEnabled) {
-        filteredHistory.forEach(msg => {
-            if (msg.role === 'assistant') {
-                if (msg.content) {
-                    msg.content = msg.content.replace(/[\s\n]*[\(（]([^\)）]+)[\)）]([\s\n]*\])$/, '「$1」$2');
-                    msg.content = msg.content.replace(/[\s\n]*[\(（]([^\)）]+)[\)）]$/, '「$1」');
-                }
-                if (msg.parts && Array.isArray(msg.parts)) {
-                    msg.parts.forEach(p => {
-                        if (p.type === 'text' && p.text) {
-                            p.text = p.text.replace(/[\s\n]*[\(（]([^\)）]+)[\)）]([\s\n]*\])$/, '「$1」$2');
-                            p.text = p.text.replace(/[\s\n]*[\(（]([^\)）]+)[\)）]$/, '「$1」');
-                        }
-                    });
-                }
-            }
-        });
+    // 2. 已停用协议统一清理
+    if (window.OVORetiredFeaturePolicy) {
+        filteredHistory = window.OVORetiredFeaturePolicy.sanitizeHistory(filteredHistory);
     }
 
     // 3. 状态栏移除逻辑
@@ -1151,34 +1139,22 @@ async function fetchAiResponse(settings, requestBody, headers, endpoint, forceSt
     }
 
     // 2. 发送请求
-    const response = window.OVOAIRequestRuntime
-        ? await window.OVOAIRequestRuntime.request({
-            task: settings.runtimeTask || 'generic-ai',
-            source: settings.runtimeSource || 'fetchAiResponse',
-            provider,
-            model: settings.model || requestBody.model || '',
-            endpoint,
-            headers,
-            body: requestBody,
-            signal: settings.runtimeSignal || null,
-            operationId: settings.runtimeOperationId || null,
-            promptSources: settings.runtimePromptSources || [],
-            timeoutMs: settings.runtimeTimeoutMs,
-            dedupeKey: settings.runtimeDedupeKey || '',
-            dedupeWindowMs: settings.runtimeDedupeWindowMs
-        })
-        : await fetch(endpoint, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(requestBody)
-        });
-
-    if (!window.OVOAIRequestRuntime && !response.ok) {
-        const errorText = await response.text();
-        const error = new Error(`API Error: ${response.status} ${errorText}`);
-        error.response = response;
-        throw error;
-    }
+    if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+    const response = await window.OVOAIRequestGateway.send({
+        task: settings.runtimeTask || 'generic-ai',
+        source: settings.runtimeSource || 'fetchAiResponse',
+        provider,
+        model: settings.model || requestBody.model || '',
+        endpoint,
+        headers,
+        body: requestBody,
+        signal: settings.runtimeSignal || null,
+        operationId: settings.runtimeOperationId || null,
+        promptSources: settings.runtimePromptSources || [],
+        timeoutMs: settings.runtimeTimeoutMs,
+        dedupeKey: settings.runtimeDedupeKey || '',
+        dedupeWindowMs: settings.runtimeDedupeWindowMs
+    });
 
     // 3. 处理响应
     // 优先检查响应头是否指示流式，或者我们是否显式请求了流式
@@ -1663,14 +1639,13 @@ async function generateGptImage(prompt, overrideSettings = {}, signal = null) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${key.trim()}`
     };
-    const response = window.OVOAIRequestRuntime
-        ? await window.OVOAIRequestRuntime.request({
-            task: 'gpt-image-generation', source: 'generateGptImage', provider: 'openai-compatible',
-            model, endpoint, headers: imageHeaders, body: imageRequestBody, signal, timeoutMs: 180000,
-            operationType: 'image.generate.gpt', operationStage: '正在生成图片',
-            promptSources: [{ type: 'user_input', title: '最终生图提示词', content: finalPrompt, reason: '系统提示、角色画师提示和本次输入合并后的最终提示词' }]
-        })
-        : await fetch(endpoint, { method: 'POST', headers: imageHeaders, body: JSON.stringify(imageRequestBody), signal });
+    if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+    const response = await window.OVOAIRequestGateway.send({
+        task: 'gpt-image-generation', source: 'generateGptImage', provider: 'openai-compatible',
+        model, endpoint, headers: imageHeaders, body: imageRequestBody, signal, timeoutMs: 180000,
+        operationType: 'image.generate.gpt', operationStage: '正在生成图片',
+        promptSources: [{ type: 'user_input', registryId: 'image.prompt', title: '最终生图提示词', content: finalPrompt, reason: '系统提示、角色画师提示和本次输入合并后的最终提示词' }]
+    });
 
     if (!response.ok) {
         let errDetail = '';
@@ -1856,17 +1831,16 @@ async function generateNovelAiImage(prompt, overrideSettings = {}, signal = null
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cleanToken}`
     };
-    const response = window.OVOAIRequestRuntime
-        ? await window.OVOAIRequestRuntime.request({
-            task: 'novelai-image-generation', source: 'generateNovelAIImage', provider: 'novelai',
-            model, endpoint: apiUrl, headers: novelHeaders, body: requestBody, signal, timeoutMs: 180000,
-            operationType: 'image.generate.novelai', operationStage: '正在使用 NovelAI 生成图片',
-            promptSources: [
-                { type: 'user_input', title: '最终生图提示词', content: fullPrompt, reason: '系统提示、画师串和本次输入合并后的最终提示词' },
-                { type: 'output_rules', title: '负面提示词', content: negativePrompt || '（未设置）', reason: '用于排除不希望生成的内容' }
-            ]
-        })
-        : await fetch(apiUrl, { method: 'POST', headers: novelHeaders, body: JSON.stringify(requestBody), signal });
+    if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+    const response = await window.OVOAIRequestGateway.send({
+        task: 'novelai-image-generation', source: 'generateNovelAIImage', provider: 'novelai',
+        model, endpoint: apiUrl, headers: novelHeaders, body: requestBody, signal, timeoutMs: 180000,
+        operationType: 'image.generate.novelai', operationStage: '正在使用 NovelAI 生成图片',
+        promptSources: [
+            { type: 'user_input', registryId: 'image.prompt', title: '最终生图提示词', content: fullPrompt, reason: '系统提示、画师串和本次输入合并后的最终提示词' },
+            { type: 'output_rules', title: '负面提示词', content: negativePrompt || '（未设置）', reason: '用于排除不希望生成的内容' }
+        ]
+    });
 
     console.log(`[NovelAI] 响应状态: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
 

@@ -427,6 +427,7 @@
             bodyTruncated: preview.bodyTruncated,
             bodyChars: preview.bodyChars,
             promptTrace: safeClone(promptTrace),
+            contextManifest: safeClone(request.contextManifest || null),
             createdAt: new Date().toISOString(),
             completedAt: null,
             durationMs: 0,
@@ -435,6 +436,7 @@
         };
         record.requests.push(entry);
         if (promptTrace?.summary) record.promptSummary = safeClone(promptTrace.summary);
+        if (request.contextManifest?.coverage) record.contextCoverage = safeClone(request.contextManifest.coverage);
         record.updatedAt = new Date().toISOString();
         persist();
         emit(record, 'request');

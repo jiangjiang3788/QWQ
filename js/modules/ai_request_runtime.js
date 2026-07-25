@@ -246,7 +246,7 @@
         };
         saveDiagnostic(record);
         if (runtime && operationId) {
-            runtime.attachRequest(operationId, { ...record, body, promptSources: opts.promptSources || [] });
+            runtime.attachRequest(operationId, { ...record, body, promptSources: opts.promptSources || [], contextManifest: opts.contextManifest || null });
             runtime.update(operationId, { stage: activeRequests.size >= MAX_ACTIVE ? '等待模型请求队列' : '正在请求模型' }, 'request-stage');
         }
         record.queueWaitMs = await acquireSlot(record);

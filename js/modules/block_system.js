@@ -113,18 +113,17 @@
             };
         }
         try {
-            var res = window.OVOAIRequestRuntime
-                ? await window.OVOAIRequestRuntime.request({
-                    task: 'block-system', source: 'block-system', provider: provider,
-                    model: model, endpoint: endpoint, headers: headers, body: body,
-                    operationType: 'safety.block.check', operationStage: '正在判断关系状态',
-                    operationId: runtimeMeta.operationId || null,
-                    promptSources: [
-                        { type: 'system_rules', title: '关系判断规则', content: systemPrompt, reason: '拉黑或好友申请的系统判断规则' },
-                        { type: 'user_input', title: '本次判断内容', content: userContent, reason: '触发本次关系判断的内容' }
-                    ]
-                })
-                : await fetch(endpoint, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+            if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+            var res = await window.OVOAIRequestGateway.send({
+                task: 'block-system', source: 'block-system', provider: provider,
+                model: model, endpoint: endpoint, headers: headers, body: body,
+                operationType: 'safety.block.check', operationStage: '正在判断关系状态',
+                operationId: runtimeMeta.operationId || null,
+                promptSources: [
+                    { type: 'system_rules', registryId: 'interaction.context', title: '关系判断规则', content: systemPrompt, reason: '拉黑或好友申请的系统判断规则' },
+                    { type: 'user_input', registryId: 'task.input', title: '本次判断内容', content: userContent, reason: '触发本次关系判断的内容' }
+                ]
+            });
             var text = await res.text();
             if (!res.ok) return { ok: false, error: text || res.statusText };
             var data = JSON.parse(text);

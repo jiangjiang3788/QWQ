@@ -43,19 +43,18 @@
             'Authorization': `Bearer ${key}`
         };
         const body = { model, messages, temperature: 0.3 };
-        const res = window.OVOAIRequestRuntime
-            ? await window.OVOAIRequestRuntime.request({
-                task: 'avatar-recognition', source: 'avatar-recognition',
-                provider: db.apiSettings.provider || 'openai-compatible', model,
-                endpoint, headers, body,
-                operationType: 'vision.avatar.recognize',
-                operationStage: '正在识别头像内容',
-                promptSources: [
-                    { type: 'task_instruction', title: '头像识别要求', content: promptText, reason: '用户配置的头像识别详细程度' },
-                    { type: 'user_input', title: '待识别头像', content: '[图片内容]', reason: '本次请求携带的头像图片' }
-                ]
-            })
-            : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+        if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+        const res = await window.OVOAIRequestGateway.send({
+            task: 'avatar-recognition', source: 'avatar-recognition',
+            provider: db.apiSettings.provider || 'openai-compatible', model,
+            endpoint, headers, body,
+            operationType: 'vision.avatar.recognize',
+            operationStage: '正在识别头像内容',
+            promptSources: [
+                { type: 'task_instruction', title: '头像识别要求', content: promptText, reason: '用户配置的头像识别详细程度' },
+                { type: 'user_input', registryId: 'media.image_input', title: '待识别头像', content: '[图片内容]', reason: '本次请求携带的头像图片' }
+            ]
+        });
 
         if (!res.ok) {
             const errText = await res.text();

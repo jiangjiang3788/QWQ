@@ -164,30 +164,28 @@ ${recentHistory}
                 const endpoint = `${url}/v1beta/models/${model}:generateContent?key=${getRandomValue(key)}`;
                 const body = { contents: [{ role: 'user', parts: [{ text: systemPrompt }] }] };
                 const headers = {'Content-Type': 'application/json'};
-                const response = window.OVOAIRequestRuntime
-                    ? await window.OVOAIRequestRuntime.request({
-                        task: 'battery-interaction', source: 'battery-interaction',
-                        provider, model, endpoint, headers, body,
-                        operationId: operation?.id || null,
-                        operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
-                        promptSources: [{ type: 'task_instruction', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
-                    })
-                    : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+                if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+                const response = await window.OVOAIRequestGateway.send({
+                    task: 'battery-interaction', source: 'battery-interaction',
+                    provider, model, endpoint, headers, body,
+                    operationId: operation?.id || null,
+                    operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
+                    promptSources: [{ type: 'task_instruction', registryId: 'interaction.context', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
+                });
                 const data = await response.json();
                 responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             } else {
                 const endpoint = `${url}/v1/chat/completions`;
                 const body = { model, messages: [{ role: 'user', content: systemPrompt }], temperature: 0.7 };
                 const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` };
-                const response = window.OVOAIRequestRuntime
-                    ? await window.OVOAIRequestRuntime.request({
-                        task: 'battery-interaction', source: 'battery-interaction',
-                        provider, model, endpoint, headers, body,
-                        operationId: operation?.id || null,
-                        operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
-                        promptSources: [{ type: 'task_instruction', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
-                    })
-                    : await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+                if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+                const response = await window.OVOAIRequestGateway.send({
+                    task: 'battery-interaction', source: 'battery-interaction',
+                    provider, model, endpoint, headers, body,
+                    operationId: operation?.id || null,
+                    operationType: 'interaction.battery', operationStage: '正在生成低电量互动',
+                    promptSources: [{ type: 'task_instruction', registryId: 'interaction.context', title: '低电量互动上下文', content: systemPrompt, reason: '包含角色、世界书、最近对话和当前电量' }]
+                });
                 const data = await response.json();
                 responseText = data.choices[0].message.content;
             }

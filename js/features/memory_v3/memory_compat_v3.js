@@ -9,6 +9,7 @@
         buildSystemPrompt: M.engine.buildSystemPrompt,
         extractSidecar: M.engine.extractSidecar,
         applySidecar: M.engine.applySidecar,
+        processReply: M.engine.processReply,
         completeRound: M.engine.completeRound,
         ensureState: M.engine.ensureSidecarState,
         migratePolicies: M.model.ensureStore,
@@ -33,7 +34,7 @@
         writer: Object.freeze({ apply: M.engine.applyOperations }),
         aggregation: Object.freeze({ run: M.engine.runAggregation, check: M.engine.runEligibleAggregations }),
         rounds: M.rounds,
-        health() { return { ok: true, version: M.VERSION, mode: 'memory-v5-short-term-auto-write' }; }
+        health() { return { ok: true, version: M.VERSION, mode: 'memory-v5-stability-final' }; }
     });
 
     global.MemoryTableSidecar = sidecarApi;

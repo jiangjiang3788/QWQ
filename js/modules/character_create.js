@@ -29,7 +29,6 @@ function setupAddCharModal() {
             worldBookIds: [],
             useCustomBubbleCss: false,
             customBubbleCss: '',
-            bilingualBubbleStyle: 'under',
             unreadCount: 0,
             memoryJournals: [],
             journalWorldBookIds: [],

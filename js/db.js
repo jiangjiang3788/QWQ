@@ -113,7 +113,7 @@ const DEFAULT_COT_PRESETS = [
             {
                 id: 'cot_item_5',
                 name: '有特殊格式吗？',
-                content: '### Phase3: chat role\n3. **逻辑检索 (Ref: <logic_rules>)**\n   - 当前是否为双语对话情境？若无，跳过此条\n   - 是否需要输出状态栏？若无相关要求，则跳过此条',
+                content: '### Phase3: chat role\n3. **逻辑检索 (Ref: <logic_rules>)**\n   - 是否需要输出状态栏？若无相关要求，则跳过此条',
                 enabled: true
             },
             {

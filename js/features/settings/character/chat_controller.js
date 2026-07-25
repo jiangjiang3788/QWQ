@@ -335,9 +335,6 @@
         const journalFavTopEl = document.getElementById('setting-journal-favorite-top');
         if (journalFavTopEl) journalFavTopEl.checked = e.journalFavoriteTop !== false; // 默认开启
 
-        document.getElementById('setting-bilingual-mode').checked = e.bilingualModeEnabled || false;
-        document.getElementById('setting-bilingual-style').value = e.bilingualBubbleStyle || 'under';
-
         document.getElementById('setting-avatar-mode').value = e.avatarMode || 'full';
         const avatarRadius = e.avatarRadius !== undefined ? e.avatarRadius : 50;
         document.getElementById('setting-avatar-radius').value = avatarRadius;
@@ -443,9 +440,6 @@
             const matched = presets.find(p => p.css && (p.css.trim() === cssTrim));
             e.currentBubbleCssPresetName = matched ? matched.name : '';
         }
-        e.bilingualModeEnabled = document.getElementById('setting-bilingual-mode').checked;
-        e.bilingualBubbleStyle = document.getElementById('setting-bilingual-style').value;
-
         e.avatarMode = document.getElementById('setting-avatar-mode').value;
         e.avatarRadius = parseInt(document.getElementById('setting-avatar-radius').value, 10);
 

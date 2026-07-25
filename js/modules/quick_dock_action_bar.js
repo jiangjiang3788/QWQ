@@ -6,7 +6,6 @@
     const ACTIONS = Object.freeze([
         { action: 'main', label: '操作记录', hint: '状态、历史与详情', panel: 'main' },
         { action: 'open-console', label: '日志', hint: '错误排查', panel: 'console' },
-        { action: 'open-coverage', label: '覆盖', hint: '能力核验', panel: 'coverage' },
         { action: 'git-upload', label: 'Git 上传', hint: '同步当前数据' },
         { action: 'git-restore', label: 'Git 恢复', hint: '下载并恢复' },
         { action: 'open-git-settings', label: 'Git 设置', hint: '仓库与 Token' }

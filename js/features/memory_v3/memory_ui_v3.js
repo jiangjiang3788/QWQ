@@ -8,15 +8,22 @@
     const {
         ensureStore, getCurrentChat, persist, findTable, visibleFields, getFieldValue,
         setFieldValue, normalizeTable, normalizeRecord, importPlan, mergeImport,
-        createDefaultStore, customField, migrateAllCharacters
+        customField, migrateAllCharacters
     } = M.model;
-    const { applyOperations, formatRecordText, refreshStateBar } = M.engine;
+    const { applyOperations, formatRecordText, refreshStateBar, buildSummaryDraft, runAggregation, deleteCompressed, buildLongTermDraft, saveLongTermDraft } = M.engine;
 
     const state = {
         activeTableId: '',
         search: '',
         category: '',
         tag: '',
+        page: 1,
+        scrollTop: 0,
+        searchTimer: null,
+        restoreSearchFocus: false,
+        searchSelection: 0,
+        resetScroll: false,
+        viewportBound: false,
         bound: false
     };
 
@@ -30,11 +37,45 @@
     }
 
     function writeLabel(policy) {
-        return ({ manual: '手动更新', auto: '随聊天自动新增/更新', summary: '短期压缩（V5.2启用）' })[policy] || policy;
+        return ({ manual: '手动更新', auto: '随聊天自动新增/更新', summary: '短期压缩' })[policy] || policy;
     }
 
     function contextLabel(policy) {
         return ({ always: '每轮发送', relevant: '相关时发送', never: '不发送' })[policy] || policy;
+    }
+
+    function installViewportFix() {
+        if (state.viewportBound) return;
+        state.viewportBound = true;
+        const update = () => {
+            const viewport = global.visualViewport;
+            const height = Math.max(320, Math.round(viewport?.height || global.innerHeight || document.documentElement.clientHeight || 720));
+            const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0));
+            document.documentElement.style.setProperty('--mv5-visual-height', `${height}px`);
+            document.documentElement.style.setProperty('--mv5-visual-offset-top', `${offsetTop}px`);
+        };
+        update();
+        global.visualViewport?.addEventListener?.('resize', update);
+        global.visualViewport?.addEventListener?.('scroll', update);
+        global.addEventListener?.('orientationchange', () => setTimeout(update, 80));
+    }
+
+    function pageSize(store) {
+        return Math.max(20, Math.min(500, parseInt(store?.settings?.tablePageSize, 10) || 100));
+    }
+
+    function paginate(rows, store) {
+        const size = pageSize(store);
+        const total = rows.length;
+        const pages = Math.max(1, Math.ceil(total / size));
+        state.page = Math.max(1, Math.min(pages, parseInt(state.page, 10) || 1));
+        const start = (state.page - 1) * size;
+        return { rows: rows.slice(start, start + size), total, pages, size, start };
+    }
+
+    function renderPager(page) {
+        if (page.total <= page.size) return '';
+        return `<nav class="mv5-pager" aria-label="记忆记录分页"><span>共${page.total}条 · 第${state.page}/${page.pages}页</span><div><button class="btn btn-small btn-secondary" data-mv5-page="first" ${state.page <= 1 ? 'disabled' : ''}>首页</button><button class="btn btn-small btn-secondary" data-mv5-page="prev" ${state.page <= 1 ? 'disabled' : ''}>上一页</button><button class="btn btn-small btn-secondary" data-mv5-page="next" ${state.page >= page.pages ? 'disabled' : ''}>下一页</button><button class="btn btn-small btn-secondary" data-mv5-page="last" ${state.page >= page.pages ? 'disabled' : ''}>末页</button></div></nav>`;
     }
 
     function valueText(field, value) {
@@ -109,25 +150,38 @@
             : '';
     }
 
+    function groupKvRows(rows) {
+        const buckets = new Map();
+        rows.forEach(record => {
+            const key = text(record.category) || '未分类';
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push(record);
+        });
+        return Array.from(buckets.entries()).map(([category, items]) => ({ category, items }));
+    }
+
     function renderKv(chat, table, rows) {
-        if (!rows.length) return '<div class="mv5-empty-page">暂无内容。核心档案和当前状态采用“标题在左、内容在右”的KV视图。</div>';
-        return `<div class="mv5-kv-list">${rows.map(record => `<article class="mv5-kv-record">
-<div class="mv5-kv-title">${updateDot(chat, record)}<strong>${esc(record.title || '未命名')}</strong><small>${esc(record.category || '未分类')}</small></div>
-<div class="mv5-kv-content"><div class="mv5-kv-text">${esc(record.content || '—')}</div><div class="mv5-record-meta"><span>${esc(record.tags.join('、') || '无标签')}</span><span>${esc(record.source)}</span><span>${esc(record.time)}</span></div></div>
-<div class="mv5-row-actions"><button data-mv5-edit-record="${esc(record.id)}">编辑</button><button data-mv5-delete-record="${esc(record.id)}">删除</button></div>
-</article>`).join('')}</div>`;
+        if (!rows.length) return '<div class="mv5-empty-page">暂无内容。核心档案和当前状态采用按分类展开的列表视图。</div>';
+        return `<div class="mv5-kv-groups">${groupKvRows(rows).map(group => `<section class="mv5-kv-group"><div class="mv5-kv-group-head">${esc(group.category)}</div><div class="mv5-kv-list">${group.items.map(record => `<article class="mv5-kv-record">
+<div class="mv5-kv-title">${updateDot(chat, record)}<strong>${esc(record.title || '未命名')}</strong></div>
+<div class="mv5-kv-body"><div class="mv5-kv-content"><div class="mv5-kv-text">${esc(record.content || '—')}</div></div><div class="mv5-row-actions"><button data-mv5-edit-record="${esc(record.id)}">编辑</button><button data-mv5-delete-record="${esc(record.id)}">删除</button></div></div>
+</article>`).join('')}</div></section>`).join('')}</div>`;
     }
 
     function renderRows(chat, table, rows) {
         const fields = visibleFields(table);
         const width = fields.reduce((sum, field) => sum + field.width, 0) + 90;
-        const body = rows.map(record => `<tr>${fields.map(field => `<td style="width:${field.width}px" data-field-id="${esc(field.id)}"><div class="mv5-cell-with-dot">${renderCell(field, getFieldValue(record, field), true)}${updateDot(chat, record, field.id)}</div></td>`).join('')}<td class="mv5-row-actions"><button data-mv5-edit-record="${esc(record.id)}">编辑</button><button data-mv5-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('');
-        return `<div class="mv5-grid-scroll"><table class="mv5-grid" style="width:${width}px;min-width:100%"><colgroup>${fields.map(field => `<col data-field-id="${esc(field.id)}" style="width:${field.width}px">`).join('')}<col style="width:90px"></colgroup><thead><tr>${fields.map(field => `<th data-field-id="${esc(field.id)}" style="width:${field.width}px"><div class="mv5-field-head"><strong>${esc(field.name)}</strong>${field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</div><span class="mv5-col-resizer" data-mv5-resize="${esc(field.id)}"></span></th>`).join('')}<th>操作</th></tr></thead><tbody>${body || `<tr><td colspan="${fields.length + 1}" class="mv5-empty-page">暂无记录</td></tr>`}</tbody></table></div>`;
+        const body = rows.map(record => `<tr>${fields.map(field => `<td style="width:${field.width}px" data-field-id="${esc(field.id)}"><div class="mv5-cell-with-dot">${renderCell(field, getFieldValue(record, field), true)}${updateDot(chat, record, field.id)}</div></td>`).join('')}<td class="mv5-row-actions mv5-sticky-actions"><button data-mv5-edit-record="${esc(record.id)}">编辑</button><button data-mv5-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('');
+        return `<div class="mv5-grid-scroll"><table class="mv5-grid" style="width:${width}px;min-width:100%"><colgroup>${fields.map(field => `<col data-field-id="${esc(field.id)}" style="width:${field.width}px">`).join('')}<col style="width:90px"></colgroup><thead><tr>${fields.map(field => `<th data-field-id="${esc(field.id)}" style="width:${field.width}px"><div class="mv5-field-head"><strong>${esc(field.name)}</strong></div><span class="mv5-col-resizer" data-mv5-resize="${esc(field.id)}"></span></th>`).join('')}<th class="mv5-sticky-actions">操作</th></tr></thead><tbody>${body || `<tr><td colspan="${fields.length + 1}" class="mv5-empty-page">暂无记录</td></tr>`}</tbody></table></div>`;
     }
 
     function render() {
+        installViewportFix();
         const screen = document.getElementById('memory-table-screen');
         if (!screen) return;
+        const previousShell = screen.querySelector('.mv5-shell');
+        if (previousShell && !state.resetScroll) state.scrollTop = previousShell.scrollTop;
+        if (state.resetScroll) { state.scrollTop = 0; state.resetScroll = false; }
         const chat = getCurrentChat();
         if (!chat) {
             screen.innerHTML = '<header class="app-header"><button class="back-btn" data-target="home-screen">‹</button><div class="title-container"><h1 class="title">记忆</h1></div></header><main class="content"><div class="placeholder-text"><p>请先进入一个角色聊天。</p></div></main>';
@@ -135,7 +189,9 @@
         }
         const store = ensureStore(chat);
         const table = activeTable(chat);
-        const rows = table ? tableRows(store, table) : [];
+        const allRows = table ? tableRows(store, table) : [];
+        const page = paginate(allRows, store);
+        const rows = page.rows;
         const categories = table ? unique((store.records[table.id] || []).map(record => record.category)) : [];
         const tags = table ? unique((store.records[table.id] || []).flatMap(record => record.tags)) : [];
         screen.innerHTML = `<header class="app-header mv5-header">
@@ -144,15 +200,26 @@
 <div class="action-btn-group"><button class="action-btn" data-mv5-action="new-table" title="新建表">＋</button><button class="action-btn" data-mv5-action="settings" title="设置">⚙</button></div>
 </header>
 <main class="content mv5-shell">
-<section class="mv5-topbar"><div><strong>动态记忆 V5.1</strong><span>完整轮次 · 短期自动新增/更新 · 多表独立检查</span></div><div class="mv5-top-actions"><button class="btn btn-small btn-secondary" data-mv5-action="export-template">导出空模板</button><button class="btn btn-small btn-secondary" data-mv5-action="export">导出全部</button><button class="btn btn-small btn-secondary" data-mv5-action="import">导入</button><input id="mv5-import-input" type="file" accept="application/json,.json" hidden></div></section>
+<section class="mv5-topbar"><div><strong>动态记忆 V5.4.2</strong><span>统一AI请求 · 来源登记 · 状态栏直达</span></div><div class="mv5-top-actions"><button class="btn btn-small btn-secondary" data-mv5-action="export-template">导出空模板</button><button class="btn btn-small btn-secondary" data-mv5-action="export">导出全部</button><button class="btn btn-small btn-secondary" data-mv5-action="import">导入</button><input id="mv5-import-input" type="file" accept="application/json,.json" hidden></div></section>
 <section class="mv5-layout">
-<aside class="mv5-sidebar"><div class="mv5-sidebar-head"><strong>表格</strong><span>${store.tables.length}</span></div><div class="mv5-table-list">${store.tables.map(item => `<button class="mv5-table-item ${item.id === table?.id ? 'active' : ''}" data-mv5-table="${esc(item.id)}"><span class="mv5-table-name">${tableUpdateDot(chat, item.id)}${esc(item.name)}</span><b class="mv5-group mv5-${item.group}">${groupLabel(item.group)}</b></button>`).join('')}</div><button class="mv5-reset-template" data-mv5-action="reset-template">重新载入V5.1空表</button></aside>
-<section class="mv5-main">${table ? `<div class="mv5-table-head"><div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<div class="mv5-extract"><b>AI提取说明：</b>${esc(table.extractPrompt)}</div>` : ''}</div><div class="mv5-table-actions"><button class="btn btn-small btn-primary" data-mv5-action="new-record">新增记录</button><button class="btn btn-small btn-secondary" data-mv5-action="sort">多维排序</button><button class="btn btn-small btn-secondary" data-mv5-action="edit-table">表设置</button><button class="btn btn-small btn-danger" data-mv5-action="delete-table">删除表</button></div></div>
+<aside class="mv5-sidebar"><div class="mv5-sidebar-head"><strong>表格</strong><span>${store.tables.length}</span></div><div class="mv5-table-list">${store.tables.map(item => `<button class="mv5-table-item ${item.id === table?.id ? 'active' : ''}" data-mv5-table="${esc(item.id)}"><span class="mv5-table-name">${tableUpdateDot(chat, item.id)}${esc(item.name)}</span><b class="mv5-group mv5-${item.group}">${groupLabel(item.group)}</b></button>`).join('')}</div></aside>
+<section class="mv5-main">${table ? `<div class="mv5-table-head"><div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<div class="mv5-extract"><b>AI提取说明：</b>${esc(table.extractPrompt)}</div>` : ''}</div><div class="mv5-table-actions"><button class="btn btn-small btn-primary" data-mv5-action="new-record">新增记录</button>${['v5_recent_events','v5_thoughts'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="compress">压缩所选短期记录</button><button class="btn btn-small btn-secondary" data-mv5-action="delete-compressed">删除已压缩记录</button>' : ''}${['v5_event_summary','v5_thought_summary'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="long-term-draft">生成长期草稿</button>' : ''}<button class="btn btn-small btn-secondary" data-mv5-action="sort">多维排序</button><button class="btn btn-small btn-secondary" data-mv5-action="edit-table">表设置</button><button class="btn btn-small btn-danger" data-mv5-action="delete-table">删除表</button></div></div>
 <div class="mv5-rule-line"><span>${table.viewMode === 'kv' ? 'KV：标题/内容' : 'Rows：多行记录'}</span><span>${groupLabel(table.group)}</span><span>${writeLabel(table.behavior.writePolicy)}</span><span>${contextLabel(table.behavior.contextPolicy)}</span>${table.behavior.retentionDays ? `<span>保留/引用${table.behavior.retentionDays}天</span>` : '<span>时间不限</span>'}${table.behavior.chatStatus ? '<span>状态栏来源</span>' : ''}</div>
 <div class="mv5-filters"><input id="mv5-search" type="search" placeholder="搜索当前表" value="${esc(state.search)}"><select id="mv5-category"><option value="">全部分类</option>${categories.map(value => `<option ${value === state.category ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select><select id="mv5-tag"><option value="">全部标签</option>${tags.map(value => `<option ${value === state.tag ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select></div>
-${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table, rows)}` : '<div class="mv5-empty-page">当前没有表格。</div>'}</section>
+${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table, rows)}${renderPager(page)}` : '<div class="mv5-empty-page">当前没有表格。</div>'}</section>
 </section></main>`;
         bindScreenEvents(screen, chat, store, table);
+        const shell = screen.querySelector('.mv5-shell');
+        if (shell) {
+            shell.scrollTop = state.scrollTop;
+            shell.addEventListener('scroll', () => { state.scrollTop = shell.scrollTop; }, { passive: true });
+        }
+        if (state.restoreSearchFocus) {
+            const search = screen.querySelector('#mv5-search');
+            search?.focus?.({ preventScroll: true });
+            search?.setSelectionRange?.(state.searchSelection, state.searchSelection);
+            state.restoreSearchFocus = false;
+        }
         refreshStateBar(chat);
     }
 
@@ -161,23 +228,52 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
         screen.querySelectorAll('[data-mv5-table]').forEach(button => button.addEventListener('click', () => {
             state.activeTableId = button.dataset.mv5Table;
             state.search = state.category = state.tag = '';
+            state.page = 1;
+            state.resetScroll = true;
             render();
         }));
-        screen.querySelector('#mv5-search')?.addEventListener('input', event => { state.search = event.target.value; render(); });
-        screen.querySelector('#mv5-category')?.addEventListener('change', event => { state.category = event.target.value; render(); });
-        screen.querySelector('#mv5-tag')?.addEventListener('change', event => { state.tag = event.target.value; render(); });
+        screen.querySelector('#mv5-search')?.addEventListener('input', event => {
+            state.search = event.target.value;
+            state.page = 1;
+            state.restoreSearchFocus = true;
+            state.searchSelection = event.target.selectionStart ?? state.search.length;
+            clearTimeout(state.searchTimer);
+            state.searchTimer = setTimeout(render, 120);
+        });
+        screen.querySelector('#mv5-category')?.addEventListener('change', event => { state.category = event.target.value; state.page = 1; render(); });
+        screen.querySelector('#mv5-tag')?.addEventListener('change', event => { state.tag = event.target.value; state.page = 1; render(); });
+        screen.querySelectorAll('[data-mv5-page]').forEach(button => button.addEventListener('click', () => {
+            const action = button.dataset.mv5Page;
+            const info = paginate(tableRows(store, table), store);
+            if (action === 'first') state.page = 1;
+            if (action === 'prev') state.page = Math.max(1, state.page - 1);
+            if (action === 'next') state.page = Math.min(info.pages, state.page + 1);
+            if (action === 'last') state.page = info.pages;
+            state.resetScroll = true;
+            render();
+        }));
         screen.querySelectorAll('[data-mv5-action]').forEach(button => button.addEventListener('click', async () => {
             const action = button.dataset.mv5Action;
             try {
                 if (action === 'new-table') openTableEditor(chat, null);
                 if (action === 'edit-table' && table) openTableEditor(chat, table);
                 if (action === 'new-record' && table) openRecordEditor(chat, table, null);
+                if (action === 'compress' && table) openCompression(chat, table);
+                if (action === 'long-term-draft' && table) openLongTermDraft(chat, table);
+                if (action === 'delete-compressed' && table) {
+                    const count = (store.records[table.id] || []).filter(record => record.compressedAt).length;
+                    if (!count) return toast('当前没有已压缩记录');
+                    if (confirm(`确定删除${count}条已压缩记录吗？中期总结不会删除。`)) {
+                        const result = await deleteCompressed(chat, table.id);
+                        toast(`已删除${result.deleted}条短期记录`);
+                        render();
+                    }
+                }
                 if (action === 'sort' && table) openSortEditor(chat, table);
                 if (action === 'settings') openSettings(chat);
                 if (action === 'export') exportStore(chat, false);
                 if (action === 'export-template') exportStore(chat, true);
                 if (action === 'import') screen.querySelector('#mv5-import-input')?.click();
-                if (action === 'reset-template') await resetTemplate(chat);
                 if (action === 'delete-table' && table) await deleteTable(chat, table);
             } catch (error) {
                 console.error('[MemoryV5 UI]', error);
@@ -217,15 +313,23 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             const startX = event.clientX;
             const startWidth = th.getBoundingClientRect().width;
             handle.setPointerCapture?.(event.pointerId);
+            const syncGridWidth = () => {
+                const grid = th.closest('table');
+                if (!grid) return;
+                const total = visibleFields(table).reduce((sum, item) => sum + item.width, 0) + 90;
+                grid.style.width = `${total}px`;
+            };
             const move = moveEvent => {
                 field.width = Math.max(80, Math.min(800, Math.round(startWidth + moveEvent.clientX - startX)));
                 th.style.width = `${field.width}px`;
                 screen.querySelectorAll(`[data-field-id="${field.id}"]`).forEach(cell => { cell.style.width = `${field.width}px`; });
+                syncGridWidth();
             };
-            const up = async () => {
+            const up = async upEvent => {
                 handle.removeEventListener('pointermove', move);
                 handle.removeEventListener('pointerup', up);
                 handle.removeEventListener('pointercancel', up);
+                try { handle.releasePointerCapture?.(upEvent?.pointerId); } catch (_) {}
                 await persist(chat);
             };
             handle.addEventListener('pointermove', move);
@@ -235,11 +339,16 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     }
 
     function modal(title, body, onSave, options = {}) {
+        installViewportFix();
         const overlay = document.createElement('div');
         overlay.className = `mv5-modal-overlay ${options.className || ''}`;
         overlay.innerHTML = `<section class="mv5-modal" role="dialog" aria-modal="true"><header class="mv5-modal-header"><h2>${esc(title)}</h2><button type="button" class="mv5-modal-close">×</button></header><form class="mv5-modal-form"><div class="mv5-modal-body">${body}</div><footer class="mv5-modal-footer"><button type="button" class="btn btn-secondary mv5-cancel">${esc(options.cancelLabel || '取消')}</button><button type="submit" class="btn btn-primary">${esc(options.saveLabel || '保存')}</button></footer></form></section>`;
         document.body.appendChild(overlay);
-        const close = () => overlay.remove();
+        document.body.classList.add('mv5-modal-open');
+        const close = () => {
+            overlay.remove();
+            if (!document.querySelector('.mv5-modal-overlay')) document.body.classList.remove('mv5-modal-open');
+        };
         overlay.querySelector('.mv5-modal-close').addEventListener('click', close);
         overlay.querySelector('.mv5-cancel').addEventListener('click', close);
         overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
@@ -261,14 +370,22 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
         });
         overlay.querySelectorAll('textarea').forEach(autoGrow);
         overlay.addEventListener('input', event => { if (event.target.tagName === 'TEXTAREA') autoGrow(event.target); });
+        overlay.addEventListener('focusin', event => {
+            if (!event.target.matches?.('input, textarea, select')) return;
+            setTimeout(() => event.target.scrollIntoView?.({ block: 'center', inline: 'nearest', behavior: 'smooth' }), 80);
+        });
         options.onOpen?.(overlay);
         return overlay;
     }
 
     function autoGrow(textarea) {
         if (!textarea) return;
+        const viewportHeight = global.visualViewport?.height || global.innerHeight || 720;
+        const maxHeight = Math.max(180, Math.min(520, Math.round(viewportHeight * 0.46)));
         textarea.style.height = 'auto';
-        textarea.style.height = `${Math.max(84, textarea.scrollHeight + 2)}px`;
+        const wanted = Math.max(84, textarea.scrollHeight + 2);
+        textarea.style.height = `${Math.min(maxHeight, wanted)}px`;
+        textarea.style.overflowY = wanted > maxHeight ? 'auto' : 'hidden';
     }
 
     function fieldRowHtml(field) {
@@ -319,7 +436,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
         const body = `<section class="mv5-form-card"><h3>基本信息</h3><div class="mv5-form-grid"><label><span>表名</span><input name="name" value="${esc(table.name)}" required></label><label><span>显示方式</span><select name="viewMode"><option value="rows">Rows：多行记录</option><option value="kv">KV：标题/内容</option></select></label><label><span>分组</span><select name="group"><option value="core">核心</option><option value="current">状态</option><option value="short">短期</option><option value="medium">中期</option><option value="long">长期</option></select></label></div><label class="mv5-block-field"><span>用途说明</span><textarea name="description" rows="4">${esc(table.description)}</textarea></label><label class="mv5-block-field"><span>extractPrompt（AI理解表格用途）</span><textarea name="extractPrompt" rows="5">${esc(table.extractPrompt)}</textarea></label></section>
 <section class="mv5-form-card"><h3>写入与上下文</h3><div class="mv5-form-grid"><label><span>写入方式</span><select name="writePolicy"><option value="manual">手动更新</option><option value="auto">随聊天更新（V5.1）</option><option value="summary">短期压缩（V5.2）</option></select></label><label><span>上下文发送</span><select name="contextPolicy"><option value="always">每轮发送</option><option value="relevant">相关时发送</option><option value="never">不发送</option></select></label><label><span>有效/引用天数</span><input name="retentionDays" type="number" min="0" value="${table.behavior.retentionDays}"><small>0表示不限</small></label><label class="mv5-check"><input type="checkbox" name="chatStatus" ${table.behavior.chatStatus ? 'checked' : ''}>聊天状态栏来源</label></div><div class="mv5-form-grid"><label><span>识别同一记录的字段</span><input name="identityFields" value="${esc(table.behavior.identityFieldIds.map(fieldId => table.fields.find(field => field.id === fieldId)?.name).filter(Boolean).join('，'))}" placeholder="标题，相关主体"></label><label><span>上下文内容字段</span><input name="contextFields" value="${esc(table.behavior.contextFieldIds.map(fieldId => table.fields.find(field => field.id === fieldId)?.name).filter(Boolean).join('，'))}" placeholder="标题，内容，标签"></label></div>${sourceTables.length ? `<div class="mv5-source-list"><strong>压缩来源表</strong>${sourceTables.map(item => `<label><input type="checkbox" name="sourceTableIds" value="${esc(item.id)}" ${table.behavior.sourceTableIds.includes(item.id) ? 'checked' : ''}>${esc(item.name)}</label>`).join('')}</div>` : ''}</section>
 <section class="mv5-form-card"><h3>分类与标签提示</h3><p class="mv5-help">分类和标签由用户提供常用提示，AI后续可按开关补充；它们只用于归类与检索，不阻止写入。</p><div class="mv5-form-grid"><label><span>分类提示</span><textarea name="categoryHints" rows="3">${esc(table.categoryHints.join('，'))}</textarea></label><label><span>标签提示</span><textarea name="tagHints" rows="3">${esc(table.tagHints.join('，'))}</textarea></label><label class="mv5-check"><input type="checkbox" name="supplementCategories" ${table.aiCanSupplementCategories ? 'checked' : ''}>AI可以补充新分类</label><label class="mv5-check"><input type="checkbox" name="supplementTags" ${table.aiCanSupplementTags ? 'checked' : ''}>AI可以补充新标签</label></div></section>
-<section class="mv5-form-card mv5-fields-card"><div class="mv5-card-title"><div><h3>字段设置</h3><p>六个公共字段不能删除，但可以移动顺序、调整宽度和隐藏。内部recordId、createdAt、updatedAt不会作为表格字段出现。</p></div><button type="button" id="mv5-add-field" class="btn btn-small btn-secondary">添加字段</button></div><div class="mv5-fields-scroll"><table class="mv5-fields-table"><thead><tr><th>顺序</th><th>字段名</th><th>类型</th><th>宽度</th><th>选项</th><th>显示</th><th>aiHint</th><th>操作</th></tr></thead><tbody id="mv5-fields-list">${table.fields.map(fieldRowHtml).join('')}</tbody></table></div></section>`;
+<section class="mv5-form-card mv5-fields-card"><div class="mv5-card-title"><div><h3>字段设置</h3><p>六个公共字段不能删除，但可以移动顺序、调整宽度和隐藏。内部recordId、createdAt、updatedAt不会作为表格字段出现。</p></div><button type="button" id="mv5-add-field" class="btn btn-small btn-secondary">添加字段</button></div><div class="mv5-fields-scroll"><table class="mv5-fields-table"><thead><tr><th>顺序</th><th>字段名</th><th>类型</th><th>宽度</th><th>选项</th><th>显示</th><th>aiHint</th><th class="mv5-sticky-actions">操作</th></tr></thead><tbody id="mv5-fields-list">${table.fields.map(fieldRowHtml).join('')}</tbody></table></div></section>`;
 
         modal(existing ? '编辑表格' : '新建表格', body, async (form, wrap) => {
             table.name = text(form.get('name'));
@@ -335,14 +452,18 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             table.aiCanSupplementTags = form.get('supplementTags') === 'on';
             table.behavior.writePolicy = M.constants.WRITE_POLICIES.has(text(form.get('writePolicy'))) ? text(form.get('writePolicy')) : 'manual';
             table.behavior.contextPolicy = M.constants.CONTEXT_POLICIES.has(text(form.get('contextPolicy'))) ? text(form.get('contextPolicy')) : 'relevant';
-            table.behavior.retentionDays = Math.max(0, parseInt(form.get('retentionDays'), 10) || 0);
+            table.behavior.retentionDays = table.id === 'v5_current_state' ? 0 : Math.max(0, parseInt(form.get('retentionDays'), 10) || 0);
             table.behavior.chatStatus = form.get('chatStatus') === 'on';
-            table.behavior.allowAiWrite = table.behavior.writePolicy === 'auto' && table.group !== 'core' && table.group !== 'long';
+            table.behavior.allowAiWrite = table.behavior.writePolicy === 'auto' && (table.group === 'current' || table.group === 'short');
             table.behavior.identityFieldIds = selectedFieldIds(form.get('identityFields'), table.fields);
             table.behavior.contextFieldIds = selectedFieldIds(form.get('contextFields'), table.fields);
             table.behavior.sourceTableIds = form.getAll('sourceTableIds').map(text).filter(Boolean);
-            if (table.group === 'core') {
+            if (table.group === 'core' || table.group === 'long') {
                 table.behavior.writePolicy = 'manual';
+                table.behavior.allowAiWrite = false;
+            }
+            if (table.group === 'medium') {
+                if (table.behavior.writePolicy === 'auto') table.behavior.writePolicy = 'summary';
                 table.behavior.allowAiWrite = false;
             }
             if (table.behavior.chatStatus) store.tables.forEach(item => { if (item.id !== table.id) item.behavior.chatStatus = false; });
@@ -366,6 +487,15 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             wrap.querySelector('[name="group"]').value = table.group;
             wrap.querySelector('[name="writePolicy"]').value = table.behavior.writePolicy;
             wrap.querySelector('[name="contextPolicy"]').value = table.behavior.contextPolicy;
+            const protectedGroup = ['core', 'medium', 'long'].includes(table.group);
+            const autoOption = wrap.querySelector('[name="writePolicy"] option[value="auto"]');
+            if (autoOption) autoOption.disabled = protectedGroup;
+            const retentionInput = wrap.querySelector('[name="retentionDays"]');
+            if (retentionInput && table.id === 'v5_current_state') {
+                retentionInput.value = '0';
+                retentionInput.disabled = true;
+                retentionInput.closest('label')?.querySelector('small')?.replaceChildren(document.createTextNode('当前状态不按天自动失效，由后续状态更新或手动删除结束'));
+            }
             wrap.querySelector('#mv5-add-field').addEventListener('click', () => {
                 const field = customField('新字段', 'text');
                 wrap.querySelector('#mv5-fields-list').insertAdjacentHTML('beforeend', fieldRowHtml(field));
@@ -373,7 +503,13 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             });
             wrap.addEventListener('click', event => {
                 const row = event.target.closest('.mv5-field-row');
-                if (event.target.matches('[data-remove-field]')) row?.remove();
+                if (event.target.matches('[data-remove-field]') && row) {
+                    const fieldId = row.dataset.fieldId;
+                    const fieldName = row.querySelector('.mv5-field-name')?.value || '该字段';
+                    const used = existing ? (store.records[existing.id] || []).filter(record => Object.prototype.hasOwnProperty.call(record.values || {}, fieldId) && record.values[fieldId] !== '' && record.values[fieldId] != null).length : 0;
+                    if (used && !confirm(`字段“${fieldName}”在${used}条记录中有内容。删除并保存后，这些字段值会永久移除。是否继续？`)) return;
+                    row.remove();
+                }
                 if (event.target.matches('[data-move-field="up"]') && row?.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
                 if (event.target.matches('[data-move-field="down"]') && row?.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
             });
@@ -440,12 +576,13 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     function openSettings(chat) {
         const store = ensureStore(chat);
         const settings = store.settings;
-        const body = `<section class="mv5-form-card"><h3>全局设置</h3><div class="mv5-form-grid"><label class="mv5-check"><input type="checkbox" name="enabled" ${settings.enabled ? 'checked' : ''}>启用记忆上下文与自动写入</label><label class="mv5-check"><input type="checkbox" name="roundNoticeEnabled" ${settings.roundNoticeEnabled ? 'checked' : ''}>每轮显示记忆处理结果</label><label><span>上下文最多记录数</span><input type="number" name="contextMaxRecords" min="1" value="${settings.contextMaxRecords}"></label><label><span>相关表每表最多记录</span><input type="number" name="relevantMaxPerTable" min="1" max="20" value="${settings.relevantMaxPerTable}"></label><label><span>始终注入标签</span><input name="alwaysInject" value="${esc(settings.tagBehaviors.alwaysInject.join('，'))}"></label><label><span>禁止注入标签</span><input name="neverInject" value="${esc(settings.tagBehaviors.neverInject.join('，'))}"></label></div><p class="mv5-help">V5.1会把用户连续发送的多条消息与本次AI一次性生成的多条回复视为同一轮，独立检查全部自动表。中期压缩仍在V5.2启用。</p></section>`;
+        const body = `<section class="mv5-form-card"><h3>全局设置</h3><div class="mv5-form-grid"><label class="mv5-check"><input type="checkbox" name="enabled" ${settings.enabled ? 'checked' : ''}>启用记忆上下文与自动写入</label><label class="mv5-check"><input type="checkbox" name="roundNoticeEnabled" ${settings.roundNoticeEnabled ? 'checked' : ''}>每轮显示记忆处理结果</label><label><span>上下文最多记录数</span><input type="number" name="contextMaxRecords" min="1" value="${settings.contextMaxRecords}"></label><label><span>相关表每表最多记录</span><input type="number" name="relevantMaxPerTable" min="1" max="20" value="${settings.relevantMaxPerTable}"></label><label><span>表格每页记录数</span><input type="number" name="tablePageSize" min="20" max="500" value="${settings.tablePageSize || 100}"><small>大量记录时分页显示，建议50—200</small></label><label><span>始终注入标签</span><input name="alwaysInject" value="${esc(settings.tagBehaviors.alwaysInject.join('，'))}"></label><label><span>禁止注入标签</span><input name="neverInject" value="${esc(settings.tagBehaviors.neverInject.join('，'))}"></label></div><p class="mv5-help">V5.4.2保持现有记忆数据结构，主聊天及其他AI任务统一经过请求网关并生成来源清单。</p></section>`;
         modal('记忆设置', body, async form => {
             settings.enabled = form.get('enabled') === 'on';
             settings.roundNoticeEnabled = form.get('roundNoticeEnabled') === 'on';
             settings.contextMaxRecords = Math.max(1, parseInt(form.get('contextMaxRecords'), 10) || 32);
             settings.relevantMaxPerTable = Math.max(1, Math.min(20, parseInt(form.get('relevantMaxPerTable'), 10) || 5));
+            settings.tablePageSize = Math.max(20, Math.min(500, parseInt(form.get('tablePageSize'), 10) || 100));
             settings.tagBehaviors.alwaysInject = unique(form.get('alwaysInject'));
             settings.tagBehaviors.neverInject = unique(form.get('neverInject'));
             await persist(chat);
@@ -454,23 +591,19 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     }
 
     async function deleteTable(chat, table) {
-        if (!confirm(`确定删除“${table.name}”及其全部记录吗？`)) return;
         const store = ensureStore(chat);
+        const recordCount = (store.records[table.id] || []).length;
+        const dependents = store.tables.filter(item => item.id !== table.id && item.behavior.sourceTableIds.includes(table.id)).map(item => item.name);
+        const dependencyText = dependents.length ? `\n它还是以下表格的压缩来源：${dependents.join('、')}。删除后会同时解除这些来源关系。` : '';
+        if (!confirm(`确定删除“${table.name}”吗？\n将永久删除${recordCount}条记录，且无法在应用内撤销。${dependencyText}\n建议先导出全部记忆库备份。`)) return;
         store.tables = store.tables.filter(item => item.id !== table.id);
         store.tables.forEach(item => { item.behavior.sourceTableIds = item.behavior.sourceTableIds.filter(sourceId => sourceId !== table.id); });
         delete store.records[table.id];
         state.activeTableId = '';
+        state.page = 1;
+        state.resetScroll = true;
         await persist(chat);
         render();
-    }
-
-    async function resetTemplate(chat) {
-        if (!confirm('这会用9张V5.1空表覆盖当前表格和记录。旧版本数据不会迁入。是否继续？')) return;
-        chat.memoryStore = createDefaultStore();
-        state.activeTableId = '';
-        await persist(chat);
-        render();
-        toast('已载入V5.1空表模板');
     }
 
     function downloadJson(filename, data) {
@@ -486,10 +619,11 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     function exportStore(chat, templateOnly) {
         const store = ensureStore(chat);
         const safe = (chat.remarkName || chat.realName || chat.id || '角色').replace(/[\\/:*?"<>|]/g, '_');
+        const snapshot = M.model.normalizeStore(clone(store));
         if (templateOnly) {
-            downloadJson(`memoryTemplate_V5_1_${safe}.json`, { version: M.STORE_VERSION, type: 'memory-table-template', settings: store.settings, tables: store.tables, records: {} });
+            downloadJson(`memoryTemplate_V5_4_1b_${safe}.json`, { version: M.STORE_VERSION, type: 'memory-table-template', appVersion: M.VERSION, exportedAt: new Date().toISOString(), settings: snapshot.settings, tables: snapshot.tables, records: {} });
         } else {
-            downloadJson(`memoryStore_V5_1_${safe}_${new Date().toISOString().slice(0, 10)}.json`, store);
+            downloadJson(`memoryStore_V5_4_1b_${safe}_${new Date().toISOString().slice(0, 10)}.json`, Object.assign({ type: 'memory-store', appVersion: M.VERSION, exportedAt: new Date().toISOString() }, snapshot));
         }
     }
 
@@ -509,36 +643,117 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
         }
         const store = ensureStore(chat);
         const conflicts = plan.tables.filter(source => store.tables.some(target => target.id === source.id || target.name === source.name));
-        const body = `<section class="mv5-import-preview"><h3>导入预览</h3><dl><div><dt>文件</dt><dd>${esc(file.name)}</dd></div><div><dt>识别类型</dt><dd>${esc(plan.kind)}</dd></div><div><dt>表格数量</dt><dd>${plan.tableCount}</dd></div><div><dt>记录数量</dt><dd>${plan.recordCount}</dd></div><div><dt>冲突表格</dt><dd>${conflicts.length}</dd></div></dl><div class="mv5-form-grid"><label><span>导入方式</span><select name="mode"><option value="merge">合并到当前记忆库</option><option value="replace_all">覆盖全部表格</option></select></label><label><span>同名/同ID表格</span><select name="conflictMode"><option value="replace">覆盖原表</option><option value="duplicate">保留两张表</option></select></label><label class="mv5-check"><input type="checkbox" name="includeRecords" ${plan.recordCount ? 'checked' : ''}>导入文件中的记录</label></div><p class="mv5-help">当前V5.1不会把V4及更早记录自动转换到新表。只有文件本身已经是V5结构时，记录才会按预览数量导入。</p></section>`;
+        const body = `<section class="mv5-import-preview"><h3>导入预览</h3><dl><div><dt>文件</dt><dd>${esc(file.name)}</dd></div><div><dt>识别类型</dt><dd>${esc(plan.kind)}</dd></div><div><dt>表格数量</dt><dd>${plan.tableCount}</dd></div><div><dt>记录数量</dt><dd>${plan.recordCount}</dd></div><div><dt>冲突表格</dt><dd>${conflicts.length}</dd></div></dl><div class="mv5-form-grid"><label><span>导入方式</span><select name="mode"><option value="merge">合并到当前记忆库</option><option value="replace_all">覆盖全部表格</option></select></label><label><span>同名/同ID表格</span><select name="conflictMode"><option value="replace">覆盖表结构；未勾选记录时保留原记录</option><option value="duplicate">保留两张表</option></select></label><label class="mv5-check"><input type="checkbox" name="includeRecords" ${plan.recordCount ? 'checked' : ''}>导入文件中的记录</label><label class="mv5-check"><input type="checkbox" name="confirmReplace">选择“覆盖全部”时，我确认当前表格将被替换</label></div><p class="mv5-help">V5.4.2会在覆盖全部前自动下载当前记忆库备份；保存失败会恢复导入前内存状态。不会把V4及更早记录自动转换到V5。</p></section>`;
         modal('导入记忆表', body, async form => {
             const mode = form.get('mode');
+            const includeRecords = form.get('includeRecords') === 'on';
+            if (mode === 'replace_all' && form.get('confirmReplace') !== 'on') throw new Error('选择“覆盖全部表格”时，必须勾选确认。');
+            const before = clone(chat.memoryStore);
             if (mode === 'replace_all') {
-                chat.memoryStore = M.model.normalizeStore({ version: M.STORE_VERSION, settings: plan.settings, tables: plan.tables, records: form.get('includeRecords') === 'on' ? plan.records : {} });
-            } else {
-                mergeImport(store, plan, { includeRecords: form.get('includeRecords') === 'on', conflictMode: form.get('conflictMode') });
+                const safe = (chat.remarkName || chat.realName || chat.id || '角色').replace(/[\\/:*?"<>|]/g, '_');
+                downloadJson(`memoryStore_V5_4_1b_导入前备份_${safe}_${new Date().toISOString().slice(0, 10)}.json`, before);
             }
-            await persist(chat);
+            try {
+                if (mode === 'replace_all') {
+                    chat.memoryStore = M.model.normalizeStore({ version: M.STORE_VERSION, settings: plan.settings, tables: plan.tables, records: includeRecords ? plan.records : {} });
+                } else {
+                    mergeImport(store, plan, { includeRecords, conflictMode: form.get('conflictMode') });
+                }
+                await persist(chat);
+            } catch (error) {
+                chat.memoryStore = before;
+                throw new Error(`阶段：保存导入结果\n处理：已恢复导入前状态\n原因：${error.message || error}`);
+            }
             state.activeTableId = '';
+            state.page = 1;
+            state.resetScroll = true;
             render();
-            toast(`导入完成：${plan.tableCount}张表`);
+            toast(`导入完成：${plan.tableCount}张表，${includeRecords ? plan.recordCount : 0}条文件记录`);
         }, { saveLabel: '开始导入' });
     }
 
     function showImportError(error) {
         const message = error.message || String(error);
-        modal('导入失败', `<section class="mv5-import-error"><p>文件没有被修改或部分导入。</p><pre>${esc(message)}</pre></section>`, async () => {}, { saveLabel: '关闭', cancelLabel: '返回' });
+        modal('导入失败', `<section class="mv5-import-error"><p>本次导入已中止。解析失败不会修改数据；保存阶段失败会自动恢复导入前状态。</p><pre>${esc(message)}</pre></section>`, async () => {}, { saveLabel: '关闭', cancelLabel: '返回' });
+    }
+
+    function compressionFieldControl(field, value) {
+        const raw = Array.isArray(value) ? value.join('，') : (value ?? '');
+        if (field.type === 'longtext') return `<textarea name="summary_${esc(field.id)}" rows="5">${esc(raw)}</textarea>`;
+        if (field.type === 'select') return `<select name="summary_${esc(field.id)}"><option value=""></option>${field.options.map(option => `<option value="${esc(option)}" ${option === raw ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>`;
+        return `<input name="summary_${esc(field.id)}" value="${esc(raw)}">`;
+    }
+
+    function openCompression(chat, sourceTable) {
+        const store = ensureStore(chat);
+        const rows = (store.records[sourceTable.id] || []).filter(record => !record.compressedAt);
+        if (!rows.length) return toast('没有可压缩的短期记录');
+        const body = `<section class="mv5-form-card"><h3>选择短期记录</h3><p class="mv5-help">压缩成功后，来源记录会标记为已压缩并停止进入聊天上下文；不会立即删除。</p><div class="mv5-compression-list">${rows.map(record => `<label><input type="checkbox" name="recordIds" value="${esc(record.id)}"><span><strong>${esc(record.title || '未命名')}</strong><small>${esc(record.time || '')}</small><em>${esc(record.content || '')}</em></span></label>`).join('')}</div></section>`;
+        modal('生成中期总结', body, async form => {
+            const ids = form.getAll('recordIds');
+            if (!ids.length) throw new Error('至少选择一条记录');
+            const draft = buildSummaryDraft(chat, sourceTable.id, ids);
+            const fields = visibleFields(draft.targetTable);
+            const preview = `<section class="mv5-form-card"><h3>检查并编辑总结草稿</h3><p class="mv5-help">保存成功后才会标记来源记录。可在这里修改内容，避免遗漏重要事实。</p><div class="mv5-record-form">${fields.map(field => `<div class="mv5-record-field"><label><span>${esc(field.name)}</span>${field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</label><div>${compressionFieldControl(field, draft.values[field.name])}</div></div>`).join('')}</div></section>`;
+            modal('确认中期总结', preview, async previewForm => {
+                const values = {};
+                fields.forEach(field => {
+                    let value = previewForm.get(`summary_${field.id}`);
+                    if (field.type === 'multiselect') value = text(value).split(/[，,、\n]/).map(item => item.trim()).filter(Boolean);
+                    values[field.name] = value;
+                });
+                const result = await runAggregation(chat, sourceTable.id, ids, values);
+                if (result.rejected?.length) throw new Error(result.rejected.map(item => item.reason).join('；'));
+                toast(`已生成中期总结，并标记${result.sourceCount}条来源记录`);
+                render();
+            }, { saveLabel: '保存总结并标记来源' });
+        }, { saveLabel: '生成草稿' });
+    }
+
+    function openLongTermDraft(chat, sourceTable) {
+        const store = ensureStore(chat);
+        const rows = store.records[sourceTable.id] || [];
+        if (!rows.length) return toast('当前没有可用于提炼的中期总结');
+        const body = `<section class="mv5-form-card"><h3>选择中期总结</h3><p class="mv5-help">这里只生成可编辑草稿。聊天AI不能直接写入稳定长期记忆，必须由你检查并点击保存。</p><div class="mv5-compression-list">${rows.map(record => `<label><input type="checkbox" name="recordIds" value="${esc(record.id)}"><span><strong>${esc(record.title || '未命名')}</strong><small>${esc(record.time || '')}</small><em>${esc(record.content || '')}</em></span></label>`).join('')}</div></section>`;
+        modal('生成长期记忆草稿', body, async form => {
+            const ids = form.getAll('recordIds');
+            if (!ids.length) throw new Error('至少选择一条中期总结');
+            const draft = buildLongTermDraft(chat, sourceTable.id, ids);
+            const fields = visibleFields(draft.targetTable);
+            const preview = `<section class="mv5-form-card"><h3>检查并编辑长期草稿</h3><p class="mv5-help">请确认它确实是长期稳定规律，并填写适用条件和例外。点击保存代表用户手动确认。</p><div class="mv5-record-form">${fields.map(field => `<div class="mv5-record-field"><label><span>${esc(field.name)}</span>${field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</label><div>${compressionFieldControl(field, draft.values[field.name])}</div></div>`).join('')}</div></section>`;
+            modal('确认长期记忆', preview, async previewForm => {
+                const values = {};
+                fields.forEach(field => {
+                    let value = previewForm.get(`summary_${field.id}`);
+                    if (field.type === 'multiselect') value = text(value).split(/[，,、\n]/).map(item => item.trim()).filter(Boolean);
+                    values[field.name] = value;
+                });
+                const result = await saveLongTermDraft(chat, sourceTable.id, ids, values);
+                if (result.rejected?.length) throw new Error(result.rejected.map(item => item.reason).join('；'));
+                toast('长期记忆已由用户确认保存');
+                state.activeTableId = 'v5_stable_long_term';
+                render();
+            }, { saveLabel: '确认并保存长期记忆' });
+        }, { saveLabel: '生成草稿' });
     }
 
     function setup() {
+        installViewportFix();
         if (state.bound) return render();
         state.bound = true;
         migrateAllCharacters().finally(render);
     }
 
-    function openForCharacter(characterId) {
+    function openForCharacter(characterId, tableId = '') {
         if (characterId) {
             global.currentChatId = characterId;
             global.currentChatType = 'private';
+        }
+        if (tableId) {
+            state.activeTableId = tableId;
+            state.search = state.category = state.tag = '';
+            state.page = 1;
+            state.resetScroll = true;
         }
         global.showScreen?.('memory-table-screen');
         render();

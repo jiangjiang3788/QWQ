@@ -3,7 +3,6 @@
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const REPORT_MODE = 'detailed';
     const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyQuery: '', historyStatus: '', historyCategory: '', historyType: '', historyFrom: '', historyTo: '', historyVisible: 20 };
     let rootEl = null;
     let panelEl = null;
@@ -452,7 +451,7 @@
         const renderSection = section => {
             const meta = promptSourceMeta(section.type);
             const status = promptSourceStateLabel(section);
-            const canOpenSource = section.navigation?.kind && section.navigation.kind !== 'proment';
+            const canOpenSource = ['worldbook', 'structured-memory', 'vector-memory', 'journal-memory'].includes(section.navigation?.kind);
             return `<details class="quick-dock-source-card ${section.sent === false ? 'is-excluded' : ''}">
                 <summary>
                     <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon)}</span>
@@ -559,23 +558,6 @@
         </div>`;
     }
 
-    function renderMemoryPayloadAudit(operation) {
-        const audit = operation?.memoryPayloadAudit;
-        if (!audit || typeof audit !== 'object') {
-            return '<p class="quick-dock-operation-muted">该历史记录没有最终请求级记忆核验。新发送的私聊会在模型请求形成后进行核验。</p>';
-        }
-        const item = (title, sent, chars, detail) => `<div class="${sent ? 'is-sent' : 'is-missing'}"><b>${escapeHtml(title)}</b><span>${sent ? `已进入同一次模型请求 · ${escapeHtml(chars || 0)} 字符` : escapeHtml(detail || '本次没有发送')}</span></div>`;
-        const archiveDetail = audit.structuredArchiveExpected
-            ? '已启用档案但最终请求未检测到内容'
-            : '该角色未启用或未绑定结构化档案';
-        return `<div class="quick-dock-memory-audit">
-            ${item('结构化档案', !!audit.structuredArchiveSent, audit.structuredArchiveChars, archiveDetail)}
-            ${item('向量记忆补充', !!audit.vectorSent, audit.vectorChars, '本次没有可用向量结果或未选择向量补充')}
-            ${item('回忆日记补充', !!audit.journalSent, audit.journalChars, '本次没有收藏日记或未选择日记补充')}
-            ${item('实时状态与待办', !!audit.liveContextSent, audit.liveContextChars, '本次没有实时状态或待办')}
-        </div><p class="quick-dock-memory-audit-note">核验位置：Provider 请求体完成后、实际网络调用前。以上内容与聊天消息属于同一次主请求，不是额外的记忆请求。${audit.guardApplied ? '本次检测到模板遗漏，已在最终请求体中自动补入结构化档案。' : ''}</p>`;
-    }
-
     function renderOperationCard(operation, options = {}) {
         if (!operation) return '<div class="quick-dock-operation-empty">还没有操作记录。发送消息、生成小剧场或更新结构化档案后，这里会显示完整进度。</div>';
         const meta = operationStatusMeta(operation.status);
@@ -679,7 +661,6 @@
             <section class="quick-dock-history-workbench">
                 <div class="quick-dock-section-title"><b>操作历史</b><small>${allRoots.length} 条</small></div>
                 <div class="quick-dock-history-actions">
-                    <button type="button" data-qd-action="export-history">导出操作报告</button>
                     ${allRoots.length ? '<button type="button" data-qd-action="clear-operations">清除全部已完成</button>' : ''}
                     <span>记录占用 ${escapeHtml(formatStorageSize(storage.chars))} / ${escapeHtml(formatStorageSize(storage.budget))}${storage.compacted ? ' · 已自动压缩' : ''}</span>
                 </div>
@@ -714,56 +695,12 @@
                 ${fold('模型请求', `${requests.length} 次实际网络调用`, requestContent)}
                 ${fold('后台工作', `${escapeHtml(operation?.background?.total || 0)} 项`, renderChildOperationList(operation))}
                 ${fold('写入结果', `${escapeHtml(operation?.mutationSummary?.total || 0)} 项`, renderOperationMutations(operation), true, 'quick-dock-mutation-section')}
-                ${fold('本次聊天记忆核验', '最终请求体', renderMemoryPayloadAudit(operation))}
                 ${operation.error ? fold('错误信息', '', `<pre class="quick-dock-result-pre">${escapeHtml(operation.error.message || '操作失败')}</pre>`, true) : ''}
-            </div>
-            <div class="quick-dock-report-actions"><button type="button" data-qd-action="copy-operation" data-operation-id="${escapeHtml(operation.id)}">复制操作报告</button><button type="button" data-qd-action="download-operation-report" data-operation-id="${escapeHtml(operation.id)}">下载操作报告</button></div>`;
+            </div>` ;
         renderPanelShell(`${operation.icon || '✨'} ${operation.title}`, `${operation.category || '其他'} · ${formatOperationTime(operation.createdAt)}`, body, operation);
     }
 
 
-
-    function renderCapabilityCoverage() {
-        const catalog = window.OVOAICapabilityCatalog;
-        const definitions = (catalog?.list?.() || []).filter(item => item.type !== 'ai.request');
-        const recent = window.OVOAIRequestRuntime?.getCapabilityCoverage?.() || [];
-        const recentMap = new Map(recent.map(item => [item.type, item]));
-        const generic = recentMap.get('ai.request') || null;
-        const categories = new Map();
-        definitions.forEach(item => {
-            if (!categories.has(item.category || '其他')) categories.set(item.category || '其他', []);
-            categories.get(item.category || '其他').push(item);
-        });
-        const recentTotal = recent.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
-        const usedCount = definitions.filter(item => recentMap.has(item.type)).length;
-        const body = `
-            <section class="quick-dock-coverage-summary">
-                <div><b>${escapeHtml(definitions.length)}</b><span>已登记产品操作</span></div>
-                <div><b>${escapeHtml(usedCount)}</b><span>最近会话已实际调用</span></div>
-                <div><b>${escapeHtml(recentTotal)}</b><span>最近保留的网络请求</span></div>
-                <div><b>${escapeHtml(generic?.count || 0)}</b><span>仍为通用分类</span></div>
-            </section>
-            <p class="quick-dock-operation-muted">“已登记”表示该功能具有专属名称、类别和图标；“最近调用”来自当前会话真实请求诊断，不调用的功能不会凭空显示成功。</p>
-            <div class="quick-dock-coverage-groups">
-                ${Array.from(categories.entries()).map(([category, items]) => `
-                    <section class="quick-dock-detail-section quick-dock-coverage-group">
-                        <h4>${escapeHtml(category)} <small>${items.length} 项</small></h4>
-                        <div class="quick-dock-coverage-list">
-                            ${items.map(item => {
-                                const usage = recentMap.get(item.type);
-                                const status = usage ? (usage.failed > 0 && usage.success === 0 ? '最近失败' : '最近已调用') : '尚未调用';
-                                return `<article data-coverage-used="${usage ? 'true' : 'false'}">
-                                    <span>${escapeHtml(item.icon || '✨')}</span>
-                                    <div><b>${escapeHtml(item.title)}</b><small>${escapeHtml(item.type)}</small></div>
-                                    <em>${escapeHtml(status)}${usage ? ` · ${usage.count} 次` : ''}</em>
-                                </article>`;
-                            }).join('')}
-                        </div>
-                    </section>`).join('')}
-            </div>
-            <p class="quick-dock-status">静态发布检查还会阻止新增的未登记 AI task，避免后续功能绕回笼统日志。</p>`;
-        renderPanelShell('AI 功能覆盖', 'V2.13-R3 · 能力目录与请求核验', body);
-    }
 
     function filteredLogs() {
         const filter = panelEl && panelEl.querySelector('#quick-dock-console-filter');
@@ -814,7 +751,6 @@
         if (!state.open) return;
         refreshOperationBall();
         if (state.panel === 'console') renderConsole();
-        else if (state.panel === 'coverage') renderCapabilityCoverage();
         else if (state.panel === 'operation') renderOperationDetail();
         else renderMain();
     }
@@ -823,7 +759,6 @@
         if (action === 'close') { state.open = false; state.panel = 'main'; render(); return; }
         if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
-        if (action === 'open-coverage') { state.panel = 'coverage'; render(); return; }
         if (action === 'apply-history-filters') {
             const filters = readHistoryFilterControls();
             state.historyQuery = filters.query; state.historyStatus = filters.status; state.historyCategory = filters.category; state.historyType = filters.type; state.historyFrom = filters.from; state.historyTo = filters.to; state.historyVisible = 20; render(); return;
@@ -832,11 +767,6 @@
             state.historyQuery = ''; state.historyStatus = ''; state.historyCategory = ''; state.historyType = ''; state.historyFrom = ''; state.historyTo = ''; state.historyVisible = 20; render(); return;
         }
         if (action === 'show-more-history') { state.historyVisible = Math.min(100, state.historyVisible + 20); render(); return; }
-        if (action === 'export-history') {
-            const text = getOperationRuntime()?.exportHistory?.({ mode: REPORT_MODE, format: 'markdown', rootsOnly: true, limit: 100 });
-            if (text) { downloadText(reportFilename('章鱼机_AI操作历史报告'), text); toast('脱敏操作报告已下载'); }
-            return;
-        }
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
             state.panel = 'operation';
@@ -859,20 +789,6 @@
             const { source } = findPromptSource(trigger);
             if (!source) { toast('没有找到该来源记录'); return; }
             openPromptSourceManagement(source);
-            return;
-        }
-        if (action === 'copy-operation' || action === 'download-operation-report') {
-            const operationId = trigger?.dataset?.operationId || state.selectedOperationId;
-            const runtime = getOperationRuntime();
-            const text = runtime?.exportReport?.(operationId, { mode: REPORT_MODE, format: 'markdown', includeChildren: true }) || '';
-            if (text && action === 'download-operation-report') {
-                downloadText(reportFilename('章鱼机_AI操作报告'), text);
-                toast('脱敏操作报告已下载');
-            } else if (text) {
-                try { await navigator.clipboard.writeText(text); }
-                catch (_) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-                toast('脱敏操作报告已复制');
-            }
             return;
         }
         if (action === 'open-git-settings') { openGitSettings(); return; }

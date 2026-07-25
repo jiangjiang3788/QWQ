@@ -404,30 +404,23 @@ async function setupStickerSystem() {
             Authorization: `Bearer ${key}`
         };
 
-        const response = window.OVOAIRequestRuntime
-            ? await window.OVOAIRequestRuntime.request({
-                task: 'sticker-recognition',
-                source: 'sticker',
-                provider,
-                model,
-                endpoint,
-                headers,
-                body: requestBody,
-                operationId: runtimeMeta.operationId || null,
-                operationType: 'vision.sticker.recognize',
-                operationStage: runtimeMeta.stage || '正在识别表情包内容',
-                promptSources: [
-                    { type: 'task_instruction', title: '表情包识别要求', content: prompt, reason: '要求模型描述动作、表情和图片文字' },
-                    { type: 'user_input', title: '待识别表情包', content: '[图片内容]', reason: '本次请求携带的表情包图片' }
-                ]
-            })
-            : await fetch(endpoint, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify(requestBody)
-            });
-
-        if (!window.OVOAIRequestRuntime && !response.ok) throw new Error(`API Error: ${response.status}`);
+        if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
+        const response = await window.OVOAIRequestGateway.send({
+            task: 'sticker-recognition',
+            source: 'sticker',
+            provider,
+            model,
+            endpoint,
+            headers,
+            body: requestBody,
+            operationId: runtimeMeta.operationId || null,
+            operationType: 'vision.sticker.recognize',
+            operationStage: runtimeMeta.stage || '正在识别表情包内容',
+            promptSources: [
+                { type: 'task_instruction', title: '表情包识别要求', content: prompt, reason: '要求模型描述动作、表情和图片文字' },
+                { type: 'user_input', registryId: 'media.image_input', title: '待识别表情包', content: '[图片内容]', reason: '本次请求携带的表情包图片' }
+            ]
+        });
         
         const result = await response.json();
         let description = "";

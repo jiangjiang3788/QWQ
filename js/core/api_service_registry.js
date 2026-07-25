@@ -142,23 +142,10 @@
     }
 
     async function requestResponse(options) {
-        if (global.OVOAIRequestRuntime) {
-            return global.OVOAIRequestRuntime.request(options);
+        if (!global.OVOAIRequestGateway?.send) {
+            throw new Error('统一 AI 请求网关尚未加载');
         }
-        const fetchOptions = {
-            method: options.method || 'POST',
-            headers: options.headers || {}
-        };
-        if (options.body !== undefined && fetchOptions.method !== 'GET' && fetchOptions.method !== 'HEAD') {
-            fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
-        }
-        const response = await fetch(options.endpoint, fetchOptions);
-        if (!response.ok) {
-            let detail = '';
-            try { detail = await response.text(); } catch (_) {}
-            throw new Error(`API Error: ${response.status}${detail ? ` ${detail.slice(0, 500)}` : ''}`);
-        }
-        return response;
+        return global.OVOAIRequestGateway.send(options);
     }
 
     async function fetchModels(role, draftConfig) {
@@ -245,7 +232,8 @@
                     model: config.model,
                     endpoint,
                     headers: { 'Content-Type': 'application/json' },
-                    body
+                    body,
+                    promptSources: [{ type: 'user_input', registryId: 'task.input', title: '向量化文本', content: text, reason: '本次 Embedding 请求的原始文本' }]
                 });
                 const data = await response.json();
                 vectors.push(data?.embedding?.values);
@@ -271,7 +259,8 @@
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${config.key}`
             },
-            body
+            body,
+            promptSources: [{ type: 'user_input', registryId: 'task.input', title: '向量化文本', content: texts.join('\n'), count: texts.length, reason: '本次批量 Embedding 请求的原始文本' }]
         });
         const data = await response.json();
         return parseOpenAiEmbeddings(data, texts.length);
