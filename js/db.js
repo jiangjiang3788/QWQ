@@ -1092,25 +1092,11 @@ const loadData = async () => {
                 history: []
             };
         }
-        // V3：结构化动态表是唯一记忆来源。
+        // V5：结构化动态表是唯一启用中的记忆来源。
         c.memoryMode = 'table';
-        // V3 单人收敛版：memoryStore 是唯一真源。
-        // 旧 memoryTables 若存在，交给 simple_memory_v1.js 一次性迁移后删除；新角色不再创建旧运行态结构。
+        // 具体空表模板由 MemoryV5 内核首次打开时创建。旧版本内容不自动迁入新表。
         if (!c.memoryStore || typeof c.memoryStore !== 'object') {
-            c.memoryStore = {
-                version: 1,
-                settings: {
-                    enabled: true,
-                    allowAiJudgment: true,
-                    injectionMaxRecords: 24,
-                    tagBehaviors: {
-                        alwaysInject: ['始终注入'],
-                        neverInject: ['不进入上下文']
-                    }
-                },
-                tables: [],
-                records: {}
-            };
+            c.memoryStore = { version: 0 };
         }
         if (Object.prototype.hasOwnProperty.call(c, 'vectorMemory')) delete c.vectorMemory;
         if (!c.regexFilter) {

@@ -1,34 +1,47 @@
-第一版修订 1.5.3 检查结果（2026-07-25）
+动态记忆 V5.1.0 第二版检查结果
 
-一、代码检查
-- 全部 JavaScript 文件通过 node --check。
-- memory_simple_v1.css 通过 tinycss2 解析，0 个语法错误。
-- CSS 大括号数量一致。
-- index.html 的本地脚本与样式引用全部存在。
+1. 静态检查
+- 73 个 JavaScript 文件全部通过 node --check。
+- index.html 的 109 个本地 src/href 引用全部存在。
+- index.html 未发现重复 id。
+- 全部 CSS 文件大括号数量平衡。
+- Memory V5 模块缓存版本已更新为 v=510。
 
-二、弹窗结构回归检查
-- 弹窗仅保留一个纵向滚动容器：.sm-modal-body。
-- 标题栏和保存栏为独立 Flex 固定区。
-- .sm-modal、.sm-modal-form 均包含 min-height:0，避免 Flex 子项无法收缩。
-- 遮罩层和 body 不再包含会阻断子元素手势的 touch-action:none。
-- 手机端弹窗使用 100dvh，全屏正文可滚动。
-- 动态字段表只承担横向滚动。
+2. 数据与模板
+- STORE_VERSION 继续使用 3，兼容 V5.0 数据结构。
+- 默认模板仍为 9 张空表、0 条记录。
+- 5 张表允许聊天 AI 自动写入：当前状态、近期事项、想法与启示、物品、日常观察。
+- 核心档案、两张中期表和稳定长期记忆不允许聊天 AI 写入。
+- 默认开启每轮记忆结果提示。
+- V5.1 空模板通过 importPlan 校验：9 张表、0 条记录。
 
-三、完整文本检查
-- 新增 resizeModalTextarea / bindModalTextareas。
-- 表设置中的用途说明、extractPrompt、字段 aiHint 会按 scrollHeight 自动增高。
-- 正式记录编辑弹窗中的多行字段同样自动增高。
-- textarea 使用 white-space:pre-wrap 和 overflow-wrap:anywhere，正式文本不会被截断。
+3. 完整轮次
+- 连续 2 条用户消息被绑定到同一个 memoryRoundId。
+- 本次新增的 2 条 AI 回复能在 finishRound 后补入同一个 memoryRoundId。
+- latestCompletedRoundMessages 能返回该轮全部 4 条用户/AI消息。
+- 动态系统提示包含当前用户批次和 5 张自动表定义。
 
-四、表设置布局检查
-- 基本设置、用途与AI提取、短期写入、分类标签、状态栏、中期积累、上下文注入均有独立 section body。
-- 删除旧版 .sm-form-grid overflow:hidden 与 .sm-form-section overflow:hidden 冲突。
-- 桌面端基本设置为三列，窄屏自动两列/一列。
+4. 自动写入
+- 同一轮可同时写入当前状态、近期事项、物品和日常观察。
+- AI写核心档案会被拒绝。
+- AI删除正式记录会被拒绝。
+- 旧值完全相同时返回 checked，不改时间、不改 roundId、不产生绿点。
+- 使用 recordId 可更新 Rows 旧行且不重复新增。
+- 可见时间由系统写入，格式为 YYYY-MM-DD HH:mm:ss。
 
-五、数据兼容检查
-- 使用 memoryStore_阿沉_2026-07-25.json 载入新内核。
-- 7 张动态表、原有正式记录均可正常标准化。
-- 手动 upsert 测试成功，未改变数据结构版本。
+5. 协议和反馈
+- 标准 operations 与兼容 memoryOps 均可解析。
+- 空 operations 正常作为“本轮无更新”处理。
+- 默认开启时，无更新会显示可见提示。
+- 日常观察候选最多 3 条。
 
-六、版本
-- 内核版本：3.0.7-v1.5.3
+6. 已执行测试
+- tests/memory_v5_1.test.js：通过。
+- 全量 JavaScript 语法检查：通过。
+- HTML 本地资源与重复 ID 检查：通过。
+- V5.1 空模板导入计划检查：通过。
+
+7. 当前阶段限制
+- 中期压缩、已压缩短期记录清理和长期草稿仍在 V5.2。
+- 轻量相关匹配仍是文字/字段匹配，不是向量语义检索。
+- 真实 Android WebView、软键盘和 PWA 安装态仍需目标设备实机验证。
