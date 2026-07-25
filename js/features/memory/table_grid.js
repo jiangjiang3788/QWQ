@@ -26,9 +26,31 @@
         while (models.size > MAX_MODELS) models.delete(models.keys().next().value);
     }
 
+    function renderRuntimePresentation(field, presentation) {
+        const runtime = presentation.runtimeEntry;
+        if (!presentation.isRuntime || !runtime) return TableView.renderValue(field, presentation.formalValue, { unclamped: true });
+        const formalEmpty = Domain.isEmptyMemoryValue(field, presentation.formalValue);
+        const sameAsFormal = !formalEmpty && Domain.isSameMemoryValue(presentation.formalValue, presentation.displayValue);
+        const formalText = formalEmpty
+            ? '正式档案尚未确认'
+            : (sameAsFormal ? '与正式档案一致' : `正式档案：${Domain.getFieldDisplayValue(field, presentation.formalValue)}`);
+        const confidence = Number(runtime.confidence) > 0 ? ` · ${Math.round(Number(runtime.confidence))}%` : '';
+        const time = runtime.updatedAt ? new Date(runtime.updatedAt).toLocaleString() : '';
+        const expires = Number(runtime.expiresAt) > 0 ? new Date(runtime.expiresAt).toLocaleString() : '';
+        const title = [runtime.reason || '模型根据当前对话生成的运行态判断', time ? `更新时间：${time}` : '', expires ? `有效至：${expires}` : ''].filter(Boolean).join('\n');
+        return `<div class="memory-runtime-presentation">
+            <div class="memory-runtime-primary">${TableView.renderValue(field, presentation.displayValue, { unclamped: true })}</div>
+            <div class="memory-runtime-meta"><span class="memory-runtime-badge" title="${Core.escapeAttribute(title)}">AI 判断${confidence}</span><small>${Core.escapeHtml(formalText)}</small></div>
+        </div>`;
+    }
+
     function renderKeyValueField(model, field) {
         const { chat, template, table, state, helpers, jsonMode } = model;
-        const value = Domain.getFieldValue(chat, template.id, table.id, field);
+        const formalValue = Domain.getFieldValue(chat, template.id, table.id, field);
+        const presentation = Domain.getFieldPresentation
+            ? Domain.getFieldPresentation(chat, template.id, table.id, table, field)
+            : { formalValue, displayValue: formalValue, runtimeEntry: null, isRuntime: false };
+        const value = presentation.formalValue;
         const locked = Domain.isFieldLocked(chat, template.id, table.id, field.id);
         const fieldPath = TableGrouping.fieldPath(template.id, table.id, field.id);
         const editing = jsonMode || state.editingFieldPath === fieldPath;
@@ -39,7 +61,7 @@
         return `<tr data-memory-important="${field.important !== false}" class="${classes}" data-memory-edit-target data-memory-edit-kind="field" data-template-id="${Core.escapeAttribute(template.id)}" data-table-id="${Core.escapeAttribute(table.id)}" data-field-id="${Core.escapeAttribute(field.id)}" tabindex="0" aria-label="${Core.escapeAttribute(`${field.key}，双击编辑`)}">
             <th title="${Core.escapeAttribute(field.key)}"><div class="memory-flat-field-label"><span title="${Core.escapeAttribute(field.key)}">${Core.escapeHtml(field.key)}</span></div>
             <div class="memory-v2-json-meta memory-v2-json-only">id=${Core.escapeHtml(field.id)} · type=${Core.escapeHtml(field.type)} · important=${field.important !== false}<br>${Core.escapeHtml(field.aiHint || '')}</div></th>
-            <td class="${valueCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, field.id)}>${editing ? `<div class="memory-v2-inline-editor">${helpers.renderFieldEditor(template.id, table.id, field, value, locked)}</div>` : TableView.renderValue(field, value, { unclamped: true })}</td>
+            <td class="${valueCellClass}"${UpdateActivity.cellAttributes(chat, template.id, table.id, field.id)}>${editing ? `<div class="memory-v2-inline-editor">${helpers.renderFieldEditor(template.id, table.id, field, value, locked)}</div>` : renderRuntimePresentation(field, presentation)}</td>
         </tr>`;
     }
 
@@ -125,7 +147,8 @@
 
     function renderRawJson(chat, template, table) {
         const tableData = Core.clone(chat.memoryTables.data?.[template.id]?.[table.id] || {});
-        const payload = { schema: table, data: tableData, lockedFields: chat.memoryTables.lockedFields?.[template.id]?.[table.id] || [] };
+        const runtimeValues = Core.clone(chat.memoryTables.runtimeState?.fieldValues?.[template.id]?.[table.id] || {});
+        const payload = { schema: table, data: tableData, runtimeValues, lockedFields: chat.memoryTables.lockedFields?.[template.id]?.[table.id] || [] };
         return `<pre class="memory-v2-json-raw memory-v2-json-only">${Core.escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
     }
 

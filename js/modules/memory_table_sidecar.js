@@ -50,6 +50,9 @@
         chat.memoryTables ||= {};
         chat.memoryTables.data ||= {};
         chat.memoryTables.lockedFields ||= {};
+        if (!Array.isArray(chat.memoryTables.history)) chat.memoryTables.history = [];
+        if (!Object.prototype.hasOwnProperty.call(chat.memoryTables, 'updateActivityScope')) chat.memoryTables.updateActivityScope = null;
+        if (!Array.isArray(chat.memoryTables.lastChangedFieldPaths)) chat.memoryTables.lastChangedFieldPaths = [];
         chat.memoryTables.sidecar ||= {};
         const state = chat.memoryTables.sidecar;
         if (state.enabled === undefined) state.enabled = true;
@@ -119,6 +122,120 @@
         const data = chat.memoryTables.data[template.id][table.id];
         if (table.mode === 'rows' && !Array.isArray(data.__rows)) data.__rows = [];
         return data;
+    }
+
+    function cloneValue(value) {
+        if (value === undefined) return '';
+        return Core.clone ? Core.clone(value) : JSON.parse(JSON.stringify(value));
+    }
+
+    function sameValue(left, right) {
+        return JSON.stringify(left === undefined ? '' : left) === JSON.stringify(right === undefined ? '' : right);
+    }
+
+    function collectLiveTableChanges(chat, beforeData) {
+        const changes = [];
+        getBoundTemplates(chat).forEach(template => {
+            (template.tables || []).forEach(sourceTable => {
+                const table = PolicyResolver?.materializeTable
+                    ? PolicyResolver.materializeTable(chat, template.id, sourceTable)
+                    : sourceTable;
+                if (!isLiveTable(table)) return;
+                const beforeTable = beforeData?.[template.id]?.[table.id] || {};
+                const afterTable = chat.memoryTables?.data?.[template.id]?.[table.id] || {};
+                if (table.mode !== 'rows') {
+                    (table.columns || []).forEach(field => {
+                        const oldValue = beforeTable?.[field.id];
+                        const newValue = afterTable?.[field.id];
+                        if (sameValue(oldValue, newValue)) return;
+                        changes.push({
+                            templateId: template.id,
+                            tableId: table.id,
+                            fieldId: field.id,
+                            label: `${table.name} / ${field.key}`,
+                            oldValue: cloneValue(oldValue),
+                            newValue: cloneValue(newValue)
+                        });
+                    });
+                    return;
+                }
+                const beforeRows = new Map((Array.isArray(beforeTable?.__rows) ? beforeTable.__rows : []).filter(Boolean).map(row => [String(row.id || ''), row]));
+                const afterRows = new Map((Array.isArray(afterTable?.__rows) ? afterTable.__rows : []).filter(Boolean).map(row => [String(row.id || ''), row]));
+                const rowIds = new Set([...beforeRows.keys(), ...afterRows.keys()]);
+                rowIds.forEach(rowId => {
+                    if (!rowId) return;
+                    const beforeRow = beforeRows.get(rowId);
+                    const afterRow = afterRows.get(rowId);
+                    (table.columns || []).forEach(field => {
+                        const oldValue = beforeRow?.cells?.[field.id];
+                        const newValue = afterRow?.cells?.[field.id];
+                        if (sameValue(oldValue, newValue)) return;
+                        changes.push({
+                            templateId: template.id,
+                            tableId: table.id,
+                            rowId,
+                            fieldId: field.id,
+                            label: `${table.name} / ${field.key}`,
+                            oldValue: cloneValue(oldValue),
+                            newValue: cloneValue(newValue)
+                        });
+                    });
+                });
+            });
+        });
+        return changes;
+    }
+
+    function collectRuntimeFieldChanges(chat, beforeFieldValues) {
+        const changes = [];
+        const afterFieldValues = chat?.memoryTables?.runtimeState?.fieldValues || {};
+        getBoundTemplates(chat).forEach(template => {
+            (template.tables || []).forEach(sourceTable => {
+                const table = PolicyResolver?.materializeTable
+                    ? PolicyResolver.materializeTable(chat, template.id, sourceTable)
+                    : sourceTable;
+                if (!isLiveTable(table)) return;
+                const beforeTable = beforeFieldValues?.[template.id]?.[table.id] || {};
+                const afterTable = afterFieldValues?.[template.id]?.[table.id] || {};
+                const runtimeIds = new Set([...Object.keys(beforeTable), ...Object.keys(afterTable)]);
+                runtimeIds.forEach(runtimeId => {
+                    const separator = runtimeId.indexOf('::');
+                    const rowId = separator >= 0 ? runtimeId.slice(0, separator) : '';
+                    const fieldId = separator >= 0 ? runtimeId.slice(separator + 2) : runtimeId;
+                    const field = (table.columns || []).find(item => item.id === fieldId);
+                    if (!field) return;
+                    const beforeEntry = beforeTable[runtimeId] || null;
+                    const afterEntry = afterTable[runtimeId] || null;
+                    const oldValue = beforeEntry?.value;
+                    const newValue = afterEntry?.value;
+                    const valueUnchanged = sameValue(oldValue, newValue);
+                    const beforeActive = beforeEntry ? FieldPolicy.isRuntimeEntryActive?.(beforeEntry) !== false : false;
+                    const afterActive = afterEntry ? FieldPolicy.isRuntimeEntryActive?.(afterEntry) !== false : false;
+                    const metadataUnchanged = sameValue(beforeEntry?.confidence, afterEntry?.confidence)
+                        && String(beforeEntry?.source || '') === String(afterEntry?.source || '')
+                        && String(beforeEntry?.roundId || '') === String(afterEntry?.roundId || '')
+                        && beforeActive === afterActive;
+                    if (valueUnchanged && metadataUnchanged) return;
+                    const refreshed = valueUnchanged && !!beforeEntry && !!afterEntry;
+                    changes.push({
+                        templateId: template.id,
+                        tableId: table.id,
+                        ...(rowId ? { rowId } : {}),
+                        fieldId,
+                        label: `${table.name} / ${field.key}${refreshed ? '（AI判断·本轮确认）' : '（AI判断）'}`,
+                        oldValue: cloneValue(oldValue),
+                        newValue: cloneValue(newValue),
+                        runtime: true,
+                        storage: 'runtime',
+                        source: afterEntry?.source || beforeEntry?.source || 'assistant_inferred',
+                        confidence: Number(afterEntry?.confidence ?? beforeEntry?.confidence) || 0,
+                        runtimeCleared: !!beforeEntry && !afterEntry,
+                        refreshed
+                    });
+                });
+            });
+        });
+        return changes;
     }
 
     function getLockedSet(chat, templateId, tableId) {
@@ -201,12 +318,17 @@
             && (Object.prototype.hasOwnProperty.call(raw, 'value')
                 || Object.prototype.hasOwnProperty.call(raw, 'evidence')
                 || Object.prototype.hasOwnProperty.call(raw, 'source')
-                || Object.prototype.hasOwnProperty.call(raw, 'confidence'));
+                || Object.prototype.hasOwnProperty.call(raw, 'confidence')
+                || Object.prototype.hasOwnProperty.call(raw, 'fresh'));
         const sourceRaw = structured ? (raw.evidence || raw.source) : (context.source || context.evidence);
+        const freshness = structured && Object.prototype.hasOwnProperty.call(raw, 'fresh')
+            ? raw.fresh !== false
+            : true;
         return {
             value: structured ? raw.value : raw,
             source: sourceRaw === 'user_explicit' || sourceRaw === 'explicit' ? 'user_explicit' : 'assistant_inferred',
-            confidence: Math.max(0, Math.min(100, Number(structured ? raw.confidence : context.confidence) || 0))
+            confidence: Math.max(0, Math.min(100, Number(structured ? raw.confidence : context.confidence) || 0)),
+            fresh: freshness
         };
     }
 
@@ -221,6 +343,7 @@
                 return;
             }
             const input = normalizeFieldInput(raw, context);
+            if (!input.fresh) return;
             const value = normalizeValue(field, input.value);
             if (value === undefined) {
                 report.rejected.push(`${prefix || table.name}.${field.key}: 值不符合字段类型或枚举`);
@@ -228,7 +351,8 @@
             }
             const runtimeId = context.rowId ? `${context.rowId}::${field.id}` : field.id;
             const formalBefore = target[field.id];
-            const runtimeBefore = FieldPolicy.getRuntimeEntry?.(chat, template.id, table.id, runtimeId)?.value;
+            const runtimeEntryBefore = FieldPolicy.getRuntimeEntry?.(chat, template.id, table.id, runtimeId, { includeExpired: true }) || null;
+            const runtimeBefore = FieldPolicy.isRuntimeEntryActive?.(runtimeEntryBefore) === false ? undefined : runtimeEntryBefore?.value;
             const assessment = FieldPolicy.assess(field, table, {
                 source: input.source,
                 confidence: input.confidence,
@@ -237,23 +361,44 @@
                 runtimeReason: context.runtimeReason
             });
             const before = assessment.route === 'runtime_only' ? runtimeBefore : formalBefore;
-            const result = { fieldId: field.id, field, value, before, assessment, source: input.source, confidence: input.confidence, changed: false };
+            const result = { fieldId: field.id, field, value, before, assessment, source: input.source, confidence: input.confidence, changed: false, refreshed: false };
             context.fieldResults.push(result);
-            if (JSON.stringify(before) === JSON.stringify(value)) return;
             if (!assessment.allowed || assessment.route === 'blocked') {
                 report.rejected.push(`${prefix || table.name}.${field.key}: ${assessment.reasons.join('；') || '字段策略阻止写入'}`);
                 return;
             }
             if (assessment.route === 'runtime_only') {
+                const sameRuntimeValue = JSON.stringify(before) === JSON.stringify(value);
+                const sameRoundConfirmation = sameRuntimeValue
+                    && !!context.roundId
+                    && String(runtimeEntryBefore?.roundId || '') === String(context.roundId)
+                    && String(runtimeEntryBefore?.source || '') === String(input.source)
+                    && Number(runtimeEntryBefore?.confidence || 0) === Number(input.confidence || 0)
+                    && FieldPolicy.isRuntimeEntryActive?.(runtimeEntryBefore) !== false;
+                if (sameRoundConfirmation) return;
                 FieldPolicy.setRuntimeValue(chat, template.id, table.id, runtimeId, value, {
                     source: input.source,
-                    confidence: input.confidence
+                    confidence: input.confidence,
+                    evidence: assessment.sourceEvidence,
+                    route: assessment.route,
+                    roundId: context.roundId || null,
+                    reason: context.runtimeReason || assessment.reasons.join('；'),
+                    fieldKey: field.key,
+                    tableName: table.name,
+                    expiresAt: context.runtimeExpiresAt || 0
                 });
                 report.runtimeChanged ||= [];
-                report.runtimeChanged.push(`${prefix || table.name}.${field.key}`);
-                context.runtimeChanged = (context.runtimeChanged || 0) + 1;
-                context.anyChanged = true;
-                result.changed = true;
+                if (sameRuntimeValue) {
+                    report.runtimeChanged.push(`${prefix || table.name}.${field.key}（本轮确认）`);
+                    context.runtimeRefreshed = (context.runtimeRefreshed || 0) + 1;
+                    context.anyRefreshed = true;
+                    result.refreshed = true;
+                } else {
+                    report.runtimeChanged.push(`${prefix || table.name}.${field.key}`);
+                    context.runtimeChanged = (context.runtimeChanged || 0) + 1;
+                    context.anyChanged = true;
+                    result.changed = true;
+                }
                 return;
             }
             if (assessment.route === 'review' || assessment.route === 'candidate') {
@@ -266,6 +411,27 @@
                     queueFieldProposal(report, template, table, field, formalBefore, value, assessment, context);
                 }
                 context.pendingCount = (context.pendingCount || 0) + 1;
+                return;
+            }
+            const clearedRuntime = FieldPolicy.clearRuntimeValue?.(chat, template.id, table.id, runtimeId);
+            if (JSON.stringify(formalBefore) === JSON.stringify(value)) {
+                if (clearedRuntime) {
+                    report.runtimeChanged ||= [];
+                    report.runtimeChanged.push(`${prefix || table.name}.${field.key}（已由正式值确认）`);
+                    context.runtimeChanged = (context.runtimeChanged || 0) + 1;
+                    context.anyChanged = true;
+                    result.changed = true;
+                } else {
+                    const priorMeta = context.statusMeta?.[field.id] || null;
+                    const sameRoundConfirmation = !!context.roundId
+                        && String(priorMeta?.roundId || '') === String(context.roundId)
+                        && String(priorMeta?.source || '') === String(input.source)
+                        && Number(priorMeta?.confidence || 0) === Number(input.confidence || 0);
+                    if (sameRoundConfirmation) return;
+                    context.formalRefreshed = (context.formalRefreshed || 0) + 1;
+                    context.anyRefreshed = true;
+                    result.refreshed = true;
+                }
                 return;
             }
             target[field.id] = value;
@@ -355,9 +521,10 @@
         return String(value);
     }
     function getEffectiveFieldValue(chat, template, table, field, formalValue, rowId) {
-        if (FieldPolicy.effectiveCommitMode(field, table) !== 'runtime_only') return formalValue;
         const runtimeId = rowId ? `${rowId}::${field.id}` : field.id;
-        return FieldPolicy.getRuntimeEntry(chat, template.id, table.id, runtimeId)?.value;
+        const runtimeEntry = FieldPolicy.getRuntimeEntry(chat, template.id, table.id, runtimeId);
+        if (runtimeEntry) return runtimeEntry.value;
+        return FieldPolicy.effectiveCommitMode(field, table) === 'runtime_only' ? undefined : formalValue;
     }
 
     function isStatusExpired(table, data) {
@@ -373,9 +540,10 @@
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
         if (isStatusExpired(table, data)) return '';
-        const fields = (table.columns || []).filter(field => field.important !== false).map(field => {
+        const fields = (table.columns || []).filter(field => !FieldSemantics?.isTechnical?.(field, table)).map(field => {
+            const runtimeEntry = FieldPolicy.getRuntimeEntry?.(chat, template.id, table.id, field.id);
             const value = getFieldDisplay(field, getEffectiveFieldValue(chat, template, table, field, data[field.id]));
-            return value ? `- ${field.key}: ${value}` : '';
+            return value ? `- ${field.key}: ${value}${runtimeEntry ? '（AI运行态判断）' : ''}` : '';
         }).filter(Boolean);
         return fields.length ? `【当前状态｜近3-7天，可能变化】\n${fields.join('\n')}` : '';
     }
@@ -423,15 +591,24 @@
         }).join('\n')}\n使用规则：只在当前话题相关或明确触发时自然提及；不要每轮催促；没有用户明确证据时不要自行标记完成。`;
     }
 
-    function describeFields(table, scope) {
+    function describeFields(chat, descriptor, scope) {
+        const { template, table } = descriptor || {};
+        if (!table) return '';
+        const data = ensureTableData(chat, template, table);
         return (table.columns || []).filter(field => {
             const semanticRole = FieldSemantics?.semanticRole?.(field, table) || field.semanticRole || 'custom';
-            if (scope === 'status') return field.important !== false && !['state_recorded_at', 'state_expires_at'].includes(semanticRole);
+            if (field.aiEditable === false) return false;
+            if (scope === 'status') return !FieldSemantics?.isTechnical?.(field, table) && !['state_recorded_at', 'state_expires_at'].includes(semanticRole);
             if (scope === 'task') return !FieldSemantics?.isTechnical?.(field, table);
             return true;
         }).map(field => {
             const options = field.type === 'enum' && field.options?.length ? `，可选：${field.options.join('/')}` : '';
-            return `- ${field.key}（${field.type}${options}；策略：${FieldPolicy.describe(field, table)}）`;
+            const runtimeEntry = FieldPolicy.getRuntimeEntry?.(chat, template.id, table.id, field.id);
+            const formalValue = getFieldDisplay(field, data?.[field.id]);
+            const currentValue = getFieldDisplay(field, getEffectiveFieldValue(chat, template, table, field, data?.[field.id]));
+            const currentText = currentValue ? `；当前值：${currentValue}${runtimeEntry ? '（AI运行态）' : (formalValue ? '（正式）' : '')}` : '；当前值：空';
+            const hint = String(field.aiHint || '').trim();
+            return `- 字段ID=${field.id}；字段名=${field.key}（${field.type}${options}；策略：${FieldPolicy.describe(field, table)}${currentText}${hint ? `；提取提示：${hint}` : ''}）`;
         }).join('\n');
     }
 
@@ -447,11 +624,13 @@
             buildTaskContext(chat, taskDescriptor)
         ].filter(Boolean).join('\n\n');
 
-        const statusFields = statusDescriptor ? describeFields(statusDescriptor.table, 'status') : '无当前状态表';
-        const taskFields = taskDescriptor ? describeFields(taskDescriptor.table, 'task') : '无待办表';
+        const statusFields = statusDescriptor ? describeFields(chat, statusDescriptor, 'status') : '无当前状态表';
+        const taskFields = taskDescriptor ? describeFields(chat, taskDescriptor, 'task') : '无待办表';
+        const statusExtractPrompt = String(statusDescriptor?.table?.extractPrompt || '').trim();
+        const taskExtractPrompt = String(taskDescriptor?.table?.extractPrompt || '').trim();
         const candidateEnabled = state.captureCandidates !== false;
         return `\n\n<memory_live_context>\n${liveSections || '当前没有已记录的实时状态或活跃待办。'}\n</memory_live_context>\n\n` +
-`<memory_sidecar_protocol>\n你在完成所有正常可见聊天消息后，必须额外输出且只输出一个隐藏区块：\n<memory_sidecar>{严格 JSON}</memory_sidecar>\n前端会隐藏该区块。不得使用 Markdown 代码围栏，不得把说明文字写进 JSON。即使没有变化，也要返回空结构。\n\nJSON 结构：\n{\n  "version": 2,\n  "status": {\n    "fields": {\n      "字段ID或字段名": {"value":"值","evidence":"user_explicit|assistant_inferred","confidence":0}\n    },\n    "validDays": 3\n  },\n  "taskOps": [],\n  "candidates": []\n}\n\n当前状态允许更新的字段（fields 的键可使用字段 ID 或字段名）：\n${statusFields}\n规则：每个字段必须单独给出 evidence 和 confidence；只修改本轮出现新证据的字段；不要清空未提及字段；validDays 只能为 1-7。用户原话或无歧义事实标 user_explicit；模型推断标 assistant_inferred，推断状态只进入会话运行态，不作为用户确定事实。兼容旧版全局 source/confidence，但不要再生成旧格式。\n\n待办字段：\n${taskFields}\ntaskOps 仅允许：\n- 新增：{"op":"add","fields":{"字段ID或字段名":"值"},"confidence":0-100,"source":"user_explicit|assistant_inferred"}\n- 更新：{"op":"update","rowId":"现有rowId","fields":{...}}\n- 完成：{"op":"complete","rowId":"现有rowId","result":"结果，可空"}\n- 取消：{"op":"cancel","rowId":"现有rowId","reason":"原因，可空"}\n- 重开：{"op":"reopen","rowId":"现有rowId"}\n禁止 delete。用户说“应该/也许/以后”不等于明确待办；用户未明确完成时禁止 complete；禁止虚构截止时间。\n\n${candidateEnabled ? `candidates 用于提取近期经历或日常观察；当前角色将目标表设为直接写入时，用户明确表达且满足字段阈值的候选会自动 Upsert，否则进入待处理：\n[{"type":"experience|daily_observation","summary":"简短客观摘要","tags":{"topic":[],"scene":[],"entity":[],"effect":"historical_context|temporary_state"},"confidence":0-100,"source":"user_explicit|assistant_inferred"}]\n只保存对未来聊天确有价值的新信息，普通寒暄不要生成候选。` : 'candidates 必须返回空数组。'}\n</memory_sidecar_protocol>`;
+`<memory_sidecar_protocol>\n你在完成所有正常可见聊天消息后，必须额外输出且只输出一个隐藏区块：\n<memory_sidecar>{严格 JSON}</memory_sidecar>\n前端会隐藏该区块。不得使用 Markdown 代码围栏，不得把说明文字写进 JSON。即使没有变化，也要返回空结构。\n\nJSON 结构：\n{\n  "version": 2,\n  "status": {\n    "fields": {\n      "字段ID或字段名": {"value":"值","evidence":"user_explicit|assistant_inferred","confidence":0,"fresh":true}\n    },\n    "validDays": 3\n  },\n  "taskOps": [],\n  "candidates": []\n}\n\n当前状态提取总规则：${statusExtractPrompt || '每轮逐项检查全部非系统字段，只应用本轮有新证据或新判断的内容。'}\n当前状态允许更新的字段（fields 的键优先使用字段 ID，也可使用字段名）：\n${statusFields}\n规则：\n1. 每轮必须逐项检查上面列出的全部当前状态字段，包括标记为普通模式隐藏的角色字段；不能只检查其中几项。\n2. 能依据本轮对话重新确认或重新判断的字段，输出 fresh:true；没有本轮证据、无法判断或只是沿用旧值的字段，省略或输出 fresh:false。前端会忽略 fresh:false。\n3. 每个字段必须单独给出 evidence 和 confidence；只有 fresh:true 字段会被应用；不得清空未提及字段；validDays 只能为 1-7。\n4. 用户原话或无歧义事实标 user_explicit，并按字段策略写入正式档案；模型对精神、体力、精力、风险、角色状态和回应策略的判断标 assistant_inferred，只进入会话运行态并显示“AI判断”，不得冒充用户确认事实。\n5. 即使新值与当前值相同，也只有本轮确实出现支持证据时才能 fresh:true。兼容旧版全局 source/confidence，但不要再生成旧格式。\n\n待办提取总规则：${taskExtractPrompt || '只处理本轮明确新增或推进的事项。'}\n待办字段：\n${taskFields}\ntaskOps 仅允许：\n- 新增：{"op":"add","fields":{"字段ID或字段名":"值"},"confidence":0-100,"source":"user_explicit|assistant_inferred"}\n- 更新：{"op":"update","rowId":"现有rowId","fields":{...}}\n- 完成：{"op":"complete","rowId":"现有rowId","result":"结果，可空"}\n- 取消：{"op":"cancel","rowId":"现有rowId","reason":"原因，可空"}\n- 重开：{"op":"reopen","rowId":"现有rowId"}\n禁止 delete。用户说“应该/也许/以后”不等于明确待办；用户未明确完成时禁止 complete；禁止虚构截止时间。\n\n${candidateEnabled ? `candidates 用于提取近期经历或日常观察；当前角色将目标表设为直接写入时，用户明确表达且满足字段阈值的候选会自动 Upsert，否则进入待处理：\n[{"type":"experience|daily_observation","summary":"简短客观摘要","tags":{"topic":[],"scene":[],"entity":[],"effect":"historical_context|temporary_state"},"confidence":0-100,"source":"user_explicit|assistant_inferred"}]\n只保存对未来聊天确有价值的新信息，普通寒暄不要生成候选。` : 'candidates 必须返回空数组。'}\n</memory_sidecar_protocol>`;
     }
 
     function parseJsonLoose(text) {
@@ -478,39 +657,59 @@
         }
     }
 
-    function applyStatus(chat, payload, report) {
+    function applyStatus(chat, payload, report, applyContext = {}) {
         if (!payload || typeof payload !== 'object' || !payload.fields || typeof payload.fields !== 'object') return;
         const descriptor = findTable(chat, isCurrentStateTable, { forCapture: true });
         if (!descriptor) return;
         const { template, table } = descriptor;
         const data = ensureTableData(chat, template, table);
+        const days = Math.max(1, Math.min(7, Number(payload.validDays) || 3));
+        const expiresAt = Date.now() + days * 86400000;
         const context = {
             source: payload.source === 'user_explicit' ? 'user_explicit' : 'assistant_inferred',
             confidence: Math.max(0, Math.min(100, Number(payload.confidence) || 0)),
             inferredRuntimeOnly: true,
             preferTableDirect: true,
             runtimeReason: '当前状态的模型推断只保留在会话运行态',
+            runtimeExpiresAt: expiresAt,
+            roundId: applyContext.roundId || null,
+            statusMeta: ensureMemoryTables(chat).statusMeta,
             fieldResults: []
         };
         setFields(chat, template, table, data, payload.fields, report, '当前状态', context);
-        if (!context.anyChanged) return;
+        if (!context.anyChanged && !context.anyRefreshed) return;
         const timeField = fieldBySemantic(table, 'state_recorded_at') || fieldBySemantic(table, 'updated_at');
         if (timeField && canEditField(chat, template, table, timeField)) data[timeField.id] = nowText();
         const validField = fieldBySemantic(table, 'state_expires_at');
         if (validField && canEditField(chat, template, table, validField)) {
-            const days = Math.max(1, Math.min(7, Number(payload.validDays) || 3));
-            const expires = new Date(Date.now() + days * 86400000);
+            const expires = new Date(expiresAt);
             data[validField.id] = expires.toISOString().slice(0, 10);
         }
         const state = ensureMemoryTables(chat);
-        context.fieldResults.filter(item => item.changed).forEach(item => {
+        context.fieldResults.filter(item => item.changed || item.refreshed).forEach(item => {
             state.statusMeta[item.fieldId] = {
                 source: item.source,
                 evidence: item.assessment.sourceEvidence,
                 confidence: item.confidence,
                 route: item.assessment.route,
+                roundId: applyContext.roundId || null,
+                expiresAt,
+                refreshed: item.refreshed === true,
                 updatedAt: Date.now()
             };
+        });
+        report.refreshedFields ||= [];
+        context.fieldResults.filter(item => item.refreshed && item.assessment.route !== 'runtime_only').forEach(item => {
+            report.refreshedFields.push({
+                templateId: template.id,
+                tableId: table.id,
+                fieldId: item.fieldId,
+                label: `${table.name} / ${item.field.key}（本轮确认）`,
+                oldValue: cloneValue(item.before),
+                newValue: cloneValue(item.value),
+                refreshed: true,
+                storage: 'formal'
+            });
         });
     }
 
@@ -724,25 +923,52 @@
 
     async function applySidecar(chat, payload, context = {}) {
         const state = ensureMemoryTables(chat);
-        const report = { at: Date.now(), changed: [], runtimeChanged: [], pendingFieldProposals: [], rejected: [], error: '', roundId: context.roundId || null };
+        const report = { at: Date.now(), changed: [], runtimeChanged: [], changedFields: [], pendingFieldProposals: [], rejected: [], error: '', roundId: context.roundId || null };
         if (!state.enabled || !payload || typeof payload !== 'object') return report;
+        const beforeData = Core.clone ? Core.clone(chat.memoryTables?.data || {}) : JSON.parse(JSON.stringify(chat.memoryTables?.data || {}));
+        const beforeRuntimeFields = Core.clone
+            ? Core.clone(chat.memoryTables?.runtimeState?.fieldValues || {})
+            : JSON.parse(JSON.stringify(chat.memoryTables?.runtimeState?.fieldValues || {}));
         const mutate = () => {
             const currentState = ensureMemoryTables(chat);
             migrateCurrentStateReviewBatches(chat, report);
-            applyStatus(chat, payload.status, report);
+            applyStatus(chat, payload.status, report, context);
             applyTaskOps(chat, payload.taskOps, report, context);
             applyCandidates(chat, payload.candidates, report, context);
             flushFieldReviewBatches(chat, report, context);
+            const formalChanges = collectLiveTableChanges(chat, beforeData);
+            const runtimeChanges = collectRuntimeFieldChanges(chat, beforeRuntimeFields);
+            const refreshedFields = Array.isArray(report.refreshedFields) ? report.refreshedFields : [];
+            const mergedChanges = [...formalChanges, ...runtimeChanges, ...refreshedFields];
+            const seenChanges = new Set();
+            report.changedFields = mergedChanges.filter(change => {
+                const key = `${change.templateId}::${change.tableId}::${change.rowId || 'single'}::${change.fieldId}::${change.storage || 'formal'}`;
+                if (seenChanges.has(key)) return false;
+                seenChanges.add(key);
+                return true;
+            });
+            delete report.refreshedFields;
+            if (report.changedFields.length) {
+                const domain = Kernel.get('domain');
+                domain?.pushMemoryHistory?.(chat, report.changedFields, {
+                    source: 'sidecar_chat_v2_15_r0b',
+                    snapshot: beforeData,
+                    activityRoundId: context.roundId || null
+                });
+            }
             report.pendingProposalCount = Array.isArray(report.pendingFieldProposals) ? report.pendingFieldProposals.length : 0;
             delete report.pendingFieldProposals;
             currentState.lastApplyReport = report;
             currentState.history.push(report);
             currentState.history = currentState.history.slice(-MAX_HISTORY);
-            if (report.changed.length) {
-                chat.memoryTables.lastChangedFieldPaths = report.changed.slice(-100);
+            if (report.changed.length || report.changedFields.length) {
                 if (window.MemoryTablePolicy) window.MemoryTablePolicy.clearRetrievalCache(chat);
             }
-            return { changed: true, report };
+            return {
+                changed: !!(report.changed.length || report.runtimeChanged.length || report.changedFields.length || report.pendingProposalCount),
+                report,
+                changedFields: report.changedFields
+            };
         };
         try {
             const gateway = Kernel?.get?.('writeGateway') || Kernel?.get?.('writeCoordinator');

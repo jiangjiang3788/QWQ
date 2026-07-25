@@ -1,0 +1,19 @@
+QWQ V2.15-R0B 当前状态整表刷新修复验证
+
+结果：PASS
+
+验证项目：
+- 当前状态全部非系统字段进入 sidecar 检查范围
+- important=false 的角色字段不再被提示词过滤
+- 表级 extractPrompt 与字段级 aiHint 注入提示词
+- fresh=false 不覆盖、不计数
+- 用户明确值写正式档案
+- AI 推断写运行态并显示 AI 判断标签
+- 运行态变化进入本轮更新记录、计数和高亮
+- 下一轮清除上一轮更新显示
+- 正式确认清除旧运行态推断
+- 普通模式显示存在运行态值的隐藏角色字段
+- 全量 76 个测试通过
+- JavaScript 语法检查通过
+- MEMORY ARCHITECTURE CHECK: PASS
+- V2.9-R11 REFACTOR BASELINE: PASS

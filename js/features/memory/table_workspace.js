@@ -10,6 +10,7 @@
     const TableEditor = Kernel.require('tableEditor');
     const UpdateActivity = Kernel.require('updateActivity');
     const PolicyResolver = Kernel.get('policyResolver');
+    const FieldPolicy = Kernel.get('fieldPolicy');
 
     function descriptors(chat, templates) {
         const result = [];
@@ -41,9 +42,14 @@
         return { descriptors: items, active };
     }
 
-    function visibleColumns(table, state) {
+    function visibleColumns(table, state, chat = null, templateId = '') {
         const jsonMode = state.viewMode === 'json' && (!Policy || Policy.isDesktopJsonAvailable());
-        return (table.columns || []).filter(field => jsonMode || field.important !== false);
+        const isCurrentState = (Policy?.normalizeSystemRole?.(table?.systemRole, table) || String(table?.systemRole || '')) === 'current_state';
+        return (table.columns || []).filter(field => {
+            if (jsonMode || field.important !== false) return true;
+            if (!isCurrentState || !chat || !templateId) return false;
+            return !!FieldPolicy?.getRuntimeEntry?.(chat, templateId, table.id, field.id);
+        });
     }
 
     function matchesSearch(state, parts) {
@@ -86,7 +92,7 @@
             state,
             interactionContext: config.interactionContext || null,
             helpers: {
-                getVisibleColumnsForMode: table => visibleColumns(table, state),
+                getVisibleColumnsForMode: table => visibleColumns(table, state, chat, active.template.id),
                 matchesSearch: parts => matchesSearch(state, parts),
                 renderFieldEditor,
                 getTableRuntimePolicy: runtimePolicy

@@ -5,6 +5,7 @@
     if (!Kernel) throw new Error('记忆内核未加载');
     const Core = Kernel.core;
     const Policy = Kernel.get('policy');
+    const FieldPolicy = Kernel.get('fieldPolicy');
 
     const WORKSPACES = Object.freeze({
         memory: Object.freeze({ id: 'memory', label: '记忆', defaultView: 'tables' }),
@@ -98,11 +99,15 @@
         const data = chat?.memoryTables?.data?.[descriptor.template.id]?.[descriptor.table.id] || {};
         const values = (descriptor.table.columns || [])
             .filter(field => field.important !== false)
-            .map(field => ({ key: field.key, value: data[field.id] }))
+            .map(field => {
+                const runtimeEntry = FieldPolicy?.getRuntimeEntry?.(chat, descriptor.template.id, descriptor.table.id, field.id);
+                return { key: field.key, value: runtimeEntry ? runtimeEntry.value : data[field.id], runtime: !!runtimeEntry };
+            })
             .filter(item => item.value !== undefined && item.value !== null && item.value !== '' && (!Array.isArray(item.value) || item.value.length));
         if (!values.length) return { title: '暂无当前状态', detail: '聊天中出现明确变化后会自动更新。' };
-        const headline = values.slice(0, 2).map(item => Array.isArray(item.value) ? item.value.join('、') : String(item.value)).join(' · ');
-        const detail = values.slice(2, 5).map(item => `${item.key}：${Array.isArray(item.value) ? item.value.join('、') : item.value}`).join(' · ');
+        const display = item => `${Array.isArray(item.value) ? item.value.join('、') : String(item.value)}${item.runtime ? '（AI判断）' : ''}`;
+        const headline = values.slice(0, 2).map(display).join(' · ');
+        const detail = values.slice(2, 5).map(item => `${item.key}：${display(item)}`).join(' · ');
         return { title: headline || '当前状态', detail: detail || '状态会随聊天同请求更新。' };
     }
 

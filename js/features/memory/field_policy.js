@@ -130,13 +130,73 @@
             value: Core.clone(value),
             source: meta.source || 'assistant_inferred',
             confidence: Math.max(0, Math.min(100, Number(meta.confidence) || 0)),
+            evidence: meta.evidence || normalizeEvidenceSource(meta.source),
+            route: meta.route || 'runtime_only',
+            roundId: meta.roundId || null,
+            reason: meta.reason || '',
+            fieldKey: meta.fieldKey || '',
+            tableName: meta.tableName || '',
+            expiresAt: Number(meta.expiresAt) > 0 ? Number(meta.expiresAt) : 0,
             updatedAt: Date.now()
         };
         return { before, after: state.fieldValues[templateId][tableId][fieldId] };
     }
 
-    function getRuntimeEntry(chat, templateId, tableId, fieldId) {
-        return chat?.memoryTables?.runtimeState?.fieldValues?.[templateId]?.[tableId]?.[fieldId] || null;
+    function isRuntimeEntryActive(entry, now = Date.now()) {
+        if (!entry || typeof entry !== 'object') return false;
+        const expiresAt = Number(entry.expiresAt) || 0;
+        return !expiresAt || expiresAt >= Number(now || Date.now());
+    }
+
+    function getRuntimeEntry(chat, templateId, tableId, fieldId, options = {}) {
+        const entry = chat?.memoryTables?.runtimeState?.fieldValues?.[templateId]?.[tableId]?.[fieldId] || null;
+        if (!entry) return null;
+        if (options.includeExpired === true || isRuntimeEntryActive(entry, options.now)) return entry;
+        return null;
+    }
+
+    function pruneExpiredRuntimeValues(chat, now = Date.now()) {
+        const fieldValues = chat?.memoryTables?.runtimeState?.fieldValues;
+        if (!fieldValues || typeof fieldValues !== 'object') return [];
+        const removed = [];
+        Object.entries(fieldValues).forEach(([templateId, tables]) => {
+            Object.entries(tables || {}).forEach(([tableId, fields]) => {
+                Object.entries(fields || {}).forEach(([fieldId, entry]) => {
+                    if (isRuntimeEntryActive(entry, now)) return;
+                    removed.push({ templateId, tableId, fieldId, entry: Core.clone(entry) });
+                    delete fields[fieldId];
+                });
+                if (!Object.keys(fields || {}).length) delete tables[tableId];
+            });
+            if (!Object.keys(tables || {}).length) delete fieldValues[templateId];
+        });
+        return removed;
+    }
+
+    function clearRuntimeValue(chat, templateId, tableId, fieldId) {
+        const tableState = chat?.memoryTables?.runtimeState?.fieldValues?.[templateId]?.[tableId];
+        if (!tableState || !Object.prototype.hasOwnProperty.call(tableState, fieldId)) return null;
+        const before = tableState[fieldId];
+        delete tableState[fieldId];
+        if (!Object.keys(tableState).length) delete chat.memoryTables.runtimeState.fieldValues[templateId][tableId];
+        if (!Object.keys(chat.memoryTables.runtimeState.fieldValues[templateId] || {}).length) {
+            delete chat.memoryTables.runtimeState.fieldValues[templateId];
+        }
+        return before;
+    }
+
+    function getPresentationState(chat, templateId, tableId, table, field, formalValue, options = {}) {
+        const runtimeId = options.rowId ? `${options.rowId}::${field?.id}` : field?.id;
+        const runtimeEntry = runtimeId ? getRuntimeEntry(chat, templateId, tableId, runtimeId) : null;
+        const useRuntime = options.useRuntime !== false && !!runtimeEntry;
+        return {
+            formalValue,
+            runtimeEntry,
+            displayValue: useRuntime ? runtimeEntry.value : formalValue,
+            isRuntime: useRuntime,
+            runtimeId,
+            effectiveCommitMode: effectiveCommitMode(field, table)
+        };
     }
 
     function getDisplayValue(chat, templateId, tableId, table, field, formalValue, options = {}) {
@@ -180,7 +240,11 @@
         assess,
         ensureRuntimeState,
         setRuntimeValue,
+        isRuntimeEntryActive,
         getRuntimeEntry,
+        pruneExpiredRuntimeValues,
+        clearRuntimeValue,
+        getPresentationState,
         getDisplayValue,
         summarizeRoutes,
         describe

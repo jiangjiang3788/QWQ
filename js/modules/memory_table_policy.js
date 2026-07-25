@@ -228,6 +228,7 @@
         if (!['normal', 'json'].includes(state.viewMode)) state.viewMode = 'normal';
         if (state.activeTableId === undefined) state.activeTableId = null;
         if (state.lastRoundId === undefined) state.lastRoundId = null;
+        if (!Object.prototype.hasOwnProperty.call(state, 'updateActivityScope')) state.updateActivityScope = null;
         return state;
     }
 
@@ -270,11 +271,7 @@
     function beginRound(chat, options) {
         if (!chat || options?.isBackground || options?.isSummary) return null;
         const runtime = ensureRuntimeState(chat);
-        // “本次更新”是轮次级瞬时状态。每轮开始即刷新；本轮没有写入时不显示旧轮次标记。
-        if (chat.memoryTables && typeof chat.memoryTables === 'object') {
-            chat.memoryTables.currentUpdateEntryId = null;
-            chat.memoryTables.lastChangedFieldPaths = [];
-        }
+        Kernel?.get?.('fieldPolicy')?.pruneExpiredRuntimeValues?.(chat);
         const history = Array.isArray(chat.history) ? chat.history : [];
         let startIndex = history.length;
         for (let i = history.length - 1; i >= 0; i--) {
@@ -292,6 +289,8 @@
             startedAt: Date.now()
         };
         runtime.activeRound = token;
+        runtime.updateActivityScope = { type: 'round', roundId: token.id, startedAt: token.startedAt };
+        chat.memoryTables.lastChangedFieldPaths = [];
         return token;
     }
 
@@ -329,6 +328,9 @@
         runtime.rounds = runtime.rounds.slice(-500);
         runtime.lastRoundId = round.id;
         runtime.activeRound = null;
+        if (runtime.updateActivityScope?.type === 'round' && runtime.updateActivityScope.roundId === round.id) {
+            runtime.updateActivityScope.completedAt = round.completedAt;
+        }
         if (window.MemoryTableFeedback) window.MemoryTableFeedback.finalizeRound(chat, round.id);
         return round;
     }

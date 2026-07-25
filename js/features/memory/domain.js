@@ -43,6 +43,7 @@
         if (!chat.memoryTables.data || typeof chat.memoryTables.data !== 'object') chat.memoryTables.data = {};
         if (!chat.memoryTables.lockedFields || typeof chat.memoryTables.lockedFields !== 'object') chat.memoryTables.lockedFields = {};
         if (!Array.isArray(chat.memoryTables.history)) chat.memoryTables.history = [];
+        if (!Object.prototype.hasOwnProperty.call(chat.memoryTables, 'updateActivityScope')) chat.memoryTables.updateActivityScope = null;
         if (!Array.isArray(chat.memoryTables.lastChangedFieldPaths)) chat.memoryTables.lastChangedFieldPaths = [];
         if (chat.memoryTables.autoUpdateEnabled === undefined) chat.memoryTables.autoUpdateEnabled = false;
         if (!Number.isFinite(parseInt(chat.memoryTables.autoUpdateInterval, 10))) chat.memoryTables.autoUpdateInterval = 100;
@@ -541,20 +542,40 @@
         return normalizeFieldValue(field, raw);
     }
 
+    function getFieldPresentation(chat, templateId, tableId, table, field, options = {}) {
+        ensureMemoryTableState(chat);
+        const formalValue = options.rowId
+            ? normalizeFieldValue(field, findRowById(chat, templateId, table, options.rowId)?.cells?.[field.id])
+            : getFieldValue(chat, templateId, tableId, field);
+        if (!FieldPolicy?.getPresentationState) {
+            return { formalValue, displayValue: formalValue, runtimeEntry: null, isRuntime: false };
+        }
+        const state = FieldPolicy.getPresentationState(chat, templateId, tableId, table, field, formalValue, options);
+        return {
+            ...state,
+            formalValue,
+            displayValue: state.isRuntime ? normalizeFieldValue(field, state.displayValue) : formalValue
+        };
+    }
+
     function pushMemoryHistory(chat, changedFields, options = {}) {
         if (!Array.isArray(changedFields) || changedFields.length === 0) return;
         if (!options.skipHistory) {
+            const timestamp = Date.now();
+            const runtime = MemoryPolicy ? MemoryPolicy.ensureRuntimeState(chat) : chat.memoryTables;
+            const roundId = String(options.activityRoundId || runtime?.activeRound?.id || '').trim();
             const entry = {
                 id: createMemoryId('memory_history'),
-                timestamp: Date.now(),
+                timestamp,
                 source: options.source || 'manual',
+                roundId: roundId || null,
                 snapshot: options.snapshot ? deepClone(options.snapshot) : deepClone(chat.memoryTables.data),
                 changedFields
             };
             chat.memoryTables.history.unshift(entry);
-            // 历史记录长期保留；当前更新标记仅指向本轮最近一次实际写入。
-            // beginRound 会先清空该标记，避免无更新轮次继续展示上一轮结果。
-            chat.memoryTables.currentUpdateEntryId = entry.id;
+            chat.memoryTables.updateActivityScope = roundId
+                ? { type: 'round', roundId, startedAt: runtime?.activeRound?.startedAt || timestamp }
+                : { type: 'history', historyId: entry.id, startedAt: timestamp };
             if (chat.memoryTables.history.length > MEMORY_TABLE_HISTORY_LIMIT) {
                 chat.memoryTables.history = chat.memoryTables.history.slice(0, MEMORY_TABLE_HISTORY_LIMIT);
             }
@@ -571,18 +592,36 @@
 
         const oldValue = getFieldValue(chat, templateId, tableId, field);
         const normalized = normalizeFieldValue(field, value);
+        const clearedRuntime = FieldPolicy?.clearRuntimeValue?.(chat, templateId, tableId, field.id);
         chat.memoryTables.data[templateId][tableId][field.id] = normalized;
 
+        const changedFields = [];
         if (!isSameMemoryValue(oldValue, normalized)) {
-            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-            pushMemoryHistory(chat, [{
+            changedFields.push({
                 templateId,
                 tableId,
                 fieldId: field.id,
                 label: field.key,
                 oldValue,
                 newValue: normalized
-            }], options);
+            });
+        }
+        if (clearedRuntime) {
+            changedFields.push({
+                templateId,
+                tableId,
+                fieldId: field.id,
+                label: `${field.key}（已确认正式值）`,
+                oldValue: deepClone(clearedRuntime.value),
+                newValue: normalized,
+                runtime: true,
+                storage: 'runtime',
+                runtimeCleared: true
+            });
+        }
+        if (changedFields.length) {
+            if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
+            pushMemoryHistory(chat, changedFields, options);
         }
     }
 
@@ -709,7 +748,8 @@
         if (!row) return false;
         const oldValue = deepClone(row.cells[field.id]);
         const normalized = normalizeFieldValue(field, value);
-        if (isSameMemoryValue(oldValue, normalized)) return false;
+        const clearedRuntime = FieldPolicy?.clearRuntimeValue?.(chat, templateId, table.id, `${rowId}::${field.id}`);
+        if (isSameMemoryValue(oldValue, normalized) && !clearedRuntime) return false;
         row.cells[field.id] = normalized;
         row.meta ||= {};
         row.meta.updatedAt = Date.now();
@@ -742,15 +782,33 @@
             operationId: options.operationId
         });
         if (MemoryPolicy) MemoryPolicy.clearRetrievalCache(chat);
-        pushMemoryHistory(chat, [{
-            templateId,
-            tableId: table.id,
-            rowId,
-            fieldId: field.id,
-            label: `${table.name} / ${field.key}`,
-            oldValue,
-            newValue: normalized
-        }], options);
+        const changedFields = [];
+        if (!isSameMemoryValue(oldValue, normalized)) {
+            changedFields.push({
+                templateId,
+                tableId: table.id,
+                rowId,
+                fieldId: field.id,
+                label: `${table.name} / ${field.key}`,
+                oldValue,
+                newValue: normalized
+            });
+        }
+        if (clearedRuntime) {
+            changedFields.push({
+                templateId,
+                tableId: table.id,
+                rowId,
+                fieldId: field.id,
+                label: `${table.name} / ${field.key}（已确认正式值）`,
+                oldValue: deepClone(clearedRuntime.value),
+                newValue: normalized,
+                runtime: true,
+                storage: 'runtime',
+                runtimeCleared: true
+            });
+        }
+        pushMemoryHistory(chat, changedFields, options);
         return true;
     }
 
@@ -954,6 +1012,7 @@
         normalizeFieldValue,
         clampFieldValue,
         getFieldValue,
+        getFieldPresentation,
         pushMemoryHistory,
         setFieldValue,
         isSameMemoryValue,
