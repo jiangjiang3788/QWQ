@@ -643,15 +643,20 @@ ${tables.map(table => tablePrompt(chat, table, store)).join('\n\n')}
         element.setAttribute('role', 'button');
         element.setAttribute('tabindex', values.length ? '0' : '-1');
         element.setAttribute('title', '点击进入记忆中的当前状态');
-        const openMemory = () => {
+        element.dataset.memoryCharacterId = String(chat.id || '');
+        element.dataset.memoryTableId = String(table.id || '');
+        const openMemory = event => {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
             if (!values.length) return;
+            global.currentChatId = chat.id;
+            global.currentChatType = 'private';
             if (typeof global.openMemoryTableForCharacter === 'function') {
                 global.openMemoryTableForCharacter(chat.id, table.id);
                 return;
             }
-            global.currentChatId = chat.id;
-            global.currentChatType = 'private';
-            global.showScreen?.('memory-table-screen');
+            global.switchScreen?.('memory-table-screen');
+            global.renderMemoryTableScreen?.();
         };
         element.onclick = openMemory;
         element.onkeydown = event => {

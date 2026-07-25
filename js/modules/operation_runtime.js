@@ -1,4 +1,4 @@
-// OVO Operation Runtime - V2.14 · compact single-user operation history
+// OVO Operation Runtime - V2.15 · manifest-only single-user operation history
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
@@ -419,18 +419,8 @@
         if (!record) return null;
         const preview = createBodyPreview(request.body);
         const contextManifest = safeClone(request.contextManifest || null);
-        // V5.4.3: Context Manifest is the source of truth. PromptTrace remains only for legacy requests.
-        const promptTrace = contextManifest ? null : (global.OVOPromptTrace?.build
-            ? global.OVOPromptTrace.build(request.body || {}, request.promptSources || [], {
-                task: request.task || '',
-                source: request.source || '',
-                provider: request.provider || '',
-                model: request.model || '',
-                operationId: record.id,
-                operationType: record.type || '',
-                scope: record.scope || {}
-            })
-            : null);
+        // V5.4.4: no reverse Prompt inference. Only explicit legacy trace data is preserved for old/imported records.
+        const promptTrace = safeClone(request.promptTrace || null);
         const sourceSummary = summarizeContextManifest(contextManifest);
         const entry = {
             id: request.id || makeId('req'),
@@ -729,13 +719,26 @@
     }
 
     function reportRequest(request, mode) {
+        const manifestSources = Array.isArray(request?.contextManifest?.sources)
+            ? request.contextManifest.sources.map(source => ({
+                id: source.sourceId || '', type: source.domain || source.layer || 'context',
+                title: source.title || source.sourceId || '上下文来源',
+                sent: source.included !== false, evidence: 'context-manifest',
+                chars: Number(source.chars || source.matchedChars) || 0,
+                count: Number(source.count) || 0, reason: source.reason || '', fingerprint: ''
+            }))
+            : [];
+        const legacySources = (request?.promptTrace?.sections || [])
+            .filter(section => !section?.metadata?.verificationView)
+            .map(section => reportSource(section, mode));
         const output = {
             id: request?.id || '', task: request?.task || '', source: request?.source || '', provider: request?.provider || '',
             model: request?.model || '', phase: request?.phase || '', ok: !!request?.ok, status: Number(request?.status) || 0,
             requestChars: Number(request?.requestChars || request?.bodyChars) || 0, messageCount: Number(request?.messageCount) || 0,
             durationMs: Number(request?.durationMs) || 0, errorType: request?.errorType || '', errorMessage: request?.errorMessage || '',
-            promptSummary: safeClone(request?.promptTrace?.summary || null),
-            sources: (request?.promptTrace?.sections || []).filter(section => !section?.metadata?.verificationView).map(section => reportSource(section, mode))
+            sourceSummary: safeClone(request?.sourceSummary || null),
+            contextCoverage: safeClone(request?.contextManifest?.coverage || null),
+            sources: manifestSources.length ? manifestSources : legacySources
         };
         if (mode === 'advanced') {
             output.endpoint = request?.endpoint || '';
@@ -854,7 +857,7 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.14',
+        VERSION: '2.15',
         start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
         complete, skip, fail, cancel, get, getChildren, list, getFacets, getStorageStats, getActive, getCurrent,
         buildOperationReport, exportReport, exportHistory, redactSensitiveText, summarizeContextManifest,

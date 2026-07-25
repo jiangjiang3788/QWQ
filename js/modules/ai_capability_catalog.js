@@ -27,8 +27,8 @@
         { type: 'vision.sticker.batch', title: '批量识别表情包', category: '图片识别', icon: '🧩', tasks: [] },
         { type: 'image.generate.gpt', title: '生成图片', category: '图片生成', icon: '🎨', tasks: ['gpt-image-generation'] },
         { type: 'image.generate.novelai', title: '使用 NovelAI 生成图片', category: '图片生成', icon: '🎨', tasks: ['novelai-image-generation'] },
-        { type: 'call.reply', title: '生成通话回复', category: '通话', icon: '📞', tasks: ['legacy-video-call'] },
-        { type: 'call.summary', title: '生成通话总结', category: '通话', icon: '☎️', tasks: ['legacy-call-summary'] },
+        { type: 'call.reply', title: '生成通话回复', category: '通话', icon: '📞', tasks: ['call.reply', 'legacy-video-call'] },
+        { type: 'call.summary', title: '生成通话总结', category: '通话', icon: '☎️', tasks: ['call.summary', 'legacy-call-summary'] },
         { type: 'interaction.battery', title: '生成电量互动', category: '互动', icon: '🔋', tasks: ['battery-interaction'] },
         { type: 'safety.block.check', title: '判断拉黑与好友申请', category: '关系', icon: '🚫', tasks: ['block-system'] },
         { type: 'ai.request', title: '执行 AI 功能', category: '其他', icon: '✨', tasks: ['generic-ai'] }

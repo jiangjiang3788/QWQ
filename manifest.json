@@ -7,7 +7,7 @@
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "description": "多 App 角色聊天工具；动态记忆 V5.4.3 支持统一上下文治理、真实请求清单、精简操作记录、短期压缩与长期草稿确认",
+  "description": "多 App 角色聊天工具；动态记忆 V5.4.4 完成统一上下文治理、AI 请求入口、Proment/悬浮球收敛、遗留清理与记忆状态栏直达修复",
   "icons": [
     {
       "src": "https://i.postimg.cc/Vk042Snv/5F3BCD91056B989330AE34D11901BD6E.png",

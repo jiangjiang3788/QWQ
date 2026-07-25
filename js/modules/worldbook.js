@@ -1096,6 +1096,7 @@ function renderCategorizedWorldBookList(container, books, selectedIds, idPrefix)
 // V5.4.1：世界书命中、预算和诊断归入世界书领域。
 (function (global) {
     'use strict';
+    let lastDiagnostic = null;
     function provideWorldBookContext(character) {
         if (!character) return { before: '', middle: '', after: '' };
         const policy = Object.assign({ worldBookEnabled: true, worldBookBudget: 2400, worldBookPriority: 20 },
@@ -1165,12 +1166,13 @@ function renderCategorizedWorldBookList(container, books, selectedIds, idPrefix)
             outputChars:String(result.before).length + String(result.middle).length + String(result.after).length,
             sections:{ before:String(result.before).length, middle:String(result.middle).length, after:String(result.after).length }, items
         };
-        try { window.__ovoLastWorldBookDiagnostic = diagnostic; sessionStorage.setItem('ovo_last_worldbook_diagnostic', JSON.stringify(diagnostic)); } catch (_) {}
+        lastDiagnostic = diagnostic;
         return result;
     }
 
     global.WorldBookContextProvider = Object.freeze({
-        VERSION: 'worldbook-context.v1',
-        provide: provideWorldBookContext
+        VERSION: 'worldbook-context.v2',
+        provide: provideWorldBookContext,
+        getLastDiagnostic() { try { return JSON.parse(JSON.stringify(lastDiagnostic)); } catch (_) { return lastDiagnostic; } }
     });
 })(window);

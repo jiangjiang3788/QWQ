@@ -37,3 +37,5 @@ V5.4.3
 - 操作记录收敛为最近20条，并降低请求预览、变化正文和会话存储预算。
 - Context Manifest成为来源真相；PromptTrace只兼容没有Manifest的旧请求。
 - 数据版本继续保持STORE_VERSION=3。
+
+V5.4.4：修复记忆状态栏导航；Proment 仅保留真实 Manifest；移除 PromptTrace 反向推断和旧模拟诊断。

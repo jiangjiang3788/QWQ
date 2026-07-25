@@ -224,7 +224,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     }
 
     function bindScreenEvents(screen, chat, store, table) {
-        screen.querySelectorAll('[data-target]').forEach(button => button.addEventListener('click', () => global.showScreen?.(button.dataset.target)));
+        screen.querySelectorAll('[data-target]').forEach(button => button.addEventListener('click', () => global.switchScreen?.(button.dataset.target)));
         screen.querySelectorAll('[data-mv5-table]').forEach(button => button.addEventListener('click', () => {
             state.activeTableId = button.dataset.mv5Table;
             state.search = state.category = state.tag = '';
@@ -755,7 +755,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             state.page = 1;
             state.resetScroll = true;
         }
-        global.showScreen?.('memory-table-screen');
+        global.switchScreen?.('memory-table-screen');
         render();
     }
 

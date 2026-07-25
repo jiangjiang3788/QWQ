@@ -43,7 +43,7 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context, { filename: 'operation_runtime.js' });
 const runtime = windowObject.OVOOperationRuntime;
 assert(runtime, 'Operation runtime missing');
-assert.strictEqual(runtime.VERSION, '2.14');
+assert.strictEqual(runtime.VERSION, '2.15');
 
 const op = runtime.start('chat.reply', { title: '测试请求', scope: { characterId: 'char_1' } });
 const manifest = {
@@ -76,7 +76,7 @@ assert(runtime.getStorageStats().budget === 260000, 'Storage budget not converge
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 assert(html.includes('proment-source-registry-list'));
 assert(html.includes('proment-real-request-content'));
-assert(html.includes('proment_governance.js?v=543'));
+assert(html.includes('proment_governance.js?v=544'));
 assert(!html.includes('id="proment-preview-context"'), 'Old simulation preview should not remain visible');
 assert(!html.includes('id="proment-compare-runtime"'), 'Old design/runtime comparison should not remain visible');
 assert(!html.includes('id="proment-preview-worldbook"'), 'Old worldbook diagnostic should not remain visible');

@@ -2,7 +2,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = 'ai-request-gateway.v1';
+    const VERSION = 'ai-request-gateway.v2';
     const TASK_ALIASES = Object.freeze({
         'private-chat': 'chat.reply',
         'background-private-chat': 'chat.background',
@@ -15,8 +15,8 @@
         'theater-character-generation': 'theater.character.generate',
         'battery-interaction': 'interaction.battery',
         'block-system': 'relationship.evaluate',
-        'legacy-video-call': 'call.reply',
-        'legacy-call-summary': 'call.summary',
+        'legacy-video-call': 'call.reply', // import/runtime compatibility only
+        'legacy-call-summary': 'call.summary', // import/runtime compatibility only
         'gpt-image-generation': 'image.generate.gpt',
         'novelai-image-generation': 'image.generate.novelai',
         'vector-embedding': 'memory.embedding'

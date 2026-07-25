@@ -1,16 +1,4 @@
-QWQ 动态记忆 V5.4.3 完整代码包
-
-关键新增：
-- js/features/settings/proment_governance.js
-- tests/v5_4_3_governance.test.js
-- README_V5_4_3.md
-- TEST_REPORT_V5_4_3.txt
-
-关键修改：
-- index.html：Proment改为来源注册表与最近真实请求。
-- js/modules/operation_runtime.js：Context Manifest优先、sourceSummary、最近20条记录。
-- js/modules/floating_ball.js：只显示来源摘要，移除遗留报告/筛选死代码。
-- css/settings.css、css/modules/quick_dock.css：治理与摘要界面。
-
-数据版本：STORE_VERSION=3
-升级方式：覆盖同名代码文件，不重载空表，不清空已有记录。
+QWQ 动态记忆 V5.4.4 完整代码包
+STORE_VERSION=3
+文件数：163
+重点：状态栏导航修复、真实 Proment、移除 PromptTrace 反向推断、遗留清理。

@@ -1,4 +1,4 @@
-// QuickDock · V2.14：运行状态、来源摘要与数据结果；完整上下文由 Proment 管理。
+// QuickDock · V2.15：运行状态、来源摘要与数据结果；完整上下文由 Proment 管理。
 (() => {
     'use strict';
 
@@ -329,9 +329,16 @@
         return `${(chars / 1000).toFixed(chars < 10000 ? 1 : 0)}k 字符`;
     }
 
+    const PROMPT_SOURCE_META = Object.freeze({
+        identity: { title: '身份与设定', icon: '👤' }, knowledge: { title: '世界书与知识', icon: '📚' },
+        memory: { title: '记忆', icon: '🧠' }, conversation: { title: '聊天历史', icon: '💬' },
+        runtime: { title: '运行环境', icon: '⏱️' }, protocol: { title: '输出协议', icon: '📐' },
+        tools: { title: '工具定义', icon: '🛠️' }, request: { title: '请求参数', icon: '⚙️' },
+        context: { title: '上下文来源', icon: '📎' }
+    });
+
     function promptSourceMeta(type) {
-        const meta = window.OVOPromptTrace?.TYPE_META?.[type];
-        return meta || { title: '其他上下文', icon: '📎' };
+        return PROMPT_SOURCE_META[type] || { title: '其他上下文', icon: '📎' };
     }
 
     function promptSourceStateLabel(section) {

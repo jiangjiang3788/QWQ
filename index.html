@@ -45,7 +45,7 @@
 <link href="css/modules/theater.css" rel="stylesheet"/>
 <link href="css/modules/worldbook.css" rel="stylesheet"/>
 <link href="css/modules/journal.css" rel="stylesheet"/>
-<link href="css/modules/memory_v3.css?v=520" rel="stylesheet"/>
+<link href="css/modules/memory_v3.css?v=544" rel="stylesheet"/>
 <link href="css/modules/app_workspace.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
@@ -153,7 +153,7 @@
 </button>
 </div>
 </header>
-<div id="memory-live-state-bar" class="memory-live-state-bar" style="display:none;"></div>
+<button id="memory-live-state-bar" class="memory-live-state-bar" type="button" style="display:none;" aria-label="打开当前角色记忆"></button>
 <header class="app-header" id="chat-room-header-select" style="display: none;">
 <button class="action-btn" id="cancel-multi-select-btn">取消</button>
 <div class="title-container">
@@ -5318,34 +5318,40 @@
 <div class="kkt-settings-container">
 <div class="proment-overview" id="proment-overview">
 <div class="proment-overview-head">
-<div><strong>AI 上下文治理</strong><p>所有真实请求来源在同一注册中心登记；开关、预算与最近请求使用同一份编译结果。</p></div>
-<span class="proment-stage-badge">统一治理</span>
+<div><strong>AI 上下文治理</strong><p>所有真实请求来源、预算与排除原因统一由 Context Manifest 登记。</p></div>
+<span class="proment-stage-badge">正式版</span>
 </div>
 <div class="proment-status-grid" id="proment-status-grid"></div>
 <div class="proment-policy-grid">
-<label class="proment-policy-card"><span><b>世界书</b><small>直接控制真实请求</small></span><input id="proment-worldbook-enabled" type="checkbox" checked></label>
+<label class="proment-policy-card"><span><b>世界书</b><small>真实控制世界书是否进入请求</small></span><input id="proment-worldbook-enabled" type="checkbox" checked></label>
 <label class="proment-policy-card proment-policy-number"><span><b>世界书预算</b><small>真实请求最大字符数</small></span><input id="proment-worldbook-budget" min="0" step="100" type="number" value="2400"></label>
 <label class="proment-policy-card proment-policy-number"><span><b>世界书优先级</b><small>数值越小越优先</small></span><input id="proment-worldbook-priority" min="1" max="99" type="number" value="20"></label>
-<label class="proment-policy-card"><span><b>结构化记忆</b><small>直接控制真实请求</small></span><input id="proment-structured-enabled" type="checkbox" checked></label>
+<label class="proment-policy-card"><span><b>结构化记忆</b><small>真实控制动态记忆是否进入请求</small></span><input id="proment-structured-enabled" type="checkbox" checked></label>
 <label class="proment-policy-card proment-policy-number"><span><b>记忆预算</b><small>真实请求最大字符数</small></span><input id="proment-structured-budget" min="0" step="100" type="number" value="1800"></label>
 <label class="proment-policy-card proment-policy-number"><span><b>记忆优先级</b><small>数值越小越优先</small></span><input id="proment-structured-priority" min="1" max="99" type="number" value="30"></label>
-<label class="proment-policy-card"><span><b>最近聊天</b><small>直接控制真实请求</small></span><input id="proment-history-enabled" type="checkbox" checked></label>
-<label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>最多发送的历史消息</small></span><input id="proment-history-count" min="1" max="200" type="number" value="30"></label>
-<label class="proment-policy-card"><span><b>当前状态</b><small>控制角色实时状态注入</small></span><input id="proment-status-enabled" type="checkbox" checked></label>
+<label class="proment-policy-card"><span><b>最近聊天</b><small>真实控制历史消息是否进入请求</small></span><input id="proment-history-enabled" type="checkbox" checked></label>
+<label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>真实请求最多保留条数</small></span><input id="proment-history-count" min="1" max="200" type="number" value="30"></label>
+<label class="proment-policy-card"><span><b>当前状态</b><small>真实控制角色状态是否注入</small></span><input id="proment-status-enabled" type="checkbox" checked></label>
 </div>
-<div class="proment-independent-note"><b>设置与真实请求已经统一</b><span>关闭来源后，真实请求不会发送该内容；最近请求清单会显示纳入、排除、字符数和具体原因。</span></div>
+<div class="proment-independent-note"><b>这里的开关和预算直接作用于真实 AI 请求</b><span>预览与真实请求不再使用两套逻辑；最近一次真实请求由统一 Context Manifest 展示。</span></div>
 <div class="proment-quick-links">
 <button class="btn btn-secondary" id="proment-open-worldbook" type="button">世界书</button>
 <button class="btn btn-secondary" id="proment-open-structured" type="button">结构化记忆</button>
-<button class="btn btn-primary" id="proment-refresh-governance" type="button">刷新治理视图</button>
-<button class="btn btn-secondary" id="proment-copy-real-manifest" type="button">复制真实清单</button>
+<button class="btn btn-secondary" id="proment-refresh-governance" type="button">刷新真实请求</button>
+<button class="btn btn-secondary" id="proment-copy-real-manifest" type="button">复制来源清单</button>
 <button class="btn btn-secondary" id="proment-cancel-ai-requests" type="button">取消全部 AI 请求</button>
 </div>
 <div class="proment-governance-grid">
-<section class="proment-governance-card"><div class="proment-governance-head"><div><b>来源注册表</b><small>每一种可发送内容只登记一次</small></div></div><div id="proment-source-registry-list" class="proment-source-registry-list"></div></section>
-<section class="proment-governance-card"><div class="proment-governance-head"><div><b>最近真实请求</b><small>直接读取 Context Manifest，不做反向猜测</small></div></div><div id="proment-real-request-content" class="proment-real-request-content"></div></section>
+<section class="proment-governance-card">
+<div class="proment-governance-head"><div><b>来源注册表</b><small>所有允许进入 AI 的来源只在这里登记一次</small></div></div>
+<div class="proment-source-registry-list" id="proment-source-registry-list"></div>
+</section>
+<section class="proment-governance-card">
+<div class="proment-governance-head"><div><b>最近真实请求</b><small>实际发送来源、排除原因和请求内容</small></div></div>
+<div class="proment-real-request-content" id="proment-real-request-content"></div>
+</section>
 </div>
-<p class="proment-stage-note">完整 Prompt 不再放入悬浮球。悬浮球显示运行状态和来源摘要；Proment负责来源治理、模板配置以及最近真实请求。</p>
+<p class="proment-stage-note">Proment 只展示真实 Context Manifest 和系统提示词模板，不再生成设计预览、反向 Prompt 猜测或重复诊断。</p>
 </div>
 <div style="margin-bottom: 15px; padding-top: 5px; padding-left: 8px;">
 <div class="kkt-item-label" style="font-weight: bold; color: var(--primary-color);">系统提示词自定义</div>
@@ -6081,7 +6087,7 @@
 <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <script src="js/core/deprecated_feature_policy.js?v=540"></script> <!-- V5.4 已停用业务的统一关闭与防泄漏 -->
 <script src="js/core/context_source_registry.js?v=542"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
-<script src="js/core/context_compiler.js?v=543"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
+<script src="js/core/context_compiler.js?v=544"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
 <script src="js/core/api_service_registry.js"></script> <!-- 统一 API 角色、端点与向量请求 -->
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
@@ -6096,12 +6102,11 @@
 <script src="js/modules/chat_list.js"></script>
 <script src="js/modules/character_create.js"></script>
 <script src="js/modules/chat_render.js"></script>
-<script src="js/modules/prompt_trace.js"></script>
 <script src="js/modules/ai_capability_catalog.js"></script>
 <script src="js/modules/operation_runtime.js"></script>
 <script src="js/modules/ai_request_runtime.js"></script>
-<script src="js/core/ai_request_gateway.js?v=542"></script> <!-- V5.4.2 所有AI任务统一请求入口 -->
-    <script src="js/modules/chat_ai.js?v=542"></script>
+<script src="js/core/ai_request_gateway.js?v=544"></script> <!-- V5.4.2 所有AI任务统一请求入口 -->
+    <script src="js/modules/chat_ai.js?v=544"></script>
 <script src="js/modules/chat_features.js"></script>
 <script src="js/modules/avatar_recognition.js"></script>
 <script src="js/modules/chat_ops.js"></script>
@@ -6109,7 +6114,7 @@
 <script src="js/persona_profile.js"></script> <!-- 用户档案与角色资料卡 -->
 <!-- Settings feature controllers (V2.9-R5) -->
 <script src="js/features/settings/magic_room.js"></script>
-<script src="js/features/settings/proment_governance.js?v=543"></script> <!-- V5.4.3 真实来源治理视图 -->
+<script src="js/features/settings/proment_governance.js?v=544"></script>
 <script src="js/features/settings/api_controller.js"></script>
 <script src="js/features/settings/presets.js"></script>
 <script src="js/features/settings/customization.js"></script>
@@ -6129,11 +6134,11 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/features/memory_v3/memory_core_v3.js?v=540"></script>
-<script src="js/features/memory_v3/memory_rounds_v3.js?v=540"></script>
-<script src="js/features/memory_v3/memory_engine_v3.js?v=540"></script>
-<script src="js/features/memory_v3/memory_ui_v3.js?v=540"></script>
-<script src="js/features/memory_v3/memory_compat_v3.js?v=540"></script>
+<script src="js/features/memory_v3/memory_core_v3.js?v=544"></script>
+<script src="js/features/memory_v3/memory_rounds_v3.js?v=544"></script>
+<script src="js/features/memory_v3/memory_engine_v3.js?v=544"></script>
+<script src="js/features/memory_v3/memory_ui_v3.js?v=544"></script>
+<script src="js/features/memory_v3/memory_compat_v3.js?v=544"></script>
 <script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
 <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->

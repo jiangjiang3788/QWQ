@@ -372,7 +372,7 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         });
     }
 
-    const diagnostic = window.__ovoLastWorldBookDiagnostic;
+    const diagnostic = window.WorldBookContextProvider?.getLastDiagnostic?.() || null;
     if (diagnostic && diagnostic.characterId === character.id && Array.isArray(diagnostic.items)) {
         const included = diagnostic.items.filter(item => item.included);
         const content = included.map(item => String(item.content || '').slice(0, Number(item.injectedChars) || String(item.content || '').length)).join('\n\n');
@@ -859,27 +859,6 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             // 最终 payload 防线：结构化档案启用且已绑定模板时，任何自定义模板或节点分支都不能静默丢失档案。
             systemPrompt = ensureStructuredArchivePromptInjection(chat, systemPrompt);
             systemPrompt = window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(systemPrompt) || systemPrompt;
-            // V14.7: capture the exact private-chat system prompt for Proment diagnostics.
-            // This is a read-only runtime snapshot and does not alter request construction.
-            try {
-                window.__ovoLastPromptSnapshot = {
-                    version: 'prompt-snapshot.v1',
-                    capturedAt: Date.now(),
-                    taskType: 'private_chat',
-                    characterId: chat.id,
-                    characterName: chat.remarkName || chat.name || chat.realName || '未命名',
-                    provider: provider || db?.apiSettings?.provider || '',
-                    model: db?.apiSettings?.model || '',
-                    systemPrompt: String(systemPrompt || ''),
-                    systemPromptChars: String(systemPrompt || '').length,
-                    historyCount: Array.isArray(historySlice) ? historySlice.length : 0
-                };
-                try {
-                    sessionStorage.setItem('ovo_last_prompt_snapshot', JSON.stringify(window.__ovoLastPromptSnapshot));
-                } catch (_) {}
-            } catch (snapshotError) {
-                console.warn('[Proment] capture prompt snapshot failed:', snapshotError);
-            }
         } else {
             if (typeof generateGroupSystemPrompt === 'function') {
                 systemPrompt = generateGroupSystemPrompt(chat);
@@ -3904,7 +3883,7 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
     try {
         if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
         const response = await window.OVOAIRequestGateway.send({
-            task: 'legacy-video-call', source: 'chat-ai-video-call', provider, model,
+            task: 'call.reply', source: 'chat-ai-video-call', provider, model,
             endpoint, headers, body: requestBody, timeoutMs: streamEnabled ? 300000 : 180000,
             operationType: 'call.reply', operationStage: '正在生成通话回复',
             promptSources: [
@@ -4121,7 +4100,7 @@ async function generateCallSummary(chat, callContext) {
     try {
         if (!window.OVOAIRequestGateway?.send) throw new Error('统一 AI 请求网关尚未加载');
         const response = await window.OVOAIRequestGateway.send({
-            task: 'legacy-call-summary', source: 'chat-ai-call-summary', provider, model,
+            task: 'call.summary', source: 'chat-ai-call-summary', provider, model,
             endpoint, headers, body: requestBody, timeoutMs: 180000,
             operationType: 'call.summary', operationStage: '正在整理通话记录',
             promptSources: [{ type: 'task_instruction', registryId: 'call.source', title: '通话总结要求', content: prompt, reason: '根据本次通话记录生成客观摘要' }]
