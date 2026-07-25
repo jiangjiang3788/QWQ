@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '3.0.7-v1.5.2';
+    const VERSION = '3.0.7-v1.5.3';
     const STORE_VERSION = 1;
     const LEVELS = new Set(['short', 'medium', 'long']);
     const SOURCES = new Set(['用户明确', 'AI判断']);
@@ -1038,18 +1038,43 @@
         }});
     }
 
+    function resizeModalTextarea(textarea) {
+        if (!textarea || textarea.tagName !== 'TEXTAREA') return;
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.max(textarea.scrollHeight, 72)}px`;
+    }
+
+    function bindModalTextareas(wrap) {
+        const resizeAll = () => wrap.querySelectorAll('textarea').forEach(resizeModalTextarea);
+        wrap.addEventListener('input', event => {
+            if (event.target?.tagName === 'TEXTAREA') resizeModalTextarea(event.target);
+        });
+        requestAnimationFrame(resizeAll);
+        setTimeout(resizeAll, 60);
+    }
+
     function modal(title, body, onSave, options = {}) {
-        document.getElementById('sm-modal')?.remove();
+        const previous = document.getElementById('sm-modal');
+        if (previous) previous.remove();
+        document.body.classList.remove('sm-modal-open');
         const wrap = document.createElement('div');
         wrap.id = 'sm-modal'; wrap.className = `sm-modal-overlay ${options.className || ''}`.trim();
-        wrap.innerHTML = `<div class="sm-modal"><div class="sm-modal-head"><h3>${esc(title)}</h3><button type="button" data-sm-close>×</button></div><form id="sm-modal-form" class="sm-modal-form"><div class="sm-modal-body">${body}</div><div class="sm-modal-foot"><button type="button" class="btn btn-secondary" data-sm-close>取消</button><button type="submit" class="btn btn-primary">保存</button></div></form></div>`;
+        wrap.innerHTML = `<div class="sm-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sm-modal-head"><h3>${esc(title)}</h3><button type="button" data-sm-close aria-label="关闭">×</button></div><form id="sm-modal-form" class="sm-modal-form"><div class="sm-modal-body">${body}</div><div class="sm-modal-foot"><button type="button" class="btn btn-secondary" data-sm-close>取消</button><button type="submit" class="btn btn-primary">保存</button></div></form></div>`;
+        const close = () => {
+            wrap.remove();
+            document.body.classList.remove('sm-modal-open');
+        };
         document.body.appendChild(wrap);
-        wrap.querySelectorAll('[data-sm-close]').forEach(button => button.addEventListener('click', () => wrap.remove()));
+        document.body.classList.add('sm-modal-open');
+        wrap.querySelectorAll('[data-sm-close]').forEach(button => button.addEventListener('click', close));
+        wrap.addEventListener('click', event => { if (event.target === wrap && options.closeOnBackdrop === true) close(); });
         wrap.querySelector('#sm-modal-form').addEventListener('submit', async event => {
             event.preventDefault();
-            try { await onSave(new FormData(event.target), wrap); wrap.remove(); } catch (error) { global.showToast?.(error.message || String(error)); }
+            try { await onSave(new FormData(event.target), wrap); close(); } catch (error) { global.showToast?.(error.message || String(error)); }
         });
+        bindModalTextareas(wrap);
         options.onOpen?.(wrap);
+        requestAnimationFrame(() => wrap.querySelector('.sm-modal-body')?.scrollTo({ top: 0, left: 0 }));
         return wrap;
     }
 
@@ -1078,19 +1103,75 @@
     function openTableEditor(chat, existing) {
         const store = ensureStore(chat);
         const table = existing ? clone(existing) : normalizeTable({ name: '', level: 'short', columns: [{ name: '内容', type: 'longtext' }] }, store.tables.length);
-        const sourceOptions = store.tables.filter(item => item.id !== table.id && item.level === 'short').map(item => `<label><input type="checkbox" name="sourceTableIds" value="${esc(item.id)}" ${table.aggregation.sourceTableIds.includes(item.id) ? 'checked' : ''}>${esc(item.name)}</label>`).join('') || '<span class="sm-help">暂无短期来源表</span>';
+        const sourceOptions = store.tables.filter(item => item.id !== table.id && item.level === 'short').map(item => `<label class="sm-check-row"><input type="checkbox" name="sourceTableIds" value="${esc(item.id)}" ${table.aggregation.sourceTableIds.includes(item.id) ? 'checked' : ''}><span>${esc(item.name)}</span></label>`).join('') || '<span class="sm-help">暂无短期来源表</span>';
         const body = `
-<div class="sm-form-grid"><label>表名<input name="name" value="${esc(table.name)}" required></label><label>表格类型<select name="recordMode"><option value="singleton">KV：左字段 / 右值</option><option value="rows">Rows：多行记录</option></select></label><label>记忆层级<select name="level"><option value="short">短期：随聊天写入</option><option value="medium">中期：积累写入</option><option value="long">长期：仅手动</option></select></label></div>
-<label>用途说明<textarea name="description" rows="3">${esc(table.description)}</textarea></label>
-<label>extractPrompt（AI提取规则）<textarea name="extractPrompt" rows="4" placeholder="说明什么时候提取、如何概括、哪些情况不要写入">${esc(table.extractPrompt)}</textarea></label>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>基本设置</strong></div>
+  <div class="sm-section-body">
+    <div class="sm-form-grid sm-form-grid-3">
+      <label class="sm-field-block"><span>表名</span><input name="name" value="${esc(table.name)}" required></label>
+      <label class="sm-field-block"><span>表格类型</span><select name="recordMode"><option value="singleton">KV：左字段 / 右值</option><option value="rows">Rows：多行记录</option></select></label>
+      <label class="sm-field-block"><span>记忆层级</span><select name="level"><option value="short">短期：随聊天写入</option><option value="medium">中期：积累写入</option><option value="long">长期：仅手动</option></select></label>
+    </div>
+  </div>
+</div>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>用途与AI提取</strong></div>
+  <div class="sm-section-body">
+    <label class="sm-field-block"><span>用途说明</span><textarea name="description" rows="3">${esc(table.description)}</textarea></label>
+    <label class="sm-field-block"><span>extractPrompt（AI提取规则）</span><textarea name="extractPrompt" rows="4" placeholder="说明什么时候提取、如何概括、哪些情况不要写入">${esc(table.extractPrompt)}</textarea></label>
+  </div>
+</div>
 ${columnsEditorHtml(table.columns)}
-<div class="sm-form-section"><strong>短期写入</strong><div class="sm-form-grid"><label><input type="checkbox" name="captureEnabled" ${table.capture.enabled ? 'checked' : ''}>允许随聊天直接写入</label><label>写入方式<select name="writeMode"><option value="upsert">匹配则更新，否则新增</option><option value="append">始终新增</option><option value="replace_latest">覆盖最近一条</option></select></label></div></div>
-<div class="sm-form-section"><strong>分类与标签提示</strong><p class="sm-help">这里只提示AI如何分类和选择表，不作为写入门槛。只要目标表和字段合法，写入不会因分类或标签未命中而被拦截。</p><div class="sm-form-grid"><label>分类提示<input name="routingCategories" value="${esc(table.routing.categories.join('，'))}" placeholder="如：身体状态、当前任务"></label><label>标签提示<input name="routingTags" value="${esc(table.routing.tags.join('，'))}" placeholder="如：睡眠、工作、情绪"></label></div></div>
-<div class="sm-form-section"><strong>聊天中的USER状态栏</strong><label><input type="checkbox" name="chatStatus" ${table.display.chatStatus ? 'checked' : ''}>用这张表显示USER当前状态（建议选择短期KV表，只能有一张）</label></div>
-<div class="sm-form-section"><strong>中期积累</strong><label><input type="checkbox" name="aggregationEnabled" ${table.aggregation.enabled ? 'checked' : ''}>启用积累</label><div class="sm-source-checks">${sourceOptions}</div><div class="sm-form-grid"><label>分类过滤<input name="categoryFilters" value="${esc(table.aggregation.categoryFilters.join('，'))}" placeholder="留空表示全部"></label><label>包含标签<input name="aggregationIncludeTags" value="${esc(table.aggregation.includeTags.join('，'))}"></label><label>排除标签<input name="aggregationExcludeTags" value="${esc(table.aggregation.excludeTags.join('，'))}"></label><label>触发方式<select name="triggerType"><option value="manual">手动</option><option value="record_count">按新增记录数</option></select></label><label>累计条数<input name="triggerCount" type="number" min="1" value="${table.aggregation.triggerCount}"></label></div></div>
-<div class="sm-form-section"><strong>分类和标签注入</strong><div class="sm-form-grid"><label><input type="checkbox" name="injectionEnabled" ${table.injection.enabled ? 'checked' : ''}>允许进入上下文</label><label>限定分类<input name="injectionCategories" value="${esc(table.injection.categories.join('，'))}" placeholder="留空表示不限制分类"></label><label>必须含标签<input name="injectionIncludeTags" value="${esc(table.injection.includeTags.join('，'))}" placeholder="留空表示不限制标签"></label><label>排除标签<input name="injectionExcludeTags" value="${esc(table.injection.excludeTags.join('，'))}"></label></div></div>`;
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>短期写入</strong></div>
+  <div class="sm-section-body">
+    <div class="sm-form-grid">
+      <label class="sm-check-row"><input type="checkbox" name="captureEnabled" ${table.capture.enabled ? 'checked' : ''}><span>允许随聊天直接写入</span></label>
+      <label class="sm-field-block"><span>写入方式</span><select name="writeMode"><option value="upsert">匹配则更新，否则新增</option><option value="append">始终新增</option><option value="replace_latest">覆盖最近一条</option></select></label>
+    </div>
+  </div>
+</div>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>分类与标签提示</strong></div>
+  <div class="sm-section-body">
+    <p class="sm-help">这里只提示AI如何分类和选择表，不作为写入门槛。目标表和字段合法即可写入。</p>
+    <div class="sm-form-grid">
+      <label class="sm-field-block"><span>分类提示</span><input name="routingCategories" value="${esc(table.routing.categories.join('，'))}" placeholder="如：身体状态、当前任务"></label>
+      <label class="sm-field-block"><span>标签提示</span><input name="routingTags" value="${esc(table.routing.tags.join('，'))}" placeholder="如：睡眠、工作、情绪"></label>
+    </div>
+  </div>
+</div>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>聊天中的USER状态栏</strong></div>
+  <div class="sm-section-body"><label class="sm-check-row"><input type="checkbox" name="chatStatus" ${table.display.chatStatus ? 'checked' : ''}><span>用这张表显示USER当前状态（建议选择短期KV表，只能有一张）</span></label></div>
+</div>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>中期积累</strong></div>
+  <div class="sm-section-body">
+    <label class="sm-check-row"><input type="checkbox" name="aggregationEnabled" ${table.aggregation.enabled ? 'checked' : ''}><span>启用积累</span></label>
+    <div class="sm-source-checks">${sourceOptions}</div>
+    <div class="sm-form-grid">
+      <label class="sm-field-block"><span>分类过滤</span><input name="categoryFilters" value="${esc(table.aggregation.categoryFilters.join('，'))}" placeholder="留空表示全部"></label>
+      <label class="sm-field-block"><span>包含标签</span><input name="aggregationIncludeTags" value="${esc(table.aggregation.includeTags.join('，'))}"></label>
+      <label class="sm-field-block"><span>排除标签</span><input name="aggregationExcludeTags" value="${esc(table.aggregation.excludeTags.join('，'))}"></label>
+      <label class="sm-field-block"><span>触发方式</span><select name="triggerType"><option value="manual">手动</option><option value="record_count">按新增记录数</option></select></label>
+      <label class="sm-field-block"><span>累计条数</span><input name="triggerCount" type="number" min="1" value="${table.aggregation.triggerCount}"></label>
+    </div>
+  </div>
+</div>
+<div class="sm-form-section sm-settings-section">
+  <div class="sm-section-title"><strong>分类和标签注入</strong></div>
+  <div class="sm-section-body">
+    <label class="sm-check-row"><input type="checkbox" name="injectionEnabled" ${table.injection.enabled ? 'checked' : ''}><span>允许进入上下文</span></label>
+    <div class="sm-form-grid">
+      <label class="sm-field-block"><span>限定分类</span><input name="injectionCategories" value="${esc(table.injection.categories.join('，'))}" placeholder="留空表示不限制分类"></label>
+      <label class="sm-field-block"><span>必须含标签</span><input name="injectionIncludeTags" value="${esc(table.injection.includeTags.join('，'))}" placeholder="留空表示不限制标签"></label>
+      <label class="sm-field-block"><span>排除标签</span><input name="injectionExcludeTags" value="${esc(table.injection.excludeTags.join('，'))}"></label>
+    </div>
+  </div>
+</div>`;
         modal(existing ? '编辑表格' : '新建表格', body, async (form, wrap) => {
-            const oldLevel = table.level;
             table.name = text(form.get('name'));
             table.description = text(form.get('description'));
             table.extractPrompt = text(form.get('extractPrompt'));
@@ -1131,7 +1212,11 @@ ${columnsEditorHtml(table.columns)}
             wrap.querySelector('[name="writeMode"]').value = table.capture.writeMode;
             wrap.querySelector('[name="triggerType"]').value = table.aggregation.triggerType;
             wrap.querySelectorAll('.sm-column-row').forEach((row, index) => { row.querySelector('.sm-col-type').value = table.columns[index]?.type || 'text'; });
-            wrap.querySelector('#sm-add-column').addEventListener('click', () => wrap.querySelector('#sm-columns-list').insertAdjacentHTML('beforeend', columnRowHtml()));
+            wrap.querySelector('#sm-add-column').addEventListener('click', () => {
+                wrap.querySelector('#sm-columns-list').insertAdjacentHTML('beforeend', columnRowHtml());
+                const added = wrap.querySelector('#sm-columns-list .sm-column-row:last-child textarea');
+                if (added) resizeModalTextarea(added);
+            });
             wrap.addEventListener('click', event => {
                 if (event.target.matches('[data-remove-column]')) event.target.closest('.sm-column-row')?.remove();
                 if (event.target.matches('[data-move-column]')) { const row = event.target.closest('.sm-column-row'); const dir = event.target.dataset.moveColumn; if (dir === 'up' && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); if (dir === 'down' && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); }
@@ -1172,7 +1257,7 @@ ${columnsEditorHtml(table.columns)}
             const result = applyOperations(chat, [operation], { origin: 'manual' });
             if (!result.changed.length) throw new Error(result.rejected[0]?.reason || '保存失败');
             await persist(chat); render(); refreshStateBar(chat);
-        }, { onOpen(wrap) { wrap.querySelector('[name="source"]').value = record.source; } });
+        }, { className: 'sm-record-editor-overlay', onOpen(wrap) { wrap.querySelector('[name="source"]').value = record.source; } });
     }
 
     function openSettings(chat) {

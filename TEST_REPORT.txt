@@ -1,12 +1,34 @@
-第一版修订 1.5.2 检查结果（2026-07-25）
+第一版修订 1.5.3 检查结果（2026-07-25）
 
-通过：
-- 全部JavaScript文件语法检查
-- 状态记录时间自动填充到秒
-- 自动时间格式 YYYY-MM-DD HH:mm:ss
-- 所有启用短期表进入自动写入提示
-- 每轮逐表检查指令存在
-- Rows existingRecords与recordId写入参考存在
-- USER状态表排在普通短期表之后
-- 旧extractPrompt架构词的协议优先级处理
-- ZIP压缩包完整性检查
+一、代码检查
+- 全部 JavaScript 文件通过 node --check。
+- memory_simple_v1.css 通过 tinycss2 解析，0 个语法错误。
+- CSS 大括号数量一致。
+- index.html 的本地脚本与样式引用全部存在。
+
+二、弹窗结构回归检查
+- 弹窗仅保留一个纵向滚动容器：.sm-modal-body。
+- 标题栏和保存栏为独立 Flex 固定区。
+- .sm-modal、.sm-modal-form 均包含 min-height:0，避免 Flex 子项无法收缩。
+- 遮罩层和 body 不再包含会阻断子元素手势的 touch-action:none。
+- 手机端弹窗使用 100dvh，全屏正文可滚动。
+- 动态字段表只承担横向滚动。
+
+三、完整文本检查
+- 新增 resizeModalTextarea / bindModalTextareas。
+- 表设置中的用途说明、extractPrompt、字段 aiHint 会按 scrollHeight 自动增高。
+- 正式记录编辑弹窗中的多行字段同样自动增高。
+- textarea 使用 white-space:pre-wrap 和 overflow-wrap:anywhere，正式文本不会被截断。
+
+四、表设置布局检查
+- 基本设置、用途与AI提取、短期写入、分类标签、状态栏、中期积累、上下文注入均有独立 section body。
+- 删除旧版 .sm-form-grid overflow:hidden 与 .sm-form-section overflow:hidden 冲突。
+- 桌面端基本设置为三列，窄屏自动两列/一列。
+
+五、数据兼容检查
+- 使用 memoryStore_阿沉_2026-07-25.json 载入新内核。
+- 7 张动态表、原有正式记录均可正常标准化。
+- 手动 upsert 测试成功，未改变数据结构版本。
+
+六、版本
+- 内核版本：3.0.7-v1.5.3
