@@ -1,6 +1,10 @@
 PACKAGE_MANIFEST.txt
 CHANGELOG_V1_1.txt
 CHANGELOG_V1_2.txt
+CHANGELOG_V1_3.txt
+CHANGELOG_V1_4.txt
+CHANGELOG_V1_5.txt
+CHANGELOG_V1_5_1.txt
 FIRST_VERSION_NOTES.txt
 TEST_REPORT.txt
 VERSION.txt
@@ -41,6 +45,10 @@ css/style.css
 docs/SIMPLE_MEMORY_V1.md
 docs/V1_1_UPDATE_AND_TAGS.md
 docs/V1_2_BEHAVIOR.md
+docs/V1_3_UI_NOTES.md
+docs/V1_4_UI_AND_UPDATE_DOTS.md
+docs/V1_5_1_SORT_WIDTH_STATUS.md
+docs/V1_5_STATUS_SORT_WIDTH.md
 index.html
 js/app_registry.js
 js/chat.js

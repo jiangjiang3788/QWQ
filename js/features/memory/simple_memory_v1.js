@@ -1,17 +1,19 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '3.0.3-v1.3';
+    const VERSION = '3.0.7-v1.5.2';
     const STORE_VERSION = 1;
     const LEVELS = new Set(['short', 'medium', 'long']);
     const SOURCES = new Set(['用户明确', 'AI判断']);
-    const ui = { activeTableId: '', search: '', category: '', tag: '', bound: false };
+    const ui = { activeTableId: '', search: '', category: '', tag: '', sorts: {}, bound: false };
     const aggregationLocks = new Set();
     const sidecarReports = new WeakMap();
     const normalizedStores = new WeakSet();
 
     const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const nowIso = () => new Date().toISOString();
+    const pad2 = value => String(value).padStart(2, '0');
+    const localDateTimeSeconds = (date = new Date()) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
     const id = prefix => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const text = value => String(value == null ? '' : value).trim();
     const esc = value => String(value == null ? '' : value)
@@ -42,6 +44,19 @@
         return (table?.columns || []).filter(column => column.hidden !== true && !isEventIdColumn(column));
     }
 
+    function isStatusRecordTimeColumn(table, column) {
+        if (!table?.display?.chatStatus || table.recordMode !== 'singleton') return false;
+        const name = text(column?.name).replace(/[_\s-]+/g, '');
+        return /^(状态记录时间|当前记录时间|记录时间|状态更新时间)$/.test(name);
+    }
+
+    function applySystemManagedValues(table, values, date = new Date()) {
+        (table?.columns || []).forEach(column => {
+            if (isStatusRecordTimeColumn(table, column)) values[column.id] = localDateTimeSeconds(date);
+        });
+        return values;
+    }
+
     function normalizeColumn(column, index) {
         const allowed = new Set(['text', 'longtext', 'number', 'date', 'datetime', 'select', 'multiselect', 'boolean']);
         return {
@@ -51,7 +66,8 @@
             options: unique(column?.options || []),
             aiHint: text(column?.aiHint),
             required: column?.required === true,
-            hidden: column?.hidden === true || isEventIdColumn(column)
+            hidden: column?.hidden === true || isEventIdColumn(column),
+            width: Math.max(80, Math.min(800, parseInt(column?.width, 10) || 160))
         };
     }
 
@@ -75,7 +91,8 @@
                 tags: unique(table?.routing?.tags || [])
             },
             display: {
-                chatStatus: table?.display?.chatStatus === true
+                chatStatus: table?.display?.chatStatus === true,
+                sortRules: Array.isArray(table?.display?.sortRules) ? table.display.sortRules.filter(rule => rule && text(rule.columnId)).map(rule => ({ columnId: text(rule.columnId), direction: rule.direction === 'asc' ? 'asc' : 'desc' })) : []
             },
             aggregation: {
                 enabled: level === 'medium' ? table?.aggregation?.enabled === true : false,
@@ -113,12 +130,14 @@
                 action: marker.action === '新增' ? '新增' : '更新',
                 source: SOURCES.has(text(marker.source)) ? text(marker.source) : normalizedSource,
                 at: text(marker.at) || updatedAt,
-                marked: marker.marked !== false
+                marked: marker.marked !== false,
+                roundId: marker.roundId || null
             } : {
                 action: inferredAction,
                 source: normalizedSource,
                 at: updatedAt,
-                marked: true
+                marked: true,
+                roundId: null
             };
         });
         const rawChange = record?.lastChange && typeof record.lastChange === 'object' ? record.lastChange : null;
@@ -134,7 +153,8 @@
                 action: rawChange.action === '新增' ? '新增' : '更新',
                 source: SOURCES.has(text(rawChange.source)) ? text(rawChange.source) : normalizedSource,
                 at: text(rawChange.at) || updatedAt,
-                marked: rawChange.marked !== false
+                marked: rawChange.marked !== false,
+                roundId: rawChange.roundId || null
             } : {
                 action: inferredAction,
                 source: normalizedSource,
@@ -350,7 +370,9 @@
     function applyOperations(chat, operations, options = {}) {
         const store = ensureStore(chat);
         const origin = options.origin || 'ai';
+        const operationRoundId = options.roundId || null;
         const changed = [];
+        const checked = [];
         const rejected = [];
         (Array.isArray(operations) ? operations : []).forEach(operation => {
             const table = findTable(store, text(operation?.tableId));
@@ -371,7 +393,9 @@
             if (!source) return rejected.push({ operation, reason: 'AI判断写入已关闭' });
             const operationCategory = text(operation?.category);
             const operationTags = unique(operation?.tags || []);
-            const values = resolveValues(table, operation?.values);
+            const operationDate = new Date();
+            const stamp = operationDate.toISOString();
+            const values = applySystemManagedValues(table, resolveValues(table, operation?.values), operationDate);
             if (!Object.keys(values).length) return rejected.push({ operation, reason: '没有合法字段值' });
             let target = null;
             if (table.recordMode === 'singleton') target = rows[0] || null;
@@ -379,7 +403,6 @@
             if (!target && table.capture.writeMode !== 'append' && operation?.match) target = rows.find(row => recordMatches(row, table, operation.match)) || null;
             if (!target && table.capture.writeMode === 'replace_latest') target = rows.slice().sort((a, b) => text(b.updatedAt).localeCompare(text(a.updatedAt)))[0] || null;
             if (!target && action === 'upsert' && table.capture.writeMode === 'upsert' && operation?.match) target = rows.find(row => recordMatches(row, table, operation.match)) || null;
-            const stamp = nowIso();
             if (target) {
                 const changedFields = [];
                 target.fieldChanges ||= {};
@@ -392,7 +415,7 @@
                     target.values[fieldId] = clone(value);
                     if (isDifferent) {
                         changedFields.push(fieldId);
-                        target.fieldChanges[fieldId] = { action: hadValue ? '更新' : '新增', source, at: stamp, marked: true };
+                        target.fieldChanges[fieldId] = { action: hadValue ? '更新' : '新增', source, at: stamp, marked: true, roundId: operationRoundId };
                     }
                 });
                 const metaChanged = (operationCategory && operationCategory !== target.category)
@@ -403,12 +426,14 @@
                 target.source = source;
                 if (changedFields.length || metaChanged) {
                     target.updatedAt = stamp;
-                    target.lastChange = { action: '更新', source, at: stamp, marked: true };
+                    target.lastChange = { action: '更新', source, at: stamp, marked: true, roundId: operationRoundId };
                     changed.push({ tableId: table.id, recordId: target.id, action: 'update', fields: changedFields });
+                } else if (origin === 'ai' && table.display?.chatStatus === true) {
+                    checked.push({ tableId: table.id, recordId: target.id, action: 'checked' });
                 }
             } else {
                 const fieldChanges = {};
-                Object.keys(values).forEach(fieldId => { fieldChanges[fieldId] = { action: '新增', source, at: stamp, marked: true }; });
+                Object.keys(values).forEach(fieldId => { fieldChanges[fieldId] = { action: '新增', source, at: stamp, marked: true, roundId: operationRoundId }; });
                 const record = normalizeRecord({
                     id: text(operation?.recordId) || id('memory_record'),
                     values,
@@ -417,17 +442,58 @@
                     source,
                     createdAt: stamp,
                     updatedAt: stamp,
-                    lastChange: { action: '新增', source, at: stamp, marked: true },
+                    lastChange: { action: '新增', source, at: stamp, marked: true, roundId: operationRoundId },
                     fieldChanges
                 }, table);
                 rows.push(record);
                 changed.push({ tableId: table.id, recordId: record.id, action: 'add', fields: Object.keys(values) });
             }
         });
-        return { changed, rejected };
+        return { changed, checked, rejected };
     }
 
-    function tablePrompt(table) {
+    function compactWriteReference(table, record) {
+        const values = {};
+        let count = 0;
+        for (const column of visibleColumns(table)) {
+            const value = record.values?.[column.id];
+            if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) continue;
+            const raw = Array.isArray(value) ? value.join('、') : String(value);
+            values[column.name] = raw.length > 180 ? `${raw.slice(0, 180)}…` : raw;
+            count += 1;
+            if (count >= 8) break;
+        }
+        return {
+            recordId: record.id,
+            category: record.category,
+            tags: record.tags,
+            updatedAt: record.updatedAt,
+            values
+        };
+    }
+
+    function writeReferenceRecords(chat, table, store) {
+        if (table.recordMode !== 'rows') return [];
+        const query = recentChatText(chat, 1);
+        const fragments = unique(query.split(/[\s，。！？、；：,.!?;:\n]+/)).filter(item => item.length >= 2).slice(0, 12);
+        const ranked = (store.records[table.id] || []).map(record => {
+            const body = formatRecordText(table, record);
+            let score = 0;
+            if (containsToken(query, record.category)) score += 80;
+            score += unique(record.tags || []).filter(tag => containsToken(query, tag)).length * 40;
+            fragments.forEach(fragment => {
+                if (body.includes(fragment)) score += 12;
+            });
+            if (/待办|进行中|未完成/.test(body)) score += 4;
+            return { record, score };
+        });
+        ranked.sort((a, b) => b.score - a.score || text(b.record.updatedAt).localeCompare(text(a.record.updatedAt)));
+        return ranked.slice(0, 6).map(item => compactWriteReference(table, item.record));
+    }
+
+    function tablePrompt(table, store, chat) {
+        const statusRows = store && table.display?.chatStatus ? (store.records[table.id] || []) : [];
+        const statusRecord = statusRows[0] || null;
         return {
             tableId: table.id,
             name: table.name,
@@ -438,16 +504,29 @@
             categoryHints: table.routing.categories,
             tagHints: table.routing.tags,
             excludedTags: table.injection.excludeTags,
-            columns: visibleColumns(table).map(column => ({ id: column.id, name: column.name, type: column.type, options: column.options, aiHint: column.aiHint }))
+            mustUpdateEveryRound: table.display?.chatStatus === true,
+            mustEvaluateEveryRound: true,
+            currentValues: statusRecord ? clone(statusRecord.values) : null,
+            existingRecords: writeReferenceRecords(chat, table, store),
+            columns: visibleColumns(table).map(column => ({
+                id: column.id,
+                name: column.name,
+                type: column.type,
+                options: column.options,
+                aiHint: column.aiHint,
+                systemManaged: isStatusRecordTimeColumn(table, column) ? '系统自动填写本地时间到秒，无需输出' : ''
+            }))
         };
     }
 
     function buildSystemPrompt(chat) {
         const store = ensureStore(chat);
         if (!store.settings.enabled) return '';
-        const tables = store.tables.filter(table => table.level === 'short' && table.capture.enabled && table.columns.length);
+        const tables = store.tables
+            .filter(table => table.level === 'short' && table.capture.enabled && table.columns.length)
+            .sort((a, b) => Number(a.display?.chatStatus === true) - Number(b.display?.chatStatus === true));
         if (!tables.length) return '';
-        return `\n<memory_direct_write_protocol version="${VERSION}">\n你可以在正常回复末尾附加一次隐藏记忆写入指令。只在本轮出现值得保存的新信息时输出；没有则不要输出。\n所有操作直接写入正式表，不存在候选、审核或运行态。\n目标表完全由下方动态定义决定，不得根据表名猜字段。长期表和中期表不在本轮自动写入。\n信息来源只能是“用户明确”或“AI判断”：核心事实由用户直接表达时用“用户明确”；属于你的推断或总结结论时用“AI判断”。\n分类填写一个主要分类；标签填写0至6个具体标签。表内的分类提示、标签提示只帮助你选择和填写，不是写入门槛；选定合法短期表并提供合法字段后应直接写入。请严格参考表级 extractPrompt 和字段 aiHint。\n输出格式必须严格为：\n<memory_ops>{"operations":[{"tableId":"...","action":"add|upsert|delete","recordId":"可选","match":{"字段ID或字段名":"用于查找旧记录，可选"},"values":{"字段ID或字段名":"值"},"category":"分类","tags":["标签"],"source":"用户明确|AI判断"}]}</memory_ops>\n写入指令必须放在整段回复最后，标签外不能解释指令。\n可自动写入的短期表：\n${JSON.stringify(tables.map(tablePrompt), null, 2)}\n</memory_direct_write_protocol>`;
+        return `\n<memory_direct_write_protocol version="${VERSION}">\n你可以在正常回复末尾附加一次隐藏记忆写入指令。只在本轮出现值得保存的新信息时输出；没有则不要输出。\n所有操作直接写入正式表，不存在候选、审核或运行态。若旧 extractPrompt 中仍出现“运行态、候选、审核、正式档案”等旧架构用语，以本协议为准：所有合法操作都直接写入目标正式表。\n目标表完全由下方动态定义决定，不得根据表名猜字段。长期表和中期表不在本轮自动写入。\n信息来源只能是“用户明确”或“AI判断”：核心事实由用户直接表达时用“用户明确”；属于你的推断或总结结论时用“AI判断”。\n分类填写一个主要分类；标签填写0至6个具体标签。表内的分类提示、标签提示只帮助你选择和填写，不是写入门槛；选定合法短期表并提供合法字段后应直接写入。请严格参考表级 extractPrompt 和字段 aiHint。\n每一轮必须逐张、独立检查所有 mustEvaluateEveryRound=true 的短期表，不能在完成USER状态表后停止。当前状态写入不能代替待办、近期经历或日常观察；同一条本轮信息符合多个表的用途时，可以同时产生多个 operation。\n标记 mustUpdateEveryRound=true 的USER状态表必须每一轮都输出一次 upsert：根据本轮用户消息重新判断状态字段；没有变化时也提交当前值，用于确认本轮已检查状态。标记 systemManaged 的时间字段由程序自动写入到秒，不要输出。\nRows 表若 existingRecords 中已有对应事项，必须使用其 recordId 执行 upsert，不要重复新增；只有确实是新事项时才 add。existingRecords 只是辅助更新旧行，不限制新增。\n输出前执行检查清单：①逐表核对 extractPrompt；②把所有符合条件的表都加入 operations；③确认没有只写当前状态而遗漏其他符合表；④没有任何可保存信息时才不输出 memory_ops。\n输出格式必须严格为：\n<memory_ops>{"operations":[{"tableId":"...","action":"add|upsert|delete","recordId":"可选","match":{"字段ID或字段名":"用于查找旧记录，可选"},"values":{"字段ID或字段名":"值"},"category":"分类","tags":["标签"],"source":"用户明确|AI判断"}]}</memory_ops>\n写入指令必须放在整段回复最后，标签外不能解释指令。\n可自动写入的短期表：\n${JSON.stringify(tables.map(table => tablePrompt(table, store, chat)), null, 2)}\n</memory_direct_write_protocol>`;
     }
 
     function extractSidecar(responseText) {
@@ -474,9 +553,11 @@
     function roundNoticeText(chat, report) {
         if (report?.error) return '本轮记忆：更新指令解析失败';
         const changed = Array.isArray(report?.changed) ? report.changed : [];
+        const checked = Array.isArray(report?.checked) ? report.checked : [];
         const rejected = Array.isArray(report?.rejected) ? report.rejected : [];
         if (!changed.length) {
             if (rejected.length) return `本轮记忆：没有写入（${text(rejected[0]?.reason) || '指令无效'}）`;
+            if (checked.length) return '本轮USER状态已检查：没有变化';
             return '本轮记忆：没有需要更新的内容';
         }
         return rejected.length
@@ -488,6 +569,7 @@
         const report = {
             at: Date.now(),
             changed: Array.isArray(details.changed) ? details.changed : [],
+            checked: Array.isArray(details.checked) ? details.checked : [],
             rejected: Array.isArray(details.rejected) ? details.rejected : [],
             error: details.error ? String(details.error) : '',
             reason: text(details.reason),
@@ -496,12 +578,14 @@
         ensureSidecarState(chat).lastApplyReport = report;
         const store = ensureStore(chat);
         if (store.settings.enabled && store.settings.roundNoticeEnabled !== false) global.showToast?.(roundNoticeText(chat, report));
+        if (global.currentChatId === chat.id) render();
         return report;
     }
 
     async function applySidecar(chat, payload, options = {}) {
-        const baseReport = applyOperations(chat, payload?.operations, { origin: 'ai' });
-        const report = Object.assign({ roundId: options.roundId || null }, baseReport);
+        const roundId = options.roundId || id('memory_round');
+        const baseReport = applyOperations(chat, payload?.operations, { origin: 'ai', roundId });
+        const report = Object.assign({ roundId }, baseReport);
         await persist(chat);
         refreshStateBar(chat);
         if (report.changed.length) {
@@ -687,7 +771,7 @@
             if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) return '';
             const raw = Array.isArray(value) ? value.join('、') : column.type === 'boolean' ? (value ? '是' : '否') : String(value);
             const short = raw.length > 36 ? `${raw.slice(0, 36)}…` : raw;
-            return `<span class="memory-user-state-item"><b>${esc(column.name)}</b><em>${esc(short)}</em></span>`;
+            return `<span class="memory-user-state-item"><em>${esc(short)}</em></span>`;
         }).filter(Boolean).slice(0, 8);
         if (!items.length) {
             bar.style.display = 'none';
@@ -695,7 +779,7 @@
             return;
         }
         bar.style.display = 'flex';
-        bar.innerHTML = `<span class="memory-user-state-title">USER状态</span>${items.join('')}`;
+        bar.innerHTML = items.join('');
     }
 
     function levelLabel(level) {
@@ -718,47 +802,54 @@
         return `<span class="sm-cell-full">${esc(raw)}</span>`;
     }
 
-    function updateDot(marker, title = '已写入或更新') {
-        if (!marker || marker.marked === false) return '';
-        const time = text(marker.at).replace('T', ' ').slice(0, 16);
-        return `<span class="sm-update-dot" title="${esc(time ? `${title} · ${time}` : title)}" aria-label="${esc(title)}"></span>`;
+    function currentRoundReport(chat) {
+        return ensureSidecarState(chat).lastApplyReport || null;
     }
 
-    function tableUpdateMarker(store, table) {
-        const rows = store?.records?.[table?.id] || [];
-        return rows.map(record => record.lastChange).filter(Boolean).sort((a, b) => text(b.at).localeCompare(text(a.at)))[0] || null;
+    function currentRoundId(chat) {
+        const report = currentRoundReport(chat);
+        return report && Array.isArray(report.changed) && report.changed.length ? report.roundId : null;
     }
 
-    function fieldUpdateMarker(rows, columnId) {
-        return rows.map(record => record.fieldChanges?.[columnId]).filter(Boolean).sort((a, b) => text(b.at).localeCompare(text(a.at)))[0] || null;
+    function updateDot(marker, chat, title = '本轮已更新') {
+        const roundId = currentRoundId(chat);
+        if (!roundId || !marker || marker.roundId !== roundId) return '';
+        return `<span class="sm-update-dot" title="${esc(title)}" aria-label="${esc(title)}"></span>`;
     }
 
-    function changeBadge(marker) {
-        if (!marker) return '<span class="sm-change-badge legacy">既有</span>';
-        const sourceClass = marker.source === 'AI判断' ? 'ai' : 'user';
-        const label = `${marker.source || 'AI判断'}·${marker.action || '更新'}`;
-        const title = text(marker.at).replace('T', ' ').slice(0, 16);
-        return `<span class="sm-change-badge ${sourceClass}" title="${esc(title)}">${esc(label)}</span>`;
+    function tableUpdatedThisRound(chat, table) {
+        const report = currentRoundReport(chat);
+        return !!(report?.roundId && Array.isArray(report.changed) && report.changed.some(item => item.tableId === table.id));
     }
 
-    function columnHead(column, marker = null) {
-        return `<div class="sm-column-head"><span class="sm-field-title">${esc(column.name)}${updateDot(marker, '该字段已有写入或更新')}</span>${column.aiHint ? `<small>${esc(column.aiHint)}</small>` : ''}</div>`;
+    function fieldUpdatedThisRound(chat, record, columnId) {
+        const roundId = currentRoundId(chat);
+        return !!(roundId && record?.fieldChanges?.[columnId]?.roundId === roundId);
     }
 
-    function renderKvView(table, rows) {
+    function columnHead(column) {
+        return `<div class="sm-column-head"><span class="sm-field-title">${esc(column.name)}</span>${column.aiHint ? `<small>${esc(column.aiHint)}</small>` : ''}</div>`;
+    }
+
+    function renderKvView(chat, table, rows) {
         const record = rows[0];
         if (!record) return '<div class="sm-no-records sm-kv-empty">暂无正式内容</div>';
         const fields = visibleColumns(table).map(column => {
-            const marker = record.fieldChanges?.[column.id] || null;
-            return `<div class="sm-kv-row"><div class="sm-kv-key">${columnHead(column, marker)}</div><div class="sm-kv-value"><div class="sm-value-with-mark">${renderValue(column, record.values?.[column.id])}${changeBadge(marker)}</div></div></div>`;
+            const marker = fieldUpdatedThisRound(chat, record, column.id) ? record.fieldChanges?.[column.id] : null;
+            return `<div class="sm-kv-row"><div class="sm-kv-key">${columnHead(column)}${updateDot(marker, chat, '该字段本轮已更新')}</div><div class="sm-kv-value">${renderValue(column, record.values?.[column.id])}</div></div>`;
         }).join('');
-        const meta = `<div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">分类</div><div class="sm-kv-value">${esc(record.category || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">标签</div><div class="sm-kv-value">${esc(record.tags.join('、') || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">信息来源</div><div class="sm-kv-value"><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">最近写入标识</div><div class="sm-kv-value">${changeBadge(record.lastChange)}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">更新时间</div><div class="sm-kv-value">${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</div></div>`;
+        const meta = `<div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">分类</div><div class="sm-kv-value">${esc(record.category || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">标签</div><div class="sm-kv-value">${esc(record.tags.join('、') || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">信息来源</div><div class="sm-kv-value"><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">更新时间</div><div class="sm-kv-value">${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</div></div>`;
         return `<div class="sm-kv-card">${fields}${meta}<div class="sm-kv-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">清空</button></div></div>`;
     }
 
-    function renderRowsView(table, rows) {
+    function renderRowsView(chat, table, rows) {
         const columns = visibleColumns(table);
-        return `<div class="sm-grid-wrap"><table class="sm-grid"><thead><tr>${columns.map(column => `<th>${columnHead(column, fieldUpdateMarker(rows, column.id))}</th>`).join('')}<th>分类</th><th>标签</th><th>信息来源</th><th>记忆标识</th><th>更新时间</th><th></th></tr></thead><tbody>${rows.map(record => `<tr>${columns.map(column => `<td>${renderValue(column, record.values?.[column.id], { truncate: true })}</td>`).join('')}<td>${esc(record.category)}</td><td><span class="sm-cell-truncated" title="${esc(record.tags.join('、'))}">${esc(record.tags.join('、'))}</span></td><td><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></td><td>${changeBadge(record.lastChange)}</td><td>${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</td><td class="sm-row-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('') || `<tr><td colspan="${columns.length + 6}" class="sm-no-records">暂无正式记录</td></tr>`}</tbody></table></div>`;
+        const dynamicWidth = columns.reduce((sum, column) => sum + (column.width || 160), 0);
+        const tableWidth = dynamicWidth + 580;
+        return `<div class="sm-grid-wrap"><table class="sm-grid" style="width:${tableWidth}px;min-width:100%"><colgroup>${columns.map(column => `<col data-col-id="${esc(column.id)}" style="width:${column.width || 160}px">`).join('')}<col style="width:120px"><col style="width:160px"><col style="width:100px"><col style="width:120px"><col style="width:80px"></colgroup><thead><tr>${columns.map(column => `<th data-col-id="${esc(column.id)}" style="width:${column.width || 160}px">${columnHead(column)}<span class="sm-col-resizer" data-sm-resize="${esc(column.id)}"></span></th>`).join('')}<th>分类</th><th>标签</th><th>信息来源</th><th>更新时间</th><th></th></tr></thead><tbody>${rows.map(record => `<tr>${columns.map(column => {
+            const dot = fieldUpdatedThisRound(chat, record, column.id) ? updateDot(record.fieldChanges?.[column.id], chat, '该内容本轮已更新') : '';
+            return `<td data-col-id="${esc(column.id)}" style="width:${column.width || 160}px"><div class="sm-cell-with-dot">${renderValue(column, record.values?.[column.id], { truncate: true })}${dot}</div></td>`;
+        }).join('')}<td>${esc(record.category)}</td><td><span class="sm-cell-truncated" title="${esc(record.tags.join('、'))}">${esc(record.tags.join('、'))}</span></td><td><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></td><td>${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</td><td class="sm-row-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('') || `<tr><td colspan="${columns.length + 5}" class="sm-no-records">暂无正式记录</td></tr>`}</tbody></table></div>`;
     }
 
     function activeTable(chat) {
@@ -770,14 +861,37 @@
         return table;
     }
 
+    function compareMemoryValues(column, left, right) {
+        const a = left?.values?.[column.id];
+        const b = right?.values?.[column.id];
+        if (column.type === 'number') return (Number(a) || 0) - (Number(b) || 0);
+        if (column.type === 'date' || column.type === 'datetime') return (new Date(a || 0).getTime() || 0) - (new Date(b || 0).getTime() || 0);
+        if (column.type === 'boolean') return Number(!!a) - Number(!!b);
+        return valueText(column, a).localeCompare(valueText(column, b), 'zh-CN', { numeric: true, sensitivity: 'base' });
+    }
+
+    function activeSortRules(table) {
+        return Array.isArray(ui.sorts[table.id]) ? ui.sorts[table.id] : (table.display?.sortRules || []);
+    }
+
     function tableRows(store, table) {
         const query = text(ui.search).toLowerCase();
-        return (store.records[table.id] || []).filter(record => {
+        const filtered = (store.records[table.id] || []).filter(record => {
             if (ui.category && record.category !== ui.category) return false;
             if (ui.tag && !record.tags.includes(ui.tag)) return false;
             if (!query) return true;
             return `${record.category} ${record.tags.join(' ')} ${formatRecordText(table, record)}`.toLowerCase().includes(query);
-        }).sort((a, b) => text(b.updatedAt).localeCompare(text(a.updatedAt)));
+        });
+        const rules = activeSortRules(table);
+        return filtered.sort((a, b) => {
+            for (const rule of rules) {
+                const column = table.columns.find(item => item.id === rule.columnId);
+                if (!column) continue;
+                const diff = compareMemoryValues(column, a, b);
+                if (diff) return rule.direction === 'asc' ? diff : -diff;
+            }
+            return text(b.updatedAt).localeCompare(text(a.updatedAt));
+        });
     }
 
     function render() {
@@ -793,7 +907,7 @@
         const categories = table ? unique((store.records[table.id] || []).map(record => record.category)) : [];
         const tags = table ? unique((store.records[table.id] || []).flatMap(record => record.tags)) : [];
         const rows = table ? tableRows(store, table) : [];
-        const recordsHtml = table ? (table.recordMode === 'singleton' ? renderKvView(table, rows) : renderRowsView(table, rows)) : '';
+        const recordsHtml = table ? (table.recordMode === 'singleton' ? renderKvView(chat, table, rows) : renderRowsView(chat, table, rows)) : '';
         screen.innerHTML = `
 <header class="app-header sm-header">
   <button class="back-btn" data-target="chat-room-screen">‹</button>
@@ -808,14 +922,15 @@
   <section class="sm-layout">
     <aside class="sm-sidebar">
       <div class="sm-sidebar-head"><strong>自定义表</strong><span>${store.tables.length}</span></div>
-      <div class="sm-table-list">${store.tables.map(item => { const marker = tableUpdateMarker(store, item); return `<button class="sm-table-item ${item.id === table?.id ? 'active' : ''}" data-sm-table="${esc(item.id)}"><span class="sm-table-name">${esc(item.name)}${updateDot(marker, '该表已有写入或更新')}</span><b class="sm-level sm-${item.level}">${levelLabel(item.level)}</b></button>`; }).join('') || '<div class="sm-empty-card">还没有表格</div>'}</div>
+      <div class="sm-table-list">${store.tables.map(item => `<button class="sm-table-item ${item.id === table?.id ? 'active' : ''}" data-sm-table="${esc(item.id)}"><span class="sm-table-name">${esc(item.name)}${tableUpdatedThisRound(chat, item) ? '<span class="sm-update-dot" title="该表本轮已更新"></span>' : ''}</span><b class="sm-level sm-${item.level}">${levelLabel(item.level)}</b></button>`).join('') || '<div class="sm-empty-card">还没有表格</div>'}</div>
     </aside>
     <section class="sm-main">
       ${table ? `
       <div class="sm-table-head">
-        <div><h2 class="sm-active-table-title">${esc(table.name)}${updateDot(tableUpdateMarker(store, table), '该表已有写入或更新')}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<p class="sm-extract-prompt"><b>extractPrompt：</b>${esc(table.extractPrompt)}</p>` : ''}</div>
+        <div><h2 class="sm-active-table-title">${esc(table.name)}${tableUpdatedThisRound(chat, table) ? '<span class="sm-update-dot" title="该表本轮已更新"></span>' : ''}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<p class="sm-extract-prompt"><b>extractPrompt：</b>${esc(table.extractPrompt)}</p>` : ''}</div>
         <div class="sm-table-actions">
           ${table.level === 'medium' ? '<button class="btn btn-small btn-primary" data-sm-action="aggregate">执行积累</button>' : ''}
+          ${table.recordMode === 'rows' ? '<button class="btn btn-small btn-secondary" data-sm-action="sort">多维排序</button>' : ''}
           <button class="btn btn-small btn-primary" data-sm-action="new-record">${table.recordMode === 'singleton' && rows.length ? '编辑内容' : '新增记录'}</button>
           <button class="btn btn-small btn-secondary" data-sm-action="edit-table">表设置</button>
           <button class="btn btn-small btn-danger" data-sm-action="delete-table">删除表</button>
@@ -843,6 +958,7 @@
             try {
                 if (action === 'new-table') openTableEditor(chat, null);
                 if (action === 'edit-table') openTableEditor(chat, table);
+                if (action === 'sort' && table) openSortEditor(chat, table);
                 if (action === 'new-record') openRecordEditor(chat, table, table?.recordMode === 'singleton' ? (store.records[table.id] || [])[0] || null : null);
                 if (action === 'settings') openSettings(chat);
                 if (action === 'export') exportStore(chat);
@@ -867,12 +983,65 @@
             store.records[table.id] = (store.records[table.id] || []).filter(record => record.id !== button.dataset.smDeleteRecord);
             await persist(chat); render();
         }));
+        bindColumnResize(screen, chat, table);
+    }
+
+    function bindColumnResize(screen, chat, table) {
+        if (!table || table.recordMode !== 'rows') return;
+        screen.querySelectorAll('[data-sm-resize]').forEach(handle => handle.addEventListener('pointerdown', event => {
+            event.preventDefault(); event.stopPropagation();
+            const column = table.columns.find(item => item.id === handle.dataset.smResize);
+            const th = handle.closest('th');
+            if (!column || !th) return;
+            const startX = event.clientX; const startWidth = th.getBoundingClientRect().width;
+            handle.setPointerCapture?.(event.pointerId);
+            const move = moveEvent => {
+                const width = Math.max(80, Math.min(800, Math.round(startWidth + moveEvent.clientX - startX)));
+                column.width = width; th.style.width = `${width}px`;
+                const col = Array.from(screen.querySelectorAll('col[data-col-id]')).find(item => item.dataset.colId === column.id); if (col) col.style.width = `${width}px`;
+            };
+            const up = async () => {
+                handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+                await persist(chat);
+            };
+            handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+        }));
+    }
+
+    function sortRuleRowHtml(table, rule = {}) {
+        return `<div class="sm-sort-rule"><div class="sm-sort-order"><button type="button" data-move-sort="up" title="提高排序优先级">↑</button><button type="button" data-move-sort="down" title="降低排序优先级">↓</button></div><select class="sm-sort-column">${visibleColumns(table).map(column => `<option value="${esc(column.id)}" ${column.id === rule.columnId ? 'selected' : ''}>${esc(column.name)}</option>`).join('')}</select><select class="sm-sort-direction"><option value="asc" ${rule.direction === 'asc' ? 'selected' : ''}>升序</option><option value="desc" ${rule.direction !== 'asc' ? 'selected' : ''}>降序</option></select><button type="button" data-remove-sort>删除</button></div>`;
+    }
+
+    function openSortEditor(chat, table) {
+        const rules = clone(activeSortRules(table));
+        const body = `<p class="sm-help">从上到下依次比较：第一项优先级最高。可用箭头调整优先级，规则会保存到当前表。</p><div id="sm-sort-rules">${rules.map(rule => sortRuleRowHtml(table, rule)).join('')}</div><button type="button" class="btn btn-small btn-secondary" id="sm-add-sort">添加排序字段</button>`;
+        modal('多维排序', body, async (_form, wrap) => {
+            const seen = new Set();
+            table.display.sortRules = Array.from(wrap.querySelectorAll('.sm-sort-rule')).map(row => ({ columnId: row.querySelector('.sm-sort-column').value, direction: row.querySelector('.sm-sort-direction').value })).filter(rule => {
+                if (!rule.columnId || seen.has(rule.columnId)) return false;
+                seen.add(rule.columnId);
+                return true;
+            });
+            ui.sorts[table.id] = clone(table.display.sortRules);
+            await persist(chat); render();
+        }, { onOpen(wrap) {
+            wrap.querySelector('#sm-add-sort').addEventListener('click', () => wrap.querySelector('#sm-sort-rules').insertAdjacentHTML('beforeend', sortRuleRowHtml(table)));
+            wrap.addEventListener('click', event => {
+                if (event.target.matches('[data-remove-sort]')) event.target.closest('.sm-sort-rule')?.remove();
+                if (event.target.matches('[data-move-sort]')) {
+                    const row = event.target.closest('.sm-sort-rule');
+                    const direction = event.target.dataset.moveSort;
+                    if (direction === 'up' && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+                    if (direction === 'down' && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+                }
+            });
+        }});
     }
 
     function modal(title, body, onSave, options = {}) {
         document.getElementById('sm-modal')?.remove();
         const wrap = document.createElement('div');
-        wrap.id = 'sm-modal'; wrap.className = 'sm-modal-overlay';
+        wrap.id = 'sm-modal'; wrap.className = `sm-modal-overlay ${options.className || ''}`.trim();
         wrap.innerHTML = `<div class="sm-modal"><div class="sm-modal-head"><h3>${esc(title)}</h3><button type="button" data-sm-close>×</button></div><form id="sm-modal-form" class="sm-modal-form"><div class="sm-modal-body">${body}</div><div class="sm-modal-foot"><button type="button" class="btn btn-secondary" data-sm-close>取消</button><button type="submit" class="btn btn-primary">保存</button></div></form></div>`;
         document.body.appendChild(wrap);
         wrap.querySelectorAll('[data-sm-close]').forEach(button => button.addEventListener('click', () => wrap.remove()));
@@ -885,11 +1054,11 @@
     }
 
     function columnsEditorHtml(columns) {
-        return `<div class="sm-form-section"><div class="sm-section-title"><strong>动态字段</strong><button type="button" class="btn btn-small btn-secondary" id="sm-add-column">添加字段</button></div><div id="sm-columns-list">${columns.map(columnRowHtml).join('')}</div></div>`;
+        return `<div class="sm-form-section sm-field-config-section"><div class="sm-section-title"><div><strong>动态字段</strong><p class="sm-help">字段ID仅供系统使用，不在普通界面显示。aiHint用于告诉AI该字段如何判断和填写。</p></div><button type="button" class="btn btn-small btn-secondary" id="sm-add-column">添加字段</button></div><div class="sm-field-config-scroll"><div class="sm-field-config-table"><div class="sm-field-config-head"><span>顺序</span><span>字段名</span><span>类型</span><span>宽度</span><span>选项</span><span>隐藏</span><span>aiHint（AI填写提示）</span><span>操作</span></div><div id="sm-columns-list">${columns.map(columnRowHtml).join('')}</div></div></div></div>`;
     }
 
     function columnRowHtml(column = {}) {
-        return `<div class="sm-column-row" data-column-id="${esc(column.id || id('memory_col'))}"><input class="sm-col-name" value="${esc(column.name || '')}" placeholder="字段名" required><select class="sm-col-type"><option value="text">单行文本</option><option value="longtext">多行文本</option><option value="number">数字</option><option value="date">日期</option><option value="datetime">日期时间</option><option value="select">单选</option><option value="multiselect">多选</option><option value="boolean">是/否</option></select><input class="sm-col-options" value="${esc((column.options || []).join('，'))}" placeholder="选项，逗号分隔"><label class="sm-col-hidden"><input type="checkbox" ${column.hidden ? 'checked' : ''}>隐藏</label><button type="button" data-remove-column>删除</button><textarea class="sm-col-hint" rows="2" placeholder="aiHint：告诉AI这个字段应如何判断和填写">${esc(column.aiHint || '')}</textarea></div>`;
+        return `<div class="sm-column-row" data-column-id="${esc(column.id || id('memory_col'))}"><div class="sm-config-cell sm-config-order"><button type="button" data-move-column="up">↑</button><button type="button" data-move-column="down">↓</button></div><div class="sm-config-cell sm-config-name"><input class="sm-col-name" value="${esc(column.name || '')}" placeholder="字段名" required></div><div class="sm-config-cell"><select class="sm-col-type"><option value="text">单行文本</option><option value="longtext">多行文本</option><option value="number">数字</option><option value="date">日期</option><option value="datetime">日期时间</option><option value="select">单选</option><option value="multiselect">多选</option><option value="boolean">是/否</option></select></div><div class="sm-config-cell sm-config-width"><input class="sm-col-width" type="number" min="80" max="800" value="${esc(column.width || 160)}"></div><div class="sm-config-cell"><input class="sm-col-options" value="${esc((column.options || []).join('，'))}" placeholder="选项，逗号分隔"></div><div class="sm-config-cell sm-config-hidden"><label class="sm-col-hidden"><input type="checkbox" ${column.hidden ? 'checked' : ''}><span>隐藏</span></label></div><div class="sm-config-cell sm-config-hint"><textarea class="sm-col-hint" rows="2" placeholder="告诉AI这个字段应如何判断和填写">${esc(column.aiHint || '')}</textarea></div><div class="sm-config-cell sm-config-action"><button type="button" data-remove-column>删除</button></div></div>`;
     }
 
     function readColumns(wrap) {
@@ -899,7 +1068,8 @@
             type: row.querySelector('.sm-col-type').value,
             options: unique(row.querySelector('.sm-col-options').value),
             aiHint: row.querySelector('.sm-col-hint')?.value || '',
-            hidden: row.querySelector('.sm-col-hidden input')?.checked === true
+            hidden: row.querySelector('.sm-col-hidden input')?.checked === true,
+            width: parseInt(row.querySelector('.sm-col-width')?.value, 10) || 160
         }, index)).filter(column => column.name);
         if (!columns.length) throw new Error('至少保留一个字段');
         return columns;
@@ -955,14 +1125,17 @@ ${columnsEditorHtml(table.columns)}
                 store.tables.push(normalizeTable(table, store.tables.length)); store.records[table.id] = []; ui.activeTableId = table.id;
             }
             await persist(chat); render();
-        }, { onOpen(wrap) {
+        }, { className: 'sm-table-editor-overlay', onOpen(wrap) {
             wrap.querySelector('[name="level"]').value = table.level;
             wrap.querySelector('[name="recordMode"]').value = table.recordMode;
             wrap.querySelector('[name="writeMode"]').value = table.capture.writeMode;
             wrap.querySelector('[name="triggerType"]').value = table.aggregation.triggerType;
             wrap.querySelectorAll('.sm-column-row').forEach((row, index) => { row.querySelector('.sm-col-type').value = table.columns[index]?.type || 'text'; });
             wrap.querySelector('#sm-add-column').addEventListener('click', () => wrap.querySelector('#sm-columns-list').insertAdjacentHTML('beforeend', columnRowHtml()));
-            wrap.addEventListener('click', event => { if (event.target.matches('[data-remove-column]')) event.target.closest('.sm-column-row')?.remove(); });
+            wrap.addEventListener('click', event => {
+                if (event.target.matches('[data-remove-column]')) event.target.closest('.sm-column-row')?.remove();
+                if (event.target.matches('[data-move-column]')) { const row = event.target.closest('.sm-column-row'); const dir = event.target.dataset.moveColumn; if (dir === 'up' && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); if (dir === 'down' && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); }
+            });
         }});
     }
 
