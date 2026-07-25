@@ -2,7 +2,7 @@
     'use strict';
 
     const M = global.MemoryV5 = global.MemoryV5 || {};
-    const VERSION = '5.4.2';
+    const VERSION = '5.4.3';
     const STORE_VERSION = 3;
 
     const GROUPS = new Set(['core', 'current', 'short', 'medium', 'long']);
@@ -114,7 +114,7 @@
                 alwaysInject: ['始终注入'],
                 neverInject: ['不进入上下文']
             },
-            stage: 'V5.4.2：其他AI任务统一请求与来源登记'
+            stage: 'V5.4.3：Proment、悬浮球与操作记录收敛'
         };
     }
 

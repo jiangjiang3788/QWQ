@@ -30,3 +30,10 @@ V5.4.0
 - 主私聊请求生成Context Manifest并存入操作请求。
 - 悬浮球移除Proment、记忆Payload核验、能力覆盖及报告导出，其他操作能力保留。
 - STORE_VERSION保持3，原地升级不重建记忆表。
+
+V5.4.3
+- Proment改为真实来源注册表与最近Context Manifest，不再显示重复模拟诊断入口。
+- 悬浮球只显示真实来源摘要，完整请求正文统一在Proment查看。
+- 操作记录收敛为最近20条，并降低请求预览、变化正文和会话存储预算。
+- Context Manifest成为来源真相；PromptTrace只兼容没有Manifest的旧请求。
+- 数据版本继续保持STORE_VERSION=3。

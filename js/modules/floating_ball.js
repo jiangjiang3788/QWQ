@@ -1,9 +1,9 @@
-// QuickDock · V2.13-R2：操作与详情合并，固定实用详情层级。
+// QuickDock · V2.14：运行状态、来源摘要与数据结果；完整上下文由 Proment 管理。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyQuery: '', historyStatus: '', historyCategory: '', historyType: '', historyFrom: '', historyTo: '', historyVisible: 20 };
+    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyVisible: 20 };
     let rootEl = null;
     let panelEl = null;
     let ballEl = null;
@@ -138,15 +138,6 @@
         return value;
     }
 
-    function formatGitStatus() {
-        const item = loadGitStatus();
-        if (!item.time) return '尚无 Git 同步记录';
-        const date = new Date(item.time);
-        const time = Number.isNaN(date.getTime()) ? item.time : date.toLocaleString();
-        const label = item.kind === 'upload' ? '上传' : item.kind === 'restore' ? '下载恢复' : '同步';
-        return `${label}${item.ok ? '成功' : '失败'} · ${time}${item.message ? ` · ${item.message}` : ''}`;
-    }
-
     function openGitSettings() {
         state.open = false;
         render();
@@ -260,35 +251,6 @@
         return `${(value / 1000000).toFixed(2)}M 字符`;
     }
 
-    function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
-        const blob = new Blob([String(text || '')], { type: mime });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-
-    function reportFilename(prefix, extension = 'md') {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        return `${prefix}_${stamp}.${extension}`;
-    }
-
-    function readHistoryFilterControls() {
-        return {
-            query: panelEl?.querySelector('#quick-dock-history-query')?.value?.trim() || '',
-            status: panelEl?.querySelector('#quick-dock-history-status')?.value || '',
-            category: panelEl?.querySelector('#quick-dock-history-category')?.value || '',
-            type: panelEl?.querySelector('#quick-dock-history-type')?.value || '',
-            from: panelEl?.querySelector('#quick-dock-history-from')?.value || '',
-            to: panelEl?.querySelector('#quick-dock-history-to')?.value || ''
-        };
-    }
-
-
     function getOperationRuntime() {
         return window.OVOOperationRuntime || null;
     }
@@ -381,10 +343,34 @@
         return `data-operation-id="${escapeHtml(operation?.id || '')}" data-request-id="${escapeHtml(request?.id || '')}" data-source-id="${escapeHtml(section?.id || '')}"`;
     }
 
+    function manifestSourceSections(request, operation) {
+        const manifest = request?.contextManifest;
+        if (!Array.isArray(manifest?.sources)) return [];
+        const characterId = operation?.scope?.characterId || operation?.scope?.chatId || window.currentChatId || '';
+        return manifest.sources.map(item => {
+            const definition = window.OVOContextSourceRegistry?.get?.(item.sourceId) || {};
+            const navigation = definition.navigation ? { ...definition.navigation, characterId } : null;
+            return {
+                id: item.sourceId || '', sourceId: item.sourceId || '', type: item.domain || item.layer || 'context',
+                title: item.title || definition.title || item.sourceId || '上下文来源', icon: '',
+                sent: item.included !== false, state: item.included === false ? 'excluded' : 'sent',
+                chars: Math.max(0, Number(item.chars) || Number(item.matchedChars) || 0),
+                reason: item.reason || '由真实 Context Manifest 登记', navigation,
+                domain: item.domain || definition.domain || '', layer: item.layer || definition.layer || ''
+            };
+        });
+    }
+
+    function requestSourceSections(request, operation) {
+        const manifestSections = manifestSourceSections(request, operation);
+        if (manifestSections.length) return manifestSections;
+        return Array.isArray(request?.promptTrace?.sections) ? request.promptTrace.sections.filter(section => !section?.metadata?.verificationView) : [];
+    }
+
     function findPromptSource(trigger) {
         const operation = getOperationRuntime()?.get?.(trigger?.dataset?.operationId || state.selectedOperationId);
         const request = (operation?.requests || []).find(item => item.id === trigger?.dataset?.requestId) || null;
-        const source = (request?.promptTrace?.sections || []).find(item => item.id === trigger?.dataset?.sourceId) || null;
+        const source = requestSourceSections(request, operation).find(item => item.id === trigger?.dataset?.sourceId || item.sourceId === trigger?.dataset?.sourceId) || null;
         return { operation, request, source };
     }
 
@@ -425,49 +411,31 @@
         }
         if (navigation.kind === 'vector-memory') { if (navigation.characterId && typeof window.openMemoryTableForCharacter === 'function') window.openMemoryTableForCharacter(navigation.characterId); else if (typeof switchScreen === 'function') switchScreen('memory-table-screen'); return; }
         if (navigation.kind === 'journal-memory' && typeof switchScreen === 'function') { switchScreen('memory-journal-screen'); return; }
+        if (navigation.kind === 'character') { if (typeof window.loadSettingsToSidebar === 'function') window.loadSettingsToSidebar(); if (typeof switchScreen === 'function') switchScreen('chat-settings-screen'); return; }
+        if (navigation.kind === 'user' && typeof switchScreen === 'function') { switchScreen('my-profile-screen'); return; }
+        if (navigation.kind === 'reminder') { if (typeof window.openReminderScreen === 'function') window.openReminderScreen(); else if (typeof switchScreen === 'function') switchScreen('reminder-screen'); return; }
+        if (navigation.kind === 'collection' && typeof switchScreen === 'function') { switchScreen('favorites-screen'); return; }
         toast('该来源没有可直接打开的管理页面');
     }
 
-    function renderPromptSourceItems(section) {
-        const items = Array.isArray(section?.items) ? section.items : [];
-        if (!items.length) return '';
-        return `<div class="quick-dock-source-items-flat">${items.map(item => `
-            <article class="quick-dock-source-item-flat ${item.sent === false ? 'is-excluded' : ''}">
-                <div class="quick-dock-source-item-head">
-                    <b>${escapeHtml(item.title || '来源条目')}</b>
-                    <span>${escapeHtml(promptSourceStateLabel(item))} · ${escapeHtml(formatSourceChars(item.chars))}</span>
-                </div>
-                ${item.reason ? `<p>${escapeHtml(item.reason)}</p>` : ''}
-                ${item.content ? `<div class="quick-dock-source-item-content">${escapeHtml(item.content)}</div>` : '<p>本条没有进入最终请求，因此不保留正文。</p>'}
-            </article>`).join('')}</div>`;
-    }
-
     function renderPromptTrace(request, operation) {
-        const trace = request?.promptTrace;
-        const sections = Array.isArray(trace?.sections) ? trace.sections : [];
-        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求没有可解释的来源记录。</p>';
-        const sourceSections = sections.filter(section => !section?.metadata?.verificationView);
-
+        const sections = requestSourceSections(request, operation);
+        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求没有来源摘要。</p>';
         const renderSection = section => {
             const meta = promptSourceMeta(section.type);
             const status = promptSourceStateLabel(section);
-            const canOpenSource = ['worldbook', 'structured-memory', 'vector-memory', 'journal-memory'].includes(section.navigation?.kind);
-            return `<details class="quick-dock-source-card ${section.sent === false ? 'is-excluded' : ''}">
-                <summary>
-                    <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon)}</span>
-                    <span class="quick-dock-source-title"><b>${escapeHtml(section.title || meta.title)}</b><small>${escapeHtml(section.reason || '本次请求来源')}</small></span>
-                    <em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(section.chars))}</em>
-                </summary>
-                <div class="quick-dock-source-body">
-                    ${section.summary ? `<p class="quick-dock-source-summary">${escapeHtml(section.summary)}</p>` : ''}
-                    ${section.content ? `<div class="quick-dock-source-content">${escapeHtml(section.content)}</div>` : (!section.items?.length ? '<p class="quick-dock-operation-muted">该来源没有保留正文。</p>' : '')}
-                    ${renderPromptSourceItems(section)}
-                    ${canOpenSource ? `<div class="quick-dock-source-actions"><button type="button" data-qd-action="open-source-management" ${promptSourceFocusAttributes(operation, request, section)}>${escapeHtml(section.navigation.label || '打开来源')}</button><small>${escapeHtml(section.evidence || '')}${section.fingerprint ? ` · ${escapeHtml(section.fingerprint)}` : ''}</small></div>` : (section.evidence || section.fingerprint ? `<div class="quick-dock-source-actions"><small>${escapeHtml(section.evidence || '')}${section.fingerprint ? ` · ${escapeHtml(section.fingerprint)}` : ''}</small></div>` : '')}
-                    ${section.clipped ? '<p class="quick-dock-truncation-note">该来源过长，操作记录仅保留受控预览。</p>' : ''}
-                </div>
-            </details>`;
+            const canOpenSource = !!section.navigation?.kind;
+            return `<article class="quick-dock-source-summary-row ${section.sent === false ? 'is-excluded' : ''}">
+                <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon || '•')}</span>
+                <span class="quick-dock-source-title"><b>${escapeHtml(section.title || meta.title)}</b><small>${escapeHtml(section.reason || '真实请求来源')}</small></span>
+                <em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(section.chars))}</em>
+                ${canOpenSource ? `<button type="button" data-qd-action="open-source-management" ${promptSourceFocusAttributes(operation, request, section)}>打开</button>` : ''}
+            </article>`;
         };
-        return `<div class="quick-dock-source-list">${sourceSections.map(renderSection).join('')}</div>`;
+        const manifest = request?.contextManifest;
+        const included = sections.filter(item => item.sent !== false && Number(item.chars) > 0).length;
+        const complete = manifest?.coverage?.complete !== false;
+        return `<div class="quick-dock-source-summary-head"><span>来源 ${included}/${sections.length} 项</span><span class="${complete ? 'is-ok' : 'is-warning'}">${complete ? '登记完整' : '需要检查'}</span></div><div class="quick-dock-source-summary-list">${sections.map(renderSection).join('')}</div><p class="quick-dock-source-summary-note">完整 Prompt 与真实清单请在 Proment 查看；悬浮球仅保留运行摘要。</p>`;
     }
 
     function mutationActionMeta(action) {
@@ -667,8 +635,8 @@
                 <div class="quick-dock-operation-list">${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">暂无历史记录。</p>'}</div>
                 ${history.length < allRoots.filter(item => !current || item.id !== current.id).length ? '<button type="button" class="quick-dock-show-more" data-qd-action="show-more-history">显示更多</button>' : ''}
             </section>
-            <p class="quick-dock-status">点击任意记录查看详情；详情中的执行阶段、模型请求、后台工作和写入结果均可折叠。</p>`;
-        renderPanelShell('AI 操作中心', `V2.13-R3 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
+            <p class="quick-dock-status">点击任意记录查看阶段、来源摘要、后台工作和写入结果；完整上下文统一在 Proment 查看。</p>`;
+        renderPanelShell('AI 操作中心', `V2.14 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
     }
 
 
@@ -759,13 +727,6 @@
         if (action === 'close') { state.open = false; state.panel = 'main'; render(); return; }
         if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
-        if (action === 'apply-history-filters') {
-            const filters = readHistoryFilterControls();
-            state.historyQuery = filters.query; state.historyStatus = filters.status; state.historyCategory = filters.category; state.historyType = filters.type; state.historyFrom = filters.from; state.historyTo = filters.to; state.historyVisible = 20; render(); return;
-        }
-        if (action === 'reset-history-filters') {
-            state.historyQuery = ''; state.historyStatus = ''; state.historyCategory = ''; state.historyType = ''; state.historyFrom = ''; state.historyTo = ''; state.historyVisible = 20; render(); return;
-        }
         if (action === 'show-more-history') { state.historyVisible = Math.min(100, state.historyVisible + 20); render(); return; }
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
@@ -856,7 +817,6 @@
         ballEl = rootEl.querySelector('.quick-dock-ball');
         applyPosition(state.x == null ? window.innerWidth - 64 : state.x, state.y == null ? Math.round(window.innerHeight * 0.52) : state.y);
         panelEl.addEventListener('click', onPanelClick);
-        panelEl.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target?.id === 'quick-dock-history-query') { event.preventDefault(); runAction('apply-history-filters', event.target); } });
         ballEl.addEventListener('pointerdown', onPointerDown);
         ballEl.addEventListener('pointermove', onPointerMove);
         ballEl.addEventListener('pointerup', onPointerUp);

@@ -1,0 +1,20 @@
+QWQ 动态记忆 V5.4.2 必要测试报告
+
+已执行：
+1. 修改文件 JavaScript 语法检查：通过。
+2. V5.4 停用业务防泄漏测试：通过。
+3. V5.4.2 AIRequestGateway 与任务级 Manifest 测试：通过。
+4. 主聊天预编译 Manifest 通过网关时保持不变：通过。
+5. 图片输入、任务指令、请求参数来源登记：通过。
+6. 业务文件不直接调用 OVOAIRequestRuntime.request：通过。
+7. context_compiler → runtime → gateway → chat_ai 加载顺序：通过。
+8. 聊天状态栏点击/Enter/空格直达当前状态表：通过。
+9. V5.1 聊天 memory_ops 清理与写入回归：通过。
+10. V5.2 中期压缩与长期草稿回归：通过。
+11. STORE_VERSION=3：通过。
+
+未执行：
+- Android 真机网络请求。
+- 所有 Provider 的真实 API 实机调用。
+- TTS、天气、Git 等非 Prompt 外部服务全量测试。
+- 全部历史页面的 UI 全量回归。

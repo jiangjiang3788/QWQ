@@ -1,0 +1,23 @@
+QWQ 动态记忆 V5.4.1 必要测试报告
+
+已执行：
+1. context_source_registry.js、context_compiler.js、chat_ai.js、worldbook.js、memory UI/Core语法检查。
+2. V5.4停用业务防泄漏回归。
+3. ContextCompiler专项：
+   - 结构化记忆真实开关；
+   - 结构化记忆预算裁剪；
+   - 状态注入关闭；
+   - 历史条数裁剪；
+   - 历史关闭时保留本轮输入和控制消息；
+   - Tools、参数和消息来源compiled Manifest登记。
+4. memory_ops主聊天防泄漏与写入回归。
+5. V5.2短期压缩和长期草稿回归。
+6. V5.3导入保护、分页和移动端视口静态回归。
+7. 核心档案分组列表与Rows表头隐藏aiHint静态检查。
+8. index.html新模块加载顺序和缓存版本检查。
+
+未执行：
+- Android真机软键盘与触摸测试；
+- 真实模型接口全流程测试；
+- 日记、通话、生图等尚未迁入统一Gateway的AI任务全量测试；
+- 数千条真实记录压力测试。

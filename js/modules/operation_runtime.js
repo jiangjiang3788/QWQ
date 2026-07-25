@@ -1,16 +1,16 @@
-// OVO Operation Runtime - V2.12-R2 productized operation history
+// OVO Operation Runtime - V2.14 · compact single-user operation history
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
 
     const STORAGE_KEY = 'ovo_operation_history_v1';
-    const HISTORY_LIMIT = 100;
-    const DETAIL_LIMIT = 8;
-    const BODY_PREVIEW_LIMIT = 120000;
-    const MUTATION_LIMIT = 80;
-    const MUTATION_TEXT_LIMIT = 4000;
-    const STORAGE_BUDGET_CHARS = 900000;
-    const REPORT_OPERATION_LIMIT = 100;
+    const HISTORY_LIMIT = 20;
+    const DETAIL_LIMIT = 5;
+    const BODY_PREVIEW_LIMIT = 16000;
+    const MUTATION_LIMIT = 40;
+    const MUTATION_TEXT_LIMIT = 1200;
+    const STORAGE_BUDGET_CHARS = 260000;
+    const REPORT_OPERATION_LIMIT = 20;
     let lastPersistStats = { chars: 0, budget: STORAGE_BUDGET_CHARS, records: 0, detailRecords: 0, compacted: false, dropped: 0 };
     const registry = new Map();
     const records = new Map();
@@ -111,6 +111,27 @@
         } catch (_) {
             return { bodyPreview: '[请求内容无法序列化]', bodyTruncated: true, bodyChars: 0 };
         }
+    }
+
+    function summarizeContextManifest(manifest) {
+        const sources = Array.isArray(manifest?.sources) ? manifest.sources : [];
+        const included = sources.filter(item => item?.included !== false && (Number(item?.chars) || Number(item?.matchedChars) || 0) > 0);
+        const excluded = sources.filter(item => item?.included === false);
+        return {
+            protocol: 'ovo.operation-source-summary.v1',
+            task: manifest?.task || '',
+            total: sources.length,
+            included: included.length,
+            excluded: excluded.length,
+            chars: included.reduce((sum, item) => sum + Math.max(0, Number(item?.chars) || Number(item?.matchedChars) || 0), 0),
+            complete: manifest?.coverage?.complete !== false,
+            retiredSourceLeak: !!manifest?.coverage?.retiredSourceLeak,
+            items: sources.slice(0, 60).map(item => ({
+                sourceId: item.sourceId || '', title: item.title || item.sourceId || '来源',
+                domain: item.domain || '', layer: item.layer || '', included: item.included !== false,
+                chars: Math.max(0, Number(item.chars) || Number(item.matchedChars) || 0), reason: item.reason || ''
+            }))
+        };
     }
 
     function emit(record, reason) {
@@ -317,7 +338,7 @@
         const initialStatus = options.status || 'running';
         const record = {
             id: options.id || makeId('op'),
-            schemaVersion: 4,
+            schemaVersion: 5,
             type: type || 'ai.request',
             title: options.title || definition.title || '执行操作',
             category: options.category || definition.category || '其他',
@@ -397,7 +418,9 @@
         const record = getMutable(id);
         if (!record) return null;
         const preview = createBodyPreview(request.body);
-        const promptTrace = global.OVOPromptTrace?.build
+        const contextManifest = safeClone(request.contextManifest || null);
+        // V5.4.3: Context Manifest is the source of truth. PromptTrace remains only for legacy requests.
+        const promptTrace = contextManifest ? null : (global.OVOPromptTrace?.build
             ? global.OVOPromptTrace.build(request.body || {}, request.promptSources || [], {
                 task: request.task || '',
                 source: request.source || '',
@@ -407,7 +430,8 @@
                 operationType: record.type || '',
                 scope: record.scope || {}
             })
-            : null;
+            : null);
+        const sourceSummary = summarizeContextManifest(contextManifest);
         const entry = {
             id: request.id || makeId('req'),
             task: request.task || '',
@@ -427,7 +451,8 @@
             bodyTruncated: preview.bodyTruncated,
             bodyChars: preview.bodyChars,
             promptTrace: safeClone(promptTrace),
-            contextManifest: safeClone(request.contextManifest || null),
+            contextManifest,
+            sourceSummary,
             createdAt: new Date().toISOString(),
             completedAt: null,
             durationMs: 0,
@@ -436,7 +461,8 @@
         };
         record.requests.push(entry);
         if (promptTrace?.summary) record.promptSummary = safeClone(promptTrace.summary);
-        if (request.contextManifest?.coverage) record.contextCoverage = safeClone(request.contextManifest.coverage);
+        if (contextManifest?.coverage) record.contextCoverage = safeClone(contextManifest.coverage);
+        if (sourceSummary?.total) record.sourceSummary = safeClone(sourceSummary);
         record.updatedAt = new Date().toISOString();
         persist();
         emit(record, 'request');
@@ -828,10 +854,10 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.12-R2',
+        VERSION: '2.14',
         start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
         complete, skip, fail, cancel, get, getChildren, list, getFacets, getStorageStats, getActive, getCurrent,
-        buildOperationReport, exportReport, exportHistory, redactSensitiveText,
+        buildOperationReport, exportReport, exportHistory, redactSensitiveText, summarizeContextManifest,
         resolveOperationId, recalculateParent, clear, subscribe
     };
 })(window);

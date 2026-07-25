@@ -26,7 +26,7 @@ for (const file of [
 }
 
 const M = sandbox.MemoryV5;
-assert.equal(M.VERSION, '5.4.1');
+assert.equal(M.VERSION, '5.4.3');
 assert.equal(M.STORE_VERSION, 3, '原地升级不得改变STORE_VERSION');
 assert.equal(M.model.defaultSettings().tablePageSize, 100);
 assert.equal(M.model.normalizeStore({ settings: { tablePageSize: 9999 }, tables: [], records: {} }).settings.tablePageSize, 500);

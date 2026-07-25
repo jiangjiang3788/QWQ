@@ -77,6 +77,7 @@ function setupMagicRoomApp() {
 
     loadPromentPolicy();
     renderPromentOverview();
+    setTimeout(() => window.OvoPromentGovernance?.init?.(), 0);
     setTimeout(() => { renderFocusedPromptSource(); }, 0);
     document.getElementById('proment-open-worldbook')?.addEventListener('click', () => {
         if (typeof renderWorldBookList === 'function') renderWorldBookList();
@@ -760,6 +761,7 @@ B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角�
         db.magicRoom.contextPolicy = readPromentPolicy();
         await saveData();
         showToast('Proment 设置已保存！');
+        window.OvoPromentGovernance?.render?.();
     });
 
     // ===== 系统通知设置初始化 =====

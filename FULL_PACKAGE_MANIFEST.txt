@@ -1,5 +1,4 @@
 ./CHANGELOG_MEMORY_V5.txt
-./FULL_PACKAGE_MANIFEST.txt
 ./PACKAGE_MANIFEST.txt
 ./README_V5_2.md
 ./README_V5_3.md
@@ -8,12 +7,14 @@
 ./README_V5_4_1a.md
 ./README_V5_4_1b.md
 ./README_V5_4_2.md
+./README_V5_4_3.md
 ./TEST_REPORT.txt
 ./TEST_REPORT_V5_4.txt
 ./TEST_REPORT_V5_4_1.txt
 ./TEST_REPORT_V5_4_1a.txt
 ./TEST_REPORT_V5_4_1b.txt
 ./TEST_REPORT_V5_4_2.txt
+./TEST_REPORT_V5_4_3.txt
 ./VERSION.txt
 ./architecture/ui_budgets.json
 ./contacts.css
@@ -49,12 +50,14 @@
 ./css/settings.css
 ./css/style.css
 ./docs/MEMORY_V5_1_AUTO_WRITE.md
+./docs/TEST_REPORT_V5_4_3.txt
 ./docs/UPGRADE_V5_1_1.md
 ./docs/UPGRADE_V5_2.md
 ./docs/UPGRADE_V5_3.md
 ./docs/UPGRADE_V5_4.md
 ./docs/UPGRADE_V5_4_1.md
 ./docs/UPGRADE_V5_4_2.md
+./docs/UPGRADE_V5_4_3.md
 ./index.html
 ./js/app_registry.js
 ./js/chat.js
@@ -87,6 +90,7 @@
 ./js/features/settings/magic_room.js
 ./js/features/settings/preset_manager.js
 ./js/features/settings/presets.js
+./js/features/settings/proment_governance.js
 ./js/main.js
 ./js/modules/ai_capability_catalog.js
 ./js/modules/ai_request_runtime.js
@@ -142,6 +146,7 @@
 ./tests/memory_v5_3_stability.test.js
 ./tests/v5_4_1_context_compiler.test.js
 ./tests/v5_4_2_ai_gateway.test.js
+./tests/v5_4_3_governance.test.js
 ./tests/v5_4_context_retirement.test.js
 ./vendor/README.txt
 ./vendor/Sortable.min.js

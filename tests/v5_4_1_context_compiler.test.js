@@ -115,7 +115,7 @@ assert.strictEqual(disabledBody.messages.some(item => item.content === '当前�
 assert.strictEqual(disabledBody.messages.some(item => item.content === '<thinking>'), true);
 
 const indexText = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-assert(indexText.includes('js/core/context_compiler.js?v=541'), 'compiler must load before chat requests');
+assert(indexText.includes('js/core/context_compiler.js?v=543'), 'compiler must load before chat requests');
 const chatText = fs.readFileSync(path.join(root, 'js/modules/chat_ai.js'), 'utf8');
 assert(chatText.includes('buildCompiledManifest'), 'private chat should use compiled manifest');
 assert(chatText.includes('WorldBookContextProvider'), 'chat module should call the worldbook domain provider');
@@ -124,6 +124,7 @@ assert(uiText.includes('mv5-kv-groups'));
 assert(!uiText.includes("field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</div><span class=\"mv5-col-resizer\""), 'row headers should not show aiHint');
 const cssText = fs.readFileSync(path.join(root, 'css/modules/memory_v3.css'), 'utf8');
 assert(cssText.includes('.mv5-kv-group-head { padding: 0 2px; color: #2f3d43; font-size: 16px;'));
-assert(cssText.includes('.mv5-kv-list { display: flex; flex-direction: column; gap: 8px; }'));
+assert(cssText.includes('.mv5-kv-list { display: flex; flex-direction: column; }'));
+assert(cssText.includes('.mv5-kv-record:not(:last-child) { border-bottom: 1px solid #dce5e7; }'));
 
 console.log('V5.4.1 context compiler tests passed.');

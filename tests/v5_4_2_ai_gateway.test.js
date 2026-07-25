@@ -57,7 +57,7 @@ for (const file of ['js/core/context_source_registry.js', 'js/core/ai_request_ga
   assert.strictEqual(captured.canonicalTask, 'chat.reply');
 
   const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const compilerPos = index.indexOf('js/core/context_compiler.js?v=542');
+  const compilerPos = index.indexOf('js/core/context_compiler.js?v=543');
   const runtimePos = index.indexOf('js/modules/ai_request_runtime.js');
   const gatewayPos = index.indexOf('js/core/ai_request_gateway.js?v=542');
   const chatPos = index.indexOf('js/modules/chat_ai.js?v=542');
@@ -80,7 +80,7 @@ for (const file of ['js/core/context_source_registry.js', 'js/core/ai_request_ga
   assert(memoryEngine.includes("event.key !== 'Enter' && event.key !== ' '"), 'state bar must support keyboard navigation');
 
   const memoryCore = fs.readFileSync(path.join(root, 'js/features/memory_v3/memory_core_v3.js'), 'utf8');
-  assert(memoryCore.includes("const VERSION = '5.4.2'"));
+  assert(memoryCore.includes("const VERSION = '5.4.3'"));
   assert(memoryCore.includes('const STORE_VERSION = 3'));
 
   console.log('V5.4.2 AI gateway tests passed.');
