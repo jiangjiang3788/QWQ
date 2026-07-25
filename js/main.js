@@ -128,7 +128,6 @@ const init = async () => {
         'setupSearchSystem',
         'setupMemoryJournalScreen',
         'setupMemoryTableScreen',
-        'setupVectorMemoryScreen',
         'setupMemoryModeUI',
         'setupDeleteHistoryChunk',
         'setupStorageAnalysisScreen',

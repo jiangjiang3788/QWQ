@@ -1,151 +1,30 @@
 {
-  "version": "2.15-R0B",
-  "controller": "js/modules/memory_table.js",
-  "publicFacades": {
-    "memoryPlatformDomain": {
-      "file": "js/features/memory/domains/platform.js",
-      "owns": [
-        "policy",
-        "policyResolver",
-        "review",
-        "retrieval",
-        "effects",
-        "lifecycle",
-        "tasks",
-        "feedback",
-        "quality",
-        "sidecar",
-        "sidecarCandidateService",
-        "sidecarCandidateController",
-        "schedule"
-      ]
+  "version": "3.0.0-V1",
+  "principle": "single-source-dynamic-tables",
+  "sourceOfTruth": "character.memoryStore",
+  "runtime": "js/features/memory/simple_memory_v1.js",
+  "domains": {
+    "store": ["settings", "tables", "records"],
+    "levels": ["short", "medium", "long"],
+    "writePaths": {
+      "short": "chat-direct",
+      "medium": "configured-aggregation-direct",
+      "long": "manual-only"
     },
-    "memoryFoundationDomain": {
-      "file": "js/features/memory/domains/foundation.js",
-      "owns": [
-        "fieldSemantics",
-        "memoryDefaults",
-        "api",
-        "domain",
-        "recordIdentity",
-        "fieldWidth",
-        "workspace",
-        "packageAdapter",
-        "writeCoordinator",
-        "writeGateway",
-        "schemaMigrator",
-        "packageOrchestrator"
-      ]
-    },
-    "memorySchemaDomain": {
-      "file": "js/features/memory/domains/schema.js",
-      "owns": [
-        "schemaModel",
-        "schemaEditor"
-      ]
-    },
-    "memoryGovernanceDomain": {
-      "file": "js/features/memory/domains/governance.js",
-      "owns": [
-        "tagVocabulary",
-        "relationService",
-        "mergeReviewService",
-        "candidateService",
-        "workItem",
-        "provenanceService",
-        "tableFilter",
-        "governanceQueue",
-        "governanceController",
-        "rowInspector",
-        "rowInspectorController",
-        "integrityDoctor",
-        "reviewOrchestrator"
-      ]
-    },
-    "memoryRetrievalDomain": {
-      "file": "js/features/memory/domains/retrieval.js",
-      "owns": [
-        "retrievalAudit",
-        "retrievalMaintenance",
-        "retrievalOrchestrator"
-      ]
-    },
-    "memoryUpdateDomain": {
-      "file": "js/features/memory/domains/update.js",
-      "owns": [
-        "fieldPolicy",
-        "tagService",
-        "contextAssembler",
-        "updateService"
-      ]
-    },
-    "memoryTablesDomain": {
-      "file": "js/features/memory/domains/tables.js",
-      "owns": [
-        "tableViewport",
-        "tableSession",
-        "tableGrouping",
-        "tableGesture",
-        "tableCache",
-        "tablePersistence",
-        "rowCommandMenu",
-        "tableInteraction",
-        "tableView",
-        "tablePresenter",
-        "tableReconciler",
-        "tableGrid",
-        "rowEditModal",
-        "tableEditor",
-        "tableEditController",
-        "rowEditController",
-        "updateActivity",
-        "tableWorkspace",
-        "tableSort"
-      ]
-    }
+    "recordMetadata": ["category", "tags", "source", "createdAt", "updatedAt"],
+    "sourceValues": ["用户明确", "AI判断"],
+    "contextSelection": ["category-match", "tag-match", "always-inject-tag", "never-inject-tag"]
   },
-  "controllerAllowedRequires": [
-    "memoryPlatformDomain",
-    "memoryFoundationDomain",
-    "memorySchemaDomain",
-    "memoryGovernanceDomain",
-    "memoryRetrievalDomain",
-    "memoryUpdateDomain",
-    "memoryTablesDomain",
-    "memoryArchitecture"
-  ],
-  "budgets": {
-    "js/modules/memory_table.js": 3300,
-    "js/modules/floating_ball.js": 1020,
-    "js/features/memory/schema_editor.js": 900,
-    "js/features/memory/retrieval_audit.js": 700,
-    "js/settings.js": 500,
-    "js/features/memory/review_orchestrator.js": 750,
-    "js/features/memory/retrieval_orchestrator.js": 260,
-    "js/features/memory/package_orchestrator.js": 430,
-    "js/features/memory/schema_migrator.js": 340,
-    "js/features/memory/record_identity.js": 360,
-    "js/features/memory/work_item.js": 380,
-    "js/features/memory/provenance_service.js": 360,
-    "js/features/memory/field_semantics.js": 260,
-    "js/features/memory/memory_defaults.js": 100
-  },
-  "formalWriteGate": {
-    "gateway": "writeGateway",
-    "allowedDirectWriters": [
-      "js/features/memory/domain.js",
-      "js/modules/memory_table_sidecar.js",
-      "js/features/memory/package_adapter.js",
-      "js/features/memory/write_coordinator.js"
-    ],
-    "gatewayClients": [
-      "js/modules/memory_table.js",
-      "js/modules/memory_table_sidecar.js",
-      "js/features/memory/table_editor.js",
-      "js/features/memory/candidate_service.js",
-      "js/features/memory/sidecar_candidate_controller.js",
-      "js/features/memory/review_orchestrator.js",
-      "js/features/memory/package_orchestrator.js"
-    ]
-  }
+  "removed": [
+    "candidate-pool",
+    "review-queue",
+    "runtime-state",
+    "promotion",
+    "confidence",
+    "rollback-history",
+    "vector-memory",
+    "lifecycle",
+    "governance",
+    "retrieval-audit"
+  ]
 }

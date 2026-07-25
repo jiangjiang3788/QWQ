@@ -334,22 +334,12 @@
                 char.messages = [];
                 char.chatContext = '';
                 char.chatSummary = '';
-                if (char.memoryTables && typeof char.memoryTables === 'object') {
-                    char.memoryTables.data = {};
-                    char.memoryTables.history = [];
-                    char.memoryTables.lastChangedFieldPaths = [];
+                if (char.memoryStore && typeof char.memoryStore === 'object') {
+                    char.memoryStore.records = {};
+                    (char.memoryStore.tables || []).forEach(table => { char.memoryStore.records[table.id] = []; });
                 }
-                if (char.vectorMemory && typeof char.vectorMemory === 'object') {
-                    char.vectorMemory.entries = [];
-                    char.vectorMemory.history = [];
-                    char.vectorMemory.lastSummarizedMsgId = null;
-                    char.vectorMemory.lastSummarizedMsgTimestamp = null;
-                    char.vectorMemory.lastContextBlock = '';
-                    char.vectorMemory.lastRetrievedEntryIds = [];
-                    char.vectorMemory.lastQueryText = '';
-                    char.vectorMemory.autoSummaryState = 'idle';
-                    char.vectorMemory.autoSummaryPending = false;
-                }
+                delete char.memoryTables;
+                delete char.vectorMemory;
 
                 // 同步清空拉黑和好友申请相关记忆
                 char.blockHistory = [];

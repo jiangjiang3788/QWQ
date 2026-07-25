@@ -424,7 +424,7 @@
             else if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
             return;
         }
-        if (navigation.kind === 'vector-memory' && typeof switchScreen === 'function') { switchScreen('vector-memory-screen'); return; }
+        if (navigation.kind === 'vector-memory') { if (navigation.characterId && typeof window.openMemoryTableForCharacter === 'function') window.openMemoryTableForCharacter(navigation.characterId); else if (typeof switchScreen === 'function') switchScreen('memory-table-screen'); return; }
         if (navigation.kind === 'journal-memory' && typeof switchScreen === 'function') { switchScreen('memory-journal-screen'); return; }
         toast('该来源没有可直接打开的管理页面');
     }

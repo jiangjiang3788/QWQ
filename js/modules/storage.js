@@ -38,9 +38,13 @@ function setupStorageAnalysisScreen() {
             : 0;
     }
 
-    function countVectorEntries() {
+    function countMemoryRecords() {
         return Array.isArray(db && db.characters)
-            ? db.characters.reduce((sum, item) => sum + (item.vectorMemory && Array.isArray(item.vectorMemory.entries) ? item.vectorMemory.entries.length : 0), 0)
+            ? db.characters.reduce((sum, item) => {
+                const records = item?.memoryStore?.records;
+                if (!records || typeof records !== 'object') return sum;
+                return sum + Object.values(records).reduce((n, rows) => n + (Array.isArray(rows) ? rows.length : 0), 0);
+            }, 0)
             : 0;
     }
 
@@ -52,7 +56,7 @@ function setupStorageAnalysisScreen() {
             ['收藏', Array.isArray(db.favorites) ? db.favorites.length : 0],
             ['世界书', Array.isArray(db.worldBooks) ? db.worldBooks.length : 0],
             ['小剧场', (Array.isArray(db.theaterScenarios) ? db.theaterScenarios.length : 0) + (Array.isArray(db.theaterHtmlScenarios) ? db.theaterHtmlScenarios.length : 0)],
-            ['向量记忆', countVectorEntries()]
+            ['档案记录', countMemoryRecords()]
         ];
         summaryGrid.innerHTML = cards.map(([label, value]) => `
             <div class="data-analysis-summary-card">

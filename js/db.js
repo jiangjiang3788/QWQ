@@ -148,7 +148,7 @@ const globalSettingKeys = [
     'theaterScenarios', 'theaterPromptPresets', 'theaterHtmlScenarios', 'theaterHtmlPromptPresets',
     'theaterMode', 'theaterApiSettings', 'theaterFontSize', 'theaterFontPreset',
     'novelAiSettings', 'gptImageSettings', 'gptImagePresets', 'avatarRecognitionDetailLevel',
-    'phoneControlRecycleBin', 'memoryTableTemplates', 'vectorMemoryTemplates',
+    'phoneControlRecycleBin', 'memoryTableTemplates',
     'homeStatusBarSettings', 'stickerCategories', 'magicRoom',
     'keepAliveCodeEnabled', 'keepAliveAudioEnabled', 'keepAliveAudioSrc', 'keepAliveAudioName', 'keepAliveAudioLibrary'
 ];
@@ -744,7 +744,6 @@ var db = {
     favorites: [],  // 消息收藏：{ id, messageId, chatId, chatType, chatName, content, timestamp, favoriteTime, note, sender }
     phoneControlRecycleBin: [],  // 角色掌控模式：被角色“删除”的角色移入回收站，可恢复
     memoryTableTemplates: [],
-    vectorMemoryTemplates: []
 };
 
 var currentChatId = null;
@@ -823,7 +822,6 @@ function initDatabase() {
                 globalCssPresets: data.globalCssPresets || [],
                 homeSignature: data.homeSignature || '编辑个性签名...',
                 memoryTableTemplates: data.memoryTableTemplates || [],
-                vectorMemoryTemplates: data.vectorMemoryTemplates || [],
             moreProfileCardBg: data.moreProfileCardBg || 'https://i.postimg.cc/XvFDdTKY/Smart-Select-20251013-023208.jpg',
             cotSettings: data.cotSettings || { enabled: false, activePresetId: 'default' },
             cotPresets: data.cotPresets || JSON.parse(JSON.stringify(DEFAULT_COT_PRESETS)),
@@ -1018,8 +1016,7 @@ const loadData = async () => {
             globalCssPresets: [],
             homeSignature: '编辑个性签名...',
             memoryTableTemplates: [],
-            vectorMemoryTemplates: [],
-            activePersonaId: null,
+                    activePersonaId: null,
             moreProfileCardBg: 'https://i.postimg.cc/XvFDdTKY/Smart-Select-20251013-023208.jpg',
             globalSendSound: '',
             globalReceiveSound: '',
@@ -1067,7 +1064,7 @@ const loadData = async () => {
 });
 
     if (!Array.isArray(db.stickerCategories)) db.stickerCategories = [];
-    if (!Array.isArray(db.vectorMemoryTemplates)) db.vectorMemoryTemplates = [];
+    if (Object.prototype.hasOwnProperty.call(db, 'vectorMemoryTemplates')) delete db.vectorMemoryTemplates;
     if (!Array.isArray(db.vectorApiPresets)) db.vectorApiPresets = [];
 
     // Data integrity checks
@@ -1095,51 +1092,27 @@ const loadData = async () => {
                 history: []
             };
         }
-        if (!['journal', 'table', 'vector'].includes(c.memoryMode)) c.memoryMode = 'journal';
-        if (!c.memoryTables || typeof c.memoryTables !== 'object') {
-            c.memoryTables = {
-                enabled: true,
-                boundTemplateIds: [],
-                data: {},
-                lockedFields: {},
-                history: [],
-                lastChangedFieldPaths: []
+        // V3：结构化动态表是唯一记忆来源。
+        c.memoryMode = 'table';
+        // V3 单人收敛版：memoryStore 是唯一真源。
+        // 旧 memoryTables 若存在，交给 simple_memory_v1.js 一次性迁移后删除；新角色不再创建旧运行态结构。
+        if (!c.memoryStore || typeof c.memoryStore !== 'object') {
+            c.memoryStore = {
+                version: 1,
+                settings: {
+                    enabled: true,
+                    allowAiJudgment: true,
+                    injectionMaxRecords: 24,
+                    tagBehaviors: {
+                        alwaysInject: ['始终注入'],
+                        neverInject: ['不进入上下文']
+                    }
+                },
+                tables: [],
+                records: {}
             };
         }
-        if (!Array.isArray(c.memoryTables.boundTemplateIds)) c.memoryTables.boundTemplateIds = [];
-        if (!c.memoryTables.data || typeof c.memoryTables.data !== 'object') c.memoryTables.data = {};
-        if (!c.memoryTables.lockedFields || typeof c.memoryTables.lockedFields !== 'object') c.memoryTables.lockedFields = {};
-        if (!Array.isArray(c.memoryTables.history)) c.memoryTables.history = [];
-        if (!Array.isArray(c.memoryTables.lastChangedFieldPaths)) c.memoryTables.lastChangedFieldPaths = [];
-        if (!c.vectorMemory || typeof c.vectorMemory !== 'object') {
-            c.vectorMemory = {
-                enabled: true,
-                boundTemplateId: null,
-                entries: [],
-                history: [],
-                topK: 5,
-                threshold: 0.28,
-                autoSummaryEnabled: false,
-                autoSummaryInterval: 200,
-                autoSummaryState: 'idle',
-                autoSummaryPending: false,
-                lastSummarizedMsgId: null,
-                lastSummarizedMsgTimestamp: null,
-                lastContextBlock: '',
-                lastRetrievedEntryIds: [],
-                lastQueryText: '',
-                lastPreparedAt: null
-            };
-        }
-        if (!Array.isArray(c.vectorMemory.entries)) c.vectorMemory.entries = [];
-        if (!Array.isArray(c.vectorMemory.history)) c.vectorMemory.history = [];
-        if (c.vectorMemory.topK === undefined) c.vectorMemory.topK = 5;
-        if (c.vectorMemory.threshold === undefined) c.vectorMemory.threshold = 0.28;
-        if (c.vectorMemory.autoSummaryEnabled === undefined) c.vectorMemory.autoSummaryEnabled = false;
-        if (!Number.isFinite(parseInt(c.vectorMemory.autoSummaryInterval, 10))) c.vectorMemory.autoSummaryInterval = 200;
-        if (!c.vectorMemory.autoSummaryState) c.vectorMemory.autoSummaryState = 'idle';
-        if (c.vectorMemory.autoSummaryPending === undefined) c.vectorMemory.autoSummaryPending = false;
-        if (!Array.isArray(c.vectorMemory.lastRetrievedEntryIds)) c.vectorMemory.lastRetrievedEntryIds = [];
+        if (Object.prototype.hasOwnProperty.call(c, 'vectorMemory')) delete c.vectorMemory;
         if (!c.regexFilter) {
             c.regexFilter = {
                 enabled: false,

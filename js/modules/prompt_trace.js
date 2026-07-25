@@ -92,7 +92,7 @@
             templateId: source?.metadata?.templateId || scope.templateId || '', tableId: source?.metadata?.tableId || scope.tableId || ''
         });
         if (type === 'journal_memory') return normalizeNavigation({ kind: 'journal-memory', label: '打开回忆日记', screen: 'memory-journal-screen', characterId, sourceIds });
-        if (type === 'vector_memory') return normalizeNavigation({ kind: 'vector-memory', label: '打开向量记忆', screen: 'vector-memory-screen', characterId, sourceIds });
+        if (type === 'vector_memory') return normalizeNavigation({ kind: 'structured-memory', label: '打开动态记忆', screen: 'memory-table-screen', characterId, sourceIds });
         return normalizeNavigation({ kind: 'proment', label: '在 Proment 核对', screen: 'magic-room-screen', characterId, sourceIds });
     }
 

@@ -45,13 +45,7 @@
 <link href="css/modules/theater.css" rel="stylesheet"/>
 <link href="css/modules/worldbook.css" rel="stylesheet"/>
 <link href="css/modules/journal.css" rel="stylesheet"/>
-<link href="css/modules/vector_memory.css" rel="stylesheet"/>
-<link href="css/modules/memory_mode_ui.css" rel="stylesheet"/>
-<link href="css/modules/memory_table_v2.css" rel="stylesheet"/>
-<link href="css/modules/memory_workspace.css" rel="stylesheet"/>
-<link href="css/modules/memory_table_flat.css" rel="stylesheet"/>
-<link href="css/modules/memory_schema_editor.css" rel="stylesheet"/>
-<link href="css/modules/memory_retrieval_audit.css" rel="stylesheet"/>
+<link href="css/modules/memory_simple_v1.css?v=300-v1" rel="stylesheet"/>
 <link href="css/modules/app_workspace.css" rel="stylesheet"/>
 <link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
@@ -290,7 +284,7 @@
 </div>
 <span class="expansion-item-name">剧情</span>
 </div>
-<div class="expansion-item" id="memory-journal-btn">
+<div class="expansion-item" id="memory-journal-btn" hidden>
 <div class="expansion-item-icon">
 <svg fill="currentColor" viewbox="0 0 24 24">
 <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,13.09C11.67,13.03 11.34,13 11,13A3,3 0 0,0 8,16A3,3 0 0,0 11,19C12.36,19 13.5,18.15 13.91,17H16V15H13.91C13.5,13.85 12.36,13.09 12,13.09M11,17A1,1 0 0,1 10,16A1,1 0 0,1 11,15A1,1 0 0,1 12,16A1,1 0 0,1 11,17Z"></path>
@@ -305,14 +299,6 @@
 </svg>
 </div>
 <span class="expansion-item-name">档案</span>
-</div>
-<div class="expansion-item" id="vector-memory-btn">
-<div class="expansion-item-icon">
-<svg fill="currentColor" viewbox="0 0 24 24">
-<path d="M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.18 6.5 3.61L12 11.41 5.5 7.79 12 4.18zm-7 5.34 6 3.33v6.88l-6-3.34V9.52zm8 10.21v-6.88l6-3.33v6.87l-6 3.34z"></path>
-</svg>
-</div>
-<span class="expansion-item-name">向量</span>
 </div>
 <div class="expansion-item" id="delete-history-btn">
 <div class="expansion-item-icon">
@@ -1228,111 +1214,6 @@
 </div>
 <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
 <button class="btn btn-primary" id="summary-api-close-modal">关闭</button>
-</div>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- 副API 2: 向量记忆 Embedding -->
-<div class="kkt-group collapsible-section" style="margin-top: 30px; padding-top: 0; border-top: 2px solid #eee;">
-<div class="collapsible-header" onclick="this.parentElement.classList.toggle('open')" style="padding: 15px 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-<div>
-<h3 style="margin: 0; font-size: 16px; color: var(--primary-color);">向量记忆 API（可选）</h3>
-<p style="font-size: 12px; color: #999; margin: 5px 0 0;">用于向量化记忆和语义检索。必须使用支持 Embeddings 的模型，不再回退到聊天或总结模型。</p>
-</div>
-<span class="collapsible-arrow">▼</span>
-</div>
-<div class="collapsible-content">
-<div class="kkt-item">
-<div class="kkt-item-label">服务商</div>
-<div class="kkt-item-control">
-<select id="vector-api-provider" style="border:none; background:transparent; text-align:right; direction: rtl; appearance: none; -webkit-appearance: none; padding-right: 15px;">
-<option value="newapi">OpenAI 兼容 / NewAPI</option>
-<option value="gemini">Gemini Embedding</option>
-</select>
-<span class="kkt-arrow">›</span>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">API 地址</div>
-<div class="kkt-item-control">
-<input autocomplete="off" id="vector-api-url" placeholder="https://...（可填写到 /v1）" style="text-align:right; border:none; background:transparent; width: 100%;" type="text"/>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">密钥 (Key)</div>
-<div class="kkt-item-control">
-<input autocomplete="new-password" id="vector-api-key" placeholder="sk-..." style="text-align:right; border:none; background:transparent; width: 100%;" type="password"/>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">批量大小</div>
-<div class="kkt-item-control">
-<input id="vector-api-batch-size" min="1" max="128" step="1" value="8" style="text-align:right; border:none; background:transparent; width: 100%;" type="number"/>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">向量维度（可选）</div>
-<div class="kkt-item-control">
-<input id="vector-api-dimensions" min="1" step="1" placeholder="由模型默认" style="text-align:right; border:none; background:transparent; width: 100%;" type="number"/>
-</div>
-</div>
-<div class="kkt-item vector-api-health-row">
-<div class="kkt-item-label">连接状态</div>
-<div class="kkt-item-control">
-<span class="vector-api-health" id="vector-api-health" data-state="missing">未配置</span>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">模型列表</div>
-<div class="kkt-item-control">
-<button class="btn btn-small btn-secondary" id="vector-fetch-models-btn" style="margin:0; padding: 4px 8px;" type="button">
-<span class="btn-text">拉取</span>
-<div class="spinner"></div>
-</button>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">选择模型</div>
-<div class="kkt-item-control">
-<select id="vector-api-model" style="border:none; background:transparent; text-align:right; direction: rtl; max-width: 180px; appearance: none; -webkit-appearance: none; padding-right: 15px;">
-<option value="">请先拉取</option>
-</select>
-<span class="kkt-arrow">›</span>
-</div>
-</div>
-<button class="btn btn-primary" id="vector-api-save-btn" style="margin-top: 15px; width: 100%;" type="button">
-<span class="btn-text">测试并保存向量 API</span>
-<div class="spinner"></div>
-</button>
-<div class="api-presets-embedded" style="margin-top:20px;">
-<div style="margin-bottom: 10px;">
-<h3 style="margin: 0; font-size: 14px; color: var(--primary-color);">向量记忆API预设管理</h3>
-<p style="font-size: 11px; color: #999; margin: 3px 0 0;">管理 Embedding API 配置预设</p>
-</div>
-<div id="vector-api-presets-control" style="padding:12px; border-radius:8px; background: #f5f5f5; border: 1px solid #eee;">
-<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-<label style="min-width:40px; color:#666; font-size: 14px;">预设</label>
-<select id="vector-api-preset-select" style="flex:1; padding:6px; border-radius:6px; border:1px solid #ddd;">
-<option value="">— 选择 —</option>
-</select>
-<button class="btn btn-primary btn-small" id="vector-api-apply-preset" style="padding: 6px 12px;">应用</button>
-</div>
-<div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-<button class="btn btn-small" id="vector-api-save-preset" style="flex: 1;">另存为</button>
-<button class="btn btn-small" id="vector-api-manage-presets" style="flex: 1;">管理</button>
-<button class="btn btn-small" id="vector-api-import-presets" style="flex: 1;">导入</button>
-<button class="btn btn-small" id="vector-api-export-presets" style="flex: 1;">导出</button>
-</div>
-</div>
-<div id="vector-api-presets-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;align-items:center;justify-content:center;">
-<div style="width:640px;max-width:94%;background:var(--panel-bg,#fff);padding:16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);">
-<h3 style="margin:0 0 12px 0;">向量记忆API预设管理</h3>
-<div id="vector-api-presets-list" style="max-height:360px;overflow:auto;border:1px solid #f0f0f0;padding:8px;border-radius:6px;">
-</div>
-<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-<button class="btn btn-primary" id="vector-api-close-modal">关闭</button>
 </div>
 </div>
 </div>
@@ -3356,44 +3237,6 @@
 <input id="setting-reply-count-max" min="1" style="width:30px; text-align:center; border:none; background: rgba(0,0,0,0.05); border-radius: 4px;" type="number" value="8"/>
 </div>
 </div>
-<section class="memory-mode-card" id="setting-memory-mode-card" aria-labelledby="setting-memory-mode-title">
-<div class="memory-mode-card-head">
-<div>
-<div class="memory-mode-card-title" id="setting-memory-mode-title">聊天实际使用的档案与长期记忆</div>
-<p>结构化档案作为基础档案；下面选择一种额外补充来源。</p>
-</div>
-<span class="memory-mode-current" id="setting-memory-mode-current">当前：回忆日记</span>
-</div>
-<div class="memory-mode-options" role="radiogroup" aria-label="长期记忆读取模式">
-<button class="memory-mode-option" data-setting-memory-mode="journal" type="button" role="radio" aria-checked="false">
-<span class="memory-mode-option-icon">📖</span>
-<span><b>档案 + 回忆日记</b><small>基础档案并补充收藏日记</small></span>
-</button>
-<button class="memory-mode-option" data-setting-memory-mode="table" type="button" role="radio" aria-checked="false">
-<span class="memory-mode-option-icon">🗂️</span>
-<span><b>仅结构化档案</b><small>只读取绑定的档案字段</small></span>
-</button>
-<button class="memory-mode-option" data-setting-memory-mode="vector" type="button" role="radio" aria-checked="false">
-<span class="memory-mode-option-icon">🧭</span>
-<span><b>档案 + 向量记忆</b><small>基础档案并补充语义检索</small></span>
-</button>
-</div>
-<select id="setting-memory-mode" hidden aria-hidden="true" tabindex="-1">
-<option value="journal">回忆日记</option>
-<option value="table">结构化档案</option>
-<option value="vector">向量记忆</option>
-</select>
-<div class="memory-mode-explanation" id="setting-memory-mode-explanation">
-<strong id="setting-memory-mode-injection">基础档案：结构化档案；补充来源：已收藏的回忆日记</strong>
-<span id="setting-memory-mode-help">结构化档案在启用并绑定模板后始终进入上下文。</span>
-</div>
-<div class="memory-mode-manage-row">
-<button class="btn btn-small btn-secondary" id="setting-open-journal-memory-btn" type="button">管理回忆日记</button>
-<button class="btn btn-small btn-secondary" id="setting-open-memory-table-btn" type="button">管理结构化档案</button>
-<button class="btn btn-small btn-secondary" id="setting-open-vector-memory-btn" type="button">管理向量记忆</button>
-</div>
-<p class="memory-mode-save-note">选择后请点击本页底部“保存所有更改”。</p>
-</section>
 <div class="kkt-item memory-generation-setting">
 <div class="kkt-item-label">
 <div>自动生成回忆日记（独立开关）</div>
@@ -5466,276 +5309,12 @@
 </div>
 <div class="screen" id="memory-table-screen">
 <header class="app-header">
-<button class="back-btn" data-target="home-screen">‹</button>
-<div class="title-container"><h1 class="title">记忆</h1></div>
-<div class="action-btn-group">
-<button class="action-btn" id="memory-table-update-btn" title="整理当前表">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>
-</button>
-<button class="action-btn" id="memory-table-create-template-btn" title="新建模板">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
-</button>
-</div>
-</header>
-<main class="content memory-workbench-shell">
-<section class="memory-workbench-hero">
-<div class="memory-workbench-identity">
-<strong id="memory-table-chat-summary">未选择角色</strong>
-<small id="memory-table-mode-pill">日记模式</small>
-</div>
-<div class="memory-workbench-mode-row" aria-label="记忆来源">
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="journal" type="button">日记</button>
-<button class="btn btn-small btn-primary" data-memory-mode-switch="table" type="button">档案</button>
-<button class="btn btn-small btn-secondary" data-memory-mode-switch="vector" type="button">向量</button>
-</div>
-</section>
-<section class="memory-workbench-state">
-<div><strong id="memory-workbench-status-title">暂无当前状态</strong><small id="memory-workbench-status-detail">聊天中出现明确变化后会自动更新。</small></div>
-<b id="memory-workbench-task-summary">0 项待办</b>
-</section>
-<nav class="memory-workbench-nav" aria-label="记忆工作台">
-<button class="memory-workspace-tab-btn active" data-workspace="memory" type="button">记忆</button>
-<button class="memory-workspace-tab-btn" data-workspace="inbox" type="button">待处理<span class="memory-workspace-badge" id="memory-workbench-inbox-count">0</span></button>
-<button class="memory-workspace-tab-btn" data-workspace="manage" type="button">管理</button>
-</nav>
-<div class="memory-workbench-toolbar" id="memory-workbench-memory-toolbar">
-<input id="memory-table-search-input" placeholder="搜索记忆" type="search"/>
-<select id="memory-table-sort-select">
-<option value="default">默认排序</option><option value="name">名称</option><option value="changed">最近变更</option><option value="locked">已锁定</option>
-</select>
-<button type="button" class="btn btn-small btn-secondary memory-flat-settings-trigger" data-action="toggle-memory-settings">整理设置</button>
-</div>
-<div class="memory-workbench-tools" id="memory-workbench-manage-tools" hidden>
-<button class="btn btn-small btn-secondary" id="memory-table-import-btn" type="button">导入</button>
-<button class="btn btn-small btn-secondary" id="memory-table-export-all-btn" type="button">导出模板</button>
-<button class="btn btn-small btn-secondary" id="memory-table-export-package-btn" type="button" title="跨角色迁移：重建内部 ID，并清空源角色运行游标">迁移快照</button>
-<button class="btn btn-small btn-secondary" id="memory-table-export-full-backup-btn" type="button" title="原角色恢复：保留全部 ID、审核、候选、索引与运行状态">完整备份</button>
-<button class="btn btn-small btn-secondary" id="memory-table-from-journal-btn" type="button">日记转档案</button>
-<button class="btn btn-small btn-secondary" id="memory-table-to-journal-btn" type="button">档案转日记</button>
-<input accept=".json,application/json" id="memory-table-import-input" hidden type="file"/>
-<button class="btn btn-small btn-primary" id="memory-table-open-schema-editor-btn" type="button">表结构</button>
-<div class="memory-v2-mode-switch" aria-hidden="true" hidden>
-<button type="button" id="memory-table-normal-mode-btn" class="active">普通</button><button type="button" id="memory-table-json-mode-btn">JSON</button>
-</div>
-</div>
-<button type="button" class="memory-flat-settings-backdrop" id="memory-workbench-settings-backdrop" data-action="toggle-memory-settings" aria-label="关闭整理设置"></button>
-<section class="memory-workbench-settings" id="memory-workbench-settings" hidden>
-<div class="memory-flat-drawer-head"><strong>记忆运行设置</strong><button type="button" class="btn btn-small btn-secondary" data-action="toggle-memory-settings">关闭</button></div>
-<div class="memory-workbench-settings-body">
-<section class="memory-v2-policy-panel memory-settings-section">
-<div class="memory-workbench-setting-head"><strong>聊天记忆采集</strong><span>跟随正常 AI 回复，不额外调用 API</span></div>
-<div class="memory-v2-policy-grid">
-<label class="memory-sidecar-setting">跟随聊天采集<span class="memory-sidecar-switch-row"><input id="memory-sidecar-enabled-toggle" type="checkbox" checked/>启用</span></label>
-<label class="memory-sidecar-setting">保存短期候选<span class="memory-sidecar-switch-row"><input id="memory-sidecar-candidate-toggle" type="checkbox" checked/>保存</span></label>
-<label class="memory-sidecar-setting">聊天状态提示<span class="memory-sidecar-switch-row"><input id="memory-sidecar-statusbar-toggle" type="checkbox" checked/>显示</span></label>
-</div>
-</section>
-<section class="memory-v2-policy-panel memory-settings-section">
-<div class="memory-workbench-setting-head">
-<strong>周期整理默认值</strong>
-<label class="kkt-switch"><input id="memory-table-auto-update-toggle" type="checkbox"/><span class="kkt-slider"></span></label>
-<span id="memory-table-round-status">仅供选择“使用全局默认”的表格使用</span>
-</div>
-<div class="memory-v2-policy-grid">
-<label>默认触发<select id="memory-table-trigger-mode"><option value="rounds">按轮数</option><option value="messages">按消息数</option><option value="either">任一达到</option></select></label>
-<label>默认轮数<input id="memory-table-round-interval" type="number" min="1" step="1" value="2"/></label>
-<label>默认消息数<input id="memory-table-auto-update-interval" type="number" min="10" step="10" value="140"/></label>
-<label>默认读取上限<input id="memory-table-max-source-messages" type="number" min="10" max="1000" step="10" value="180"/></label>
-</div>
-<div class="memory-workbench-tools">
-<button class="btn btn-small btn-secondary" id="memory-table-update-latest-btn" type="button">整理到期表</button>
-<button class="btn btn-small btn-secondary" id="memory-table-retry-btn" type="button">重试失败</button>
-</div>
-<div id="memory-table-auto-update-status">周期整理未开启</div>
-</section>
-<section class="memory-v2-policy-panel memory-settings-section">
-<div class="memory-workbench-setting-head"><strong>召回与安全</strong><span>决定如何寻找和使用记忆，不决定是否直接写入</span></div>
-<div class="memory-v2-policy-grid">
-<label>检索<select id="memory-table-retrieval-mode"><option value="auto">自动</option><option value="keyword">关键词</option><option value="hybrid">混合</option></select></label>
-<label>语义权重<input id="memory-table-semantic-weight" type="number" min="0" max="1" step="0.05" value="0.55"/></label>
-<label>标签权重<input id="memory-table-tag-weight" type="number" min="0" max="0.8" step="0.05" value="0.35"/></label>
-<label>向量候选<input id="memory-table-embedding-candidate-limit" type="number" min="4" max="200" step="4" value="32"/></label>
-<label class="memory-sidecar-setting">场景路由<span class="memory-sidecar-switch-row"><input id="memory-table-scene-routing-toggle" type="checkbox" checked/>启用</span></label>
-<label class="memory-sidecar-setting">副作用保护<span class="memory-sidecar-switch-row"><input id="memory-table-side-effect-guard-toggle" type="checkbox" checked/>启用</span></label>
-</div>
-</section>
-</div>
-</section>
-<div class="memory-workbench-legacy-tabs" aria-hidden="true">
-<button class="memory-table-tab-btn" data-tab="tables" type="button">当前表格</button>
-<button class="memory-table-tab-btn" data-tab="templates" type="button">模板库</button>
-<button class="memory-table-tab-btn" data-tab="review" type="button">更新审核<span id="memory-review-tab-count">0</span></button>
-<button class="memory-table-tab-btn" data-tab="usage_audit" type="button">记忆引用与作用<span id="memory-usage-audit-tab-count">0</span></button>
-<button class="memory-table-tab-btn" data-tab="sidecar" type="button">短期候选<span id="memory-sidecar-tab-count">0</span></button>
-<button class="memory-table-tab-btn" data-tab="reliability" type="button">可靠性</button>
-<button class="memory-table-tab-btn" data-tab="tasks" type="button">维护作业<span id="memory-task-tab-count">0</span></button>
-<button class="memory-table-tab-btn" data-tab="quality" type="button">质量评估</button>
-<button class="memory-table-tab-btn" data-tab="history" type="button">历史</button>
-</div>
-<div class="memory-workbench-content" id="memory-table-content"></div>
-<div class="placeholder-text" id="memory-table-empty-state" style="display:none;"><p>还没有内容</p></div>
-</main>
-</div>
-
-<div class="modal-overlay" id="memory-range-preview-modal">
-  <div class="modal-window" style="max-width:720px;max-height:86vh;overflow:auto;">
-    <h3 style="margin:0 0 12px;">总结范围预览</h3>
-    <div id="memory-range-preview-content"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
-      <button class="btn btn-secondary" id="memory-range-preview-close-btn" type="button">关闭</button>
-      <button class="btn btn-primary" id="memory-range-preview-confirm-btn" type="button">生成更新草案</button>
-    </div>
-  </div>
-</div>
-
-<div class="screen" id="vector-memory-screen">
-<header class="app-header">
 <button class="back-btn" data-target="chat-room-screen">‹</button>
-<div class="title-container">
-<h1 class="title">向量记忆</h1>
-</div>
-<div class="action-btn-group">
-<button class="action-btn" id="vector-memory-manual-btn" title="手动总结 / 手动录入">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24">
-<path d="M12 20h9"></path>
-<path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
-</svg>
-</button>
-<button class="action-btn" id="vector-memory-create-template-btn" title="新建模板">
-<svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24" width="24">
-<line x1="12" x2="12" y1="5" y2="19"></line>
-<line x1="5" x2="19" y1="12" y2="12"></line>
-</svg>
-</button>
-</div>
+<div class="title-container"><h1 class="title">记忆</h1></div>
 </header>
-<main class="content" style="padding-top: 14px;">
-<div style="padding: 0 15px 14px;">
-<div class="vector-memory-panel">
-<div class="vector-memory-panel-head">
-<div>
-<div id="vector-memory-chat-summary" style="font-size:15px; font-weight:700; color:#333;">未选择角色</div>
-<div class="vector-memory-pill" id="vector-memory-mode-pill">未选择角色</div>
+<main class="content"><div class="placeholder-text"><p>正在加载动态记忆表…</p></div></main>
 </div>
-<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="journal" type="button">回忆日记</button>
-<button class="btn btn-small btn-secondary" data-vector-memory-mode-switch="table" type="button">结构化档案</button>
-<button class="btn btn-small btn-primary" data-vector-memory-mode-switch="vector" type="button">向量记忆</button>
-</div>
-</div>
-<p class="memory-mode-inline-hint">结构化档案是基础上下文；高亮项只决定额外补充回忆日记或向量检索。</p>
-<div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-<button class="btn btn-small btn-secondary" id="vector-memory-import-btn" type="button">导入模板/记忆包</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-export-all-btn" type="button">导出模板</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-export-package-btn" type="button">导出记忆包</button>
-<input accept=".json,application/json" id="vector-memory-import-input" style="display:none;" type="file"/>
-</div>
-<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-<button class="btn btn-small btn-secondary" id="vector-memory-from-journal-btn" type="button">日记转向量</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-from-table-btn" type="button">表格转向量</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-to-journal-btn" type="button">向量转日记</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-to-table-btn" type="button">向量转表格</button>
-</div>
-<div class="vector-memory-injection-box">
-<div class="vector-memory-auto-row">
-<div><b style="font-size:13px;color:#444;">Prompt 注入策略</b><div style="font-size:11px;color:#999;margin-top:3px;">仅管理向量记忆自身的注入预算与优先级，不进入 Proment 管理。</div></div>
-</div>
-<div class="vector-memory-injection-grid">
-<label><span>预算（字符）</span><input id="vector-memory-injection-budget" min="0" step="100" type="number" value="2600"></label>
-<label><span>优先级</span><input id="vector-memory-injection-priority" min="1" max="99" type="number" value="40"></label>
-</div>
-<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-<button class="btn btn-small btn-primary" id="vector-memory-save-injection-btn" type="button">保存注入策略</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-preview-injection-btn" type="button">预览实际注入</button>
-</div>
-<pre id="vector-memory-injection-preview" class="vector-memory-injection-preview" hidden></pre>
-</div>
-<div class="vector-memory-auto-box">
-<div class="vector-memory-auto-row">
-<div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#444;">
-<span>向量自动总结</span>
-<label class="kkt-switch">
-<input id="vector-memory-auto-toggle" type="checkbox"/>
-<span class="kkt-slider"></span>
-</label>
-</div>
-<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-<span style="font-size:12px; color:#666;">每</span>
-<input id="vector-memory-auto-interval" min="10" step="1" style="width:88px; border:1px solid #ececec; border-radius:10px; padding:8px 10px; font-size:13px;" type="number" value="200"/>
-<span style="font-size:12px; color:#666;">条消息自动生成 1 条向量记忆</span>
-</div>
-</div>
-<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-<button class="btn btn-small btn-secondary" id="vector-memory-latest-btn" type="button">总结到最新</button>
-<button class="btn btn-small btn-secondary" id="vector-memory-retry-btn" type="button">重试补救</button>
-</div>
-<div id="vector-memory-auto-status" style="font-size:12px; color:#888; margin-top:8px;">独立自动总结：未启用</div>
-</div>
-</div>
-</div>
-<div style="padding: 0 15px 14px;">
-<div style="display:flex; gap:8px;">
-<button class="vector-memory-tab-btn btn btn-small btn-primary" data-tab="entries" type="button">当前记忆</button>
-<button class="vector-memory-tab-btn btn btn-small btn-secondary" data-tab="templates" type="button">模板库</button>
-<button class="vector-memory-tab-btn btn btn-small btn-secondary" data-tab="history" type="button">历史</button>
-</div>
-</div>
-<div id="vector-memory-content" style="padding: 0 15px 24px;"></div>
-</main>
-</div>
-<div class="modal-overlay" id="vector-manual-modal">
-<div class="modal-window" style="max-width: 680px;">
-<h3>手动生成向量记忆</h3>
-<div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
-<label class="vector-memory-radio">
-<input checked="" name="vector-manual-mode" type="radio" value="recent"/>
-<span>总结最近 <input id="vector-manual-recent-count" min="1" step="1" style="width:72px; margin:0 6px;" type="number" value="20"/> 条消息</span>
-</label>
-<label class="vector-memory-radio">
-<input name="vector-manual-mode" type="radio" value="range"/>
-<span>总结指定范围：第 <input id="vector-manual-range-start" min="1" step="1" style="width:72px; margin:0 6px;" type="number" value="1"/> 到 <input id="vector-manual-range-end" min="1" step="1" style="width:72px; margin:0 6px;" type="number" value="20"/> 条</span>
-</label>
-<label class="vector-memory-radio" style="align-items:flex-start;">
-<input name="vector-manual-mode" style="margin-top:5px;" type="radio" value="text"/>
-<span style="flex:1;">
-                            手动录入
-                            <input id="vector-manual-title" placeholder="记忆标题（可选）" style="width:100%; margin-top:8px; border:1px solid #ececec; border-radius:10px; padding:10px 12px;" type="text"/>
-<textarea id="vector-manual-text" placeholder="输入一条可长期检索的记忆内容..." rows="6" style="width:100%; margin-top:8px; border:1px solid #ececec; border-radius:10px; padding:10px 12px; resize:vertical;"></textarea>
-</span>
-</label>
-</div>
-<div style="display:flex; gap:10px; margin-top: 16px;">
-<button class="btn btn-secondary" id="vector-manual-cancel-btn" style="flex:1;" type="button">取消</button>
-<button class="btn btn-primary" id="vector-manual-save-btn" style="flex:1;" type="button">生成</button>
-</div>
-</div>
-</div>
-<div class="modal-overlay" id="vector-template-modal">
-<div class="modal-window" style="max-width: 760px;">
-<h3>编辑向量模板</h3>
-<div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
-<input id="vector-template-name" placeholder="模板名称" style="border:1px solid #ececec; border-radius:10px; padding:10px 12px;" type="text"/>
-<textarea id="vector-template-description" placeholder="模板说明" rows="2" style="border:1px solid #ececec; border-radius:10px; padding:10px 12px; resize:vertical;"></textarea>
-<div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;">
-<input id="vector-template-topk" min="1" placeholder="TopK" step="1" style="border:1px solid #ececec; border-radius:10px; padding:10px 12px;" type="number" value="5"/>
-<input id="vector-template-threshold" max="1" min="0" placeholder="相似度阈值" step="0.01" style="border:1px solid #ececec; border-radius:10px; padding:10px 12px;" type="number" value="0.28"/>
-<input id="vector-template-max-length" min="200" placeholder="记忆最大长度" step="50" style="border:1px solid #ececec; border-radius:10px; padding:10px 12px;" type="number" value="1200"/>
-</div>
-<div>
-<div style="font-size:13px; color:#666; margin-bottom:6px;">总结提示词</div>
-<textarea id="vector-template-summary-prompt" rows="10" style="width:100%; border:1px solid #ececec; border-radius:10px; padding:10px 12px; resize:vertical;"></textarea>
-</div>
-<div>
-<div style="font-size:13px; color:#666; margin-bottom:6px;">注入提示词</div>
-<textarea id="vector-template-inject-prompt" rows="8" style="width:100%; border:1px solid #ececec; border-radius:10px; padding:10px 12px; resize:vertical;"></textarea>
-</div>
-</div>
-<div style="display:flex; gap:10px; margin-top: 16px;">
-<button class="btn btn-secondary" id="vector-template-cancel-btn" style="flex:1;" type="button">取消</button>
-<button class="btn btn-primary" id="vector-template-save-btn" style="flex:1;" type="button">保存模板</button>
-</div>
-</div>
-</div>
+
 <!-- Memory Journal Detail Screen -->
 <div class="screen" id="memory-journal-detail-screen">
 <header class="app-header">
@@ -6728,87 +6307,7 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/features/memory/kernel.js"></script>
-<script src="js/features/memory/memory_defaults.js"></script>
-<script src="js/modules/memory_table_policy.js"></script>
-<script src="js/features/memory/policy_resolver.js"></script>
-<script src="js/features/memory/field_semantics.js"></script>
-<script src="js/features/memory/field_policy.js"></script>
-<script src="js/modules/memory_table_schedule.js"></script>
-<script src="js/modules/memory_table_lifecycle.js"></script>
-<script src="js/modules/memory_table_effects.js"></script>
-<script src="js/modules/memory_table_feedback.js"></script>
-<script src="js/modules/memory_table_review.js"></script>
-<script src="js/features/memory/retrieval_maintenance.js"></script>
-<script src="js/modules/memory_table_retrieval.js"></script>
-<script src="js/features/memory/retrieval_audit.js"></script>
-<script src="js/features/memory/retrieval_orchestrator.js"></script>
-<script src="js/modules/memory_table_sidecar.js"></script>
-<script src="js/modules/memory_table_tasks.js"></script>
-<script src="js/modules/memory_table_quality.js"></script>
-<script src="js/features/memory/api_adapter.js"></script>
-<script src="js/features/memory/record_identity.js"></script>
-<script src="js/features/memory/provenance_service.js"></script>
-<script src="js/features/memory/domain.js"></script>
-<script src="js/features/memory/package_adapter.js"></script>
-<script src="js/features/memory/schema_migrator.js"></script>
-<script src="js/features/memory/package_orchestrator.js"></script>
-<script src="js/features/memory/write_coordinator.js"></script>
-<script src="js/features/memory/write_gateway.js"></script>
-<script src="js/features/memory/sidecar_candidate_service.js"></script>
-<script src="js/features/memory/sidecar_candidate_controller.js"></script>
-<script src="js/features/memory/field_width.js"></script>
-<script src="js/features/memory/schema_model.js"></script>
-<script src="js/features/memory/schema_editor.js"></script>
-<script src="js/features/memory/workspace.js"></script>
-<script src="js/features/memory/tag_vocabulary.js"></script>
-<script src="js/features/memory/tag_service.js"></script>
-<script src="js/features/memory/relation_service.js"></script>
-<script src="js/features/memory/merge_review_service.js"></script>
-<script src="js/features/memory/candidate_service.js"></script>
-<script src="js/features/memory/work_item.js"></script>
-<script src="js/features/memory/integrity_doctor.js"></script>
-<script src="js/features/memory/table_filter.js"></script>
-<script src="js/features/memory/governance_queue.js"></script>
-<script src="js/features/memory/governance_controller.js"></script>
-<script src="js/features/memory/review_orchestrator.js"></script>
-<script src="js/features/memory/row_inspector.js"></script>
-<script src="js/features/memory/row_inspector_controller.js"></script>
-<script src="js/features/memory/context_assembler.js"></script>
-<script src="js/features/memory/update_service.js"></script>
-<script src="js/features/memory/table_viewport.js"></script>
-<script src="js/features/memory/table_session.js"></script>
-<script src="js/features/memory/table_grouping.js"></script>
-<script src="js/features/memory/table_gesture.js"></script>
-<script src="js/features/memory/table_cache.js"></script>
-<script src="js/features/memory/table_persistence.js"></script>
-<script src="js/features/memory/row_command_menu.js"></script>
-<script src="js/features/memory/table_interaction.js"></script>
-<script src="js/features/memory/table_view.js"></script>
-<script src="js/features/memory/table_sort.js"></script>
-<script src="js/features/memory/table_presenter.js"></script>
-<script src="js/features/memory/table_reconciler.js"></script>
-<script src="js/features/memory/update_activity.js"></script>
-<script src="js/features/memory/table_grid.js"></script>
-<script src="js/features/memory/row_edit_modal.js"></script>
-<script src="js/features/memory/table_editor.js"></script>
-<script src="js/features/memory/table_edit_controller.js"></script>
-<script src="js/features/memory/row_edit_controller.js"></script>
-<script src="js/features/memory/table_workspace.js"></script>
-<!-- V2.12-R4: memory domain public facades and architecture contract -->
-<script src="js/features/memory/domains/platform.js"></script>
-<script src="js/features/memory/domains/foundation.js"></script>
-<script src="js/features/memory/domains/schema.js"></script>
-<script src="js/features/memory/domains/governance.js"></script>
-<script src="js/features/memory/domains/retrieval.js"></script>
-<script src="js/features/memory/domains/update.js"></script>
-<script src="js/features/memory/domains/tables.js"></script>
-<script src="js/features/memory/architecture.js"></script>
-<script src="js/features/memory/maintenance.js"></script>
-<script src="js/modules/memory_table.js"></script>
-<script src="js/features/memory/facade.js"></script>
-<script src="js/modules/vector_memory.js"></script> <!-- 向量记忆 -->
-<script src="js/modules/memory_mode_ui.js"></script> <!-- 长期记忆模式清晰化 UI -->
+<script src="js/features/memory/simple_memory_v1.js?v=300-v1"></script>
 <script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
 <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->

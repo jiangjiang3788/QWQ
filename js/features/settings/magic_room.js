@@ -70,8 +70,7 @@ function setupMagicRoomApp() {
         const rows = [
             ['当前角色', char ? (char.remarkName || char.name || '未命名') : '暂无角色'],
             ['世界书', `${worldBookCount} 本`],
-            ['结构化档案', char && char.memoryTables && char.memoryTables.enabled !== false ? '可用' : '未启用'],
-            ['向量记忆', '独立管理']
+            ['动态记忆', char?.memoryStore?.settings?.enabled !== false && Array.isArray(char?.memoryStore?.tables) ? `${char.memoryStore.tables.length} 张表` : '未启用']
         ];
         grid.innerHTML = rows.map(([label, value]) => `<div class="proment-status-card"><span>${label}</span><strong>${value}</strong></div>`).join('');
     }
@@ -107,26 +106,22 @@ function setupMagicRoomApp() {
     }
 
     function flattenStructuredPreview(char, policy) {
-        if (!policy.structuredEnabled) return '[结构化档案已关闭]';
-        const data = char?.memoryTables?.data;
-        if (!data || typeof data !== 'object') return '[当前角色没有结构化档案数据]';
+        if (!policy.structuredEnabled) return '[动态记忆已关闭]';
+        const store = char?.memoryStore;
+        if (!store || !Array.isArray(store.tables) || !store.records) return '[当前角色没有动态记忆数据]';
         const lines = [];
-        Object.entries(data).forEach(([templateId, tables]) => {
-            const template = (db.memoryTableTemplates || []).find(item => item.id === templateId);
-            Object.entries(tables || {}).forEach(([tableId, values]) => {
-                const table = template?.tables?.find(item => item.id === tableId);
-                if (values && Array.isArray(values.__rows)) {
-                    values.__rows.forEach((row, index) => lines.push(`${template?.name || templateId} / ${table?.name || tableId} / 第${index + 1}行：${JSON.stringify(row)}`));
-                } else {
-                    Object.entries(values || {}).forEach(([fieldId, value]) => {
-                        if (value === '' || value === null || value === undefined) return;
-                        const field = table?.fields?.find(item => item.id === fieldId);
-                        lines.push(`${template?.name || templateId} / ${table?.name || tableId} / ${field?.name || fieldId}：${typeof value === 'string' ? value : JSON.stringify(value)}`);
-                    });
-                }
+        store.tables.forEach(table => {
+            const columns = Array.isArray(table.columns) ? table.columns : [];
+            (Array.isArray(store.records[table.id]) ? store.records[table.id] : []).forEach((record, index) => {
+                const fields = columns.map(column => {
+                    const value = record?.values?.[column.id];
+                    if (value === '' || value === null || value === undefined || (Array.isArray(value) && !value.length)) return '';
+                    return `${column.name}=${Array.isArray(value) ? value.join('、') : String(value)}`;
+                }).filter(Boolean).join('；');
+                lines.push(`${table.name || table.id} / 第${index + 1}条 / 分类=${record.category || ''} / 标签=${(record.tags || []).join('、')} / 来源=${record.source || ''}：${fields}`);
             });
         });
-        return clipPreview(lines.join('\n') || '[当前结构化档案没有可注入内容]', policy.structuredBudget);
+        return clipPreview(lines.join('\n') || '[当前动态记忆没有正式记录]', policy.structuredBudget);
     }
 
     function renderPromentInjectionPreview() {
@@ -155,12 +150,9 @@ function setupMagicRoomApp() {
             { name: '最近聊天', priority: 50, budget: historyText.length, content: historyText },
             { name: '状态栏', priority: 60, budget: statusText.length, content: statusText }
         ].sort((a, b) => a.priority - b.priority);
-        const vectorPolicy = char.vectorMemory?.injectionPolicy || {};
-        const vectorText = char.vectorMemory?.lastContextBlock || '[尚无最近一次向量检索结果；请在向量记忆页面预览]';
-        sections.push({ name: '向量记忆（独立设置，只读预览）', priority: Number(vectorPolicy.priority || 40), budget: Number(vectorPolicy.budget || 2600), content: clipPreview(vectorText, vectorPolicy.budget || 2600) });
         sections.sort((a, b) => a.priority - b.priority);
         const totalChars = sections.reduce((sum, item) => sum + String(item.content || '').length, 0);
-        pre.textContent = `# Proment 上下文预览\n角色：${char.remarkName || char.name || '未命名'} · 区块：${sections.length} · 预览字符：${totalChars}\n说明：此页用于预览上下文来源，不会修改向量记忆独立设置。\n\n` + sections.map(item => `## ${item.name}\n优先级：${item.priority} · 预算/长度：${item.budget} 字符\n${item.content}`).join('\n\n');
+        pre.textContent = `# Proment 上下文预览\n角色：${char.remarkName || char.name || '未命名'} · 区块：${sections.length} · 预览字符：${totalChars}\n说明：动态记忆表是唯一记忆来源，实际注入由分类与标签匹配决定。\n\n` + sections.map(item => `## ${item.name}\n优先级：${item.priority} · 预算/长度：${item.budget} 字符\n${item.content}`).join('\n\n');
         box.hidden = false;
     }
 

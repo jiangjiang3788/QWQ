@@ -41,7 +41,6 @@ async function saveCurrentChat() {
 function setupChatRoom() {
     const memoryJournalBtn = document.getElementById('memory-journal-btn');
     const memoryTableBtn = document.getElementById('memory-table-btn');
-    const vectorMemoryBtn = document.getElementById('vector-memory-btn');
     const deleteHistoryBtn = document.getElementById('delete-history-btn');
     const captureBtn = document.getElementById('capture-btn');
     const toggleExpansionBtn = document.getElementById('toggle-expansion-btn');
@@ -285,22 +284,6 @@ function setupChatRoom() {
         });
     }
 
-    if (vectorMemoryBtn) {
-        vectorMemoryBtn.addEventListener('click', () => {
-            if (currentChatType !== 'private') {
-                showToast('向量记忆暂时只支持单角色私聊');
-                showPanel('none');
-                return;
-            }
-            if (typeof renderVectorMemoryScreen === 'function') {
-                renderVectorMemoryScreen();
-                switchScreen('vector-memory-screen');
-            } else {
-                showToast('向量记忆模块未加载');
-            }
-            showPanel('none');
-        });
-    }
 
     if (deleteHistoryBtn) {
         deleteHistoryBtn.addEventListener('click', () => {

@@ -143,17 +143,6 @@
             });
         }
 
-        const queue = character.memoryTables?.taskQueue;
-        if (queue && typeof queue === 'object') {
-            const active = [];
-            const archived = Array.isArray(queue.history) ? queue.history.map(item => compactTask(item, false)) : [];
-            (Array.isArray(queue.tasks) ? queue.tasks : []).forEach(task => {
-                if (['succeeded', 'cancelled'].includes(task?.status)) archived.push(compactTask(task, false));
-                else active.push(compactTask(task, true));
-            });
-            queue.tasks = active.slice(-80);
-            queue.history = archived.slice(-60);
-        }
         return character;
     }
 

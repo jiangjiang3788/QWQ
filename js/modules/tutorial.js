@@ -1481,10 +1481,6 @@ function renderTutorialContent() {
                     (Array.isArray(char?.history) ? char.history : []).forEach(message => {
                         if (message?.statusSnapshot?.replacePattern !== undefined) memoryItems += 1;
                     });
-                    const queue = char?.memoryTables?.taskQueue;
-                    (Array.isArray(queue?.tasks) ? queue.tasks : []).forEach(task => {
-                        if (['succeeded', 'cancelled'].includes(task?.status)) memoryItems += 1;
-                    });
                     const compacted = BackupService.compactCharacterRow(char);
                     memoryBytesSaved += Math.max(0, beforeText.length - JSON.stringify(compacted).length);
                     return compacted;

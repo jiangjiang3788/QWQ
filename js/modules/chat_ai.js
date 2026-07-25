@@ -244,8 +244,7 @@ function extractPromptTagContent(systemPrompt, tagName) {
     return match ? String(match[1] || '').trim() : '';
 }
 
-// V2.10-R3.2：结构化档案是角色的基础档案，不再被 journal/table/vector 三选一开关排除。
-// memoryMode 只决定额外补充来源：journal=收藏日记，vector=向量检索，table=不额外补充。
+// V3：动态记忆表是聊天上下文中的唯一记忆来源。
 function getStructuredArchiveContextApi() {
     const contextApi = window.OvoMemory?.context;
     if (contextApi && typeof contextApi.get === 'function') return contextApi;
@@ -259,9 +258,15 @@ function getStructuredArchiveContextApi() {
 }
 
 function hasStructuredArchiveMemory(character) {
-    if (!character || character.memoryTables?.enabled === false) return false;
+    if (!character || !getStructuredArchiveContextApi()) return false;
+    if (character.memoryStore && typeof character.memoryStore === 'object') {
+        return character.memoryStore.settings?.enabled !== false
+            && Array.isArray(character.memoryStore.tables)
+            && character.memoryStore.tables.length > 0;
+    }
+    if (character.memoryTables?.enabled === false) return false;
     const boundIds = character.memoryTables?.boundTemplateIds;
-    return Array.isArray(boundIds) && boundIds.length > 0 && !!getStructuredArchiveContextApi();
+    return Array.isArray(boundIds) && boundIds.length > 0;
 }
 
 function getStructuredArchiveMemoryContext(character) {
@@ -362,28 +367,8 @@ function auditAndEnsurePrivateChatMemoryPayload(character, requestBody, provider
     return { requestBody, systemPrompt: finalSystemPrompt, audit };
 }
 
-function getJournalMemoryContext(character) {
-    const journals = (character?.memoryJournals || []).filter(journal => journal.isFavorited);
-    if (!journals.length) return '';
-    const text = journals.map(journal => `标题：${journal.title}\n内容：${journal.content}`).join('\n\n---\n\n');
-    return `<journal_memory_context>\n【共同回忆】\n这是你需要长期记住的、我们之间发生过的往事背景：\n${text}\n</journal_memory_context>`;
-}
-
-function getSupplementalLongTermMemoryContext(character) {
-    if (!character) return '';
-    if (character.memoryMode === 'vector' && typeof getVectorMemoryContextBlock === 'function') {
-        const block = getVectorMemoryContextBlock(character) || '';
-        return block ? `<vector_memory_context>\n${block}\n</vector_memory_context>` : '';
-    }
-    if (character.memoryMode === 'journal') return getJournalMemoryContext(character);
-    return '';
-}
-
 function buildCombinedLongTermMemoryContext(character) {
-    return [
-        getStructuredArchiveMemoryContext(character),
-        getSupplementalLongTermMemoryContext(character)
-    ].filter(Boolean).join('\n\n');
+    return getStructuredArchiveMemoryContext(character);
 }
 
 async function prepareCombinedLongTermMemoryContext(character) {
@@ -393,9 +378,6 @@ async function prepareCombinedLongTermMemoryContext(character) {
         if (typeof contextApi?.prepare === 'function') {
             await contextApi.prepare(character, { allowInactiveMode: true });
         }
-    }
-    if (character.memoryMode === 'vector' && typeof prepareVectorMemoryContext === 'function') {
-        await prepareVectorMemoryContext(character);
     }
     return buildCombinedLongTermMemoryContext(character);
 }
@@ -1836,8 +1818,12 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         fullResponse = sidecarResult.cleaned;
         if (sidecarResult.error) {
             console.warn('[MemorySidecar] parse failed; visible chat preserved:', sidecarResult.error);
-            const sidecarState = window.MemoryTableSidecar.ensureState(chat);
-            sidecarState.lastApplyReport = { at: Date.now(), changed: [], rejected: [], error: sidecarResult.error.message || String(sidecarResult.error), roundId: memoryRoundToken?.id || null };
+            if (typeof window.MemoryTableSidecar.completeRound === 'function') {
+                window.MemoryTableSidecar.completeRound(chat, { error: sidecarResult.error.message || String(sidecarResult.error), roundId: memoryRoundToken?.id || null });
+            } else {
+                const sidecarState = window.MemoryTableSidecar.ensureState(chat);
+                sidecarState.lastApplyReport = { at: Date.now(), changed: [], rejected: [], error: sidecarResult.error.message || String(sidecarResult.error), roundId: memoryRoundToken?.id || null };
+            }
             if (sidecarOperation) runtime.fail(sidecarOperation.id, sidecarResult.error, { summary: '档案更新指令解析失败，聊天正文已保留' });
         } else if (sidecarResult.payload) {
             runtime?.stage?.(sidecarOperation?.id, '应用档案更新指令');
@@ -1847,20 +1833,23 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             const rejectedCount = Array.isArray(report.rejected) ? report.rejected.length : 0;
             if (sidecarOperation) {
                 runtime.recordMutations?.(sidecarOperation.id, (Array.isArray(report.changed) ? report.changed : []).map(change => ({
-                    action: /^新增/.test(String(change)) ? 'create' : 'update',
+                    action: change?.action === 'add' ? 'create' : change?.action === 'delete' ? 'delete' : 'update',
                     entityType: 'character_memory',
-                    entityId: targetChatId,
-                    title: '角色档案记忆',
-                    summary: String(change),
-                    meta: { characterId: targetChatId, roundId: memoryRoundToken?.id || null }
+                    entityId: change?.recordId || targetChatId,
+                    title: 'USER记忆',
+                    summary: `${change?.action || 'update'} ${change?.tableId || ''} ${change?.recordId || ''}`.trim(),
+                    meta: { characterId: targetChatId, tableId: change?.tableId || null, recordId: change?.recordId || null, roundId: memoryRoundToken?.id || null }
                 })));
                 runtime.complete(sidecarOperation.id, {
                     summary: changedCount ? `已应用 ${changedCount} 项档案更新` : (rejectedCount ? `没有应用更新，拒绝 ${rejectedCount} 项` : '没有可应用的档案变化'),
                     result: { changedCount, rejectedCount, changed: (report.changed || []).slice(0, 100), rejected: (report.rejected || []).slice(0, 100), roundId: memoryRoundToken?.id || null }
                 });
             }
-        } else if (sidecarOperation) {
-            runtime.skip(sidecarOperation.id, '模型回复中没有携带档案更新指令', { result: { changedCount: 0 } });
+        } else {
+            if (typeof window.MemoryTableSidecar.completeRound === 'function') {
+                window.MemoryTableSidecar.completeRound(chat, { reason: 'no_update', roundId: memoryRoundToken?.id || null });
+            }
+            if (sidecarOperation) runtime.skip(sidecarOperation.id, '模型回复中没有携带档案更新指令', { result: { changedCount: 0 } });
         }
     }
     if (fullResponse) {
