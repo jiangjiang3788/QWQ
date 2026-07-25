@@ -1,7 +1,7 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '3.0.2-v1.2';
+    const VERSION = '3.0.3-v1.3';
     const STORE_VERSION = 1;
     const LEVELS = new Set(['short', 'medium', 'long']);
     const SOURCES = new Set(['用户明确', 'AI判断']);
@@ -112,11 +112,13 @@
             fieldChanges[fieldId] = marker && typeof marker === 'object' ? {
                 action: marker.action === '新增' ? '新增' : '更新',
                 source: SOURCES.has(text(marker.source)) ? text(marker.source) : normalizedSource,
-                at: text(marker.at) || updatedAt
+                at: text(marker.at) || updatedAt,
+                marked: marker.marked !== false
             } : {
                 action: inferredAction,
                 source: normalizedSource,
-                at: updatedAt
+                at: updatedAt,
+                marked: true
             };
         });
         const rawChange = record?.lastChange && typeof record.lastChange === 'object' ? record.lastChange : null;
@@ -131,11 +133,13 @@
             lastChange: rawChange ? {
                 action: rawChange.action === '新增' ? '新增' : '更新',
                 source: SOURCES.has(text(rawChange.source)) ? text(rawChange.source) : normalizedSource,
-                at: text(rawChange.at) || updatedAt
+                at: text(rawChange.at) || updatedAt,
+                marked: rawChange.marked !== false
             } : {
                 action: inferredAction,
                 source: normalizedSource,
-                at: updatedAt
+                at: updatedAt,
+                marked: true
             },
             fieldChanges
         };
@@ -388,7 +392,7 @@
                     target.values[fieldId] = clone(value);
                     if (isDifferent) {
                         changedFields.push(fieldId);
-                        target.fieldChanges[fieldId] = { action: hadValue ? '更新' : '新增', source, at: stamp };
+                        target.fieldChanges[fieldId] = { action: hadValue ? '更新' : '新增', source, at: stamp, marked: true };
                     }
                 });
                 const metaChanged = (operationCategory && operationCategory !== target.category)
@@ -399,12 +403,12 @@
                 target.source = source;
                 if (changedFields.length || metaChanged) {
                     target.updatedAt = stamp;
-                    target.lastChange = { action: '更新', source, at: stamp };
+                    target.lastChange = { action: '更新', source, at: stamp, marked: true };
                     changed.push({ tableId: table.id, recordId: target.id, action: 'update', fields: changedFields });
                 }
             } else {
                 const fieldChanges = {};
-                Object.keys(values).forEach(fieldId => { fieldChanges[fieldId] = { action: '新增', source, at: stamp }; });
+                Object.keys(values).forEach(fieldId => { fieldChanges[fieldId] = { action: '新增', source, at: stamp, marked: true }; });
                 const record = normalizeRecord({
                     id: text(operation?.recordId) || id('memory_record'),
                     values,
@@ -413,7 +417,7 @@
                     source,
                     createdAt: stamp,
                     updatedAt: stamp,
-                    lastChange: { action: '新增', source, at: stamp },
+                    lastChange: { action: '新增', source, at: stamp, marked: true },
                     fieldChanges
                 }, table);
                 rows.push(record);
@@ -714,6 +718,21 @@
         return `<span class="sm-cell-full">${esc(raw)}</span>`;
     }
 
+    function updateDot(marker, title = '已写入或更新') {
+        if (!marker || marker.marked === false) return '';
+        const time = text(marker.at).replace('T', ' ').slice(0, 16);
+        return `<span class="sm-update-dot" title="${esc(time ? `${title} · ${time}` : title)}" aria-label="${esc(title)}"></span>`;
+    }
+
+    function tableUpdateMarker(store, table) {
+        const rows = store?.records?.[table?.id] || [];
+        return rows.map(record => record.lastChange).filter(Boolean).sort((a, b) => text(b.at).localeCompare(text(a.at)))[0] || null;
+    }
+
+    function fieldUpdateMarker(rows, columnId) {
+        return rows.map(record => record.fieldChanges?.[columnId]).filter(Boolean).sort((a, b) => text(b.at).localeCompare(text(a.at)))[0] || null;
+    }
+
     function changeBadge(marker) {
         if (!marker) return '<span class="sm-change-badge legacy">既有</span>';
         const sourceClass = marker.source === 'AI判断' ? 'ai' : 'user';
@@ -722,8 +741,8 @@
         return `<span class="sm-change-badge ${sourceClass}" title="${esc(title)}">${esc(label)}</span>`;
     }
 
-    function columnHead(column) {
-        return `<div class="sm-column-head"><span>${esc(column.name)}</span>${column.aiHint ? `<small>${esc(column.aiHint)}</small>` : ''}</div>`;
+    function columnHead(column, marker = null) {
+        return `<div class="sm-column-head"><span class="sm-field-title">${esc(column.name)}${updateDot(marker, '该字段已有写入或更新')}</span>${column.aiHint ? `<small>${esc(column.aiHint)}</small>` : ''}</div>`;
     }
 
     function renderKvView(table, rows) {
@@ -731,7 +750,7 @@
         if (!record) return '<div class="sm-no-records sm-kv-empty">暂无正式内容</div>';
         const fields = visibleColumns(table).map(column => {
             const marker = record.fieldChanges?.[column.id] || null;
-            return `<div class="sm-kv-row"><div class="sm-kv-key">${columnHead(column)}</div><div class="sm-kv-value"><div class="sm-value-with-mark">${renderValue(column, record.values?.[column.id])}${changeBadge(marker)}</div></div></div>`;
+            return `<div class="sm-kv-row"><div class="sm-kv-key">${columnHead(column, marker)}</div><div class="sm-kv-value"><div class="sm-value-with-mark">${renderValue(column, record.values?.[column.id])}${changeBadge(marker)}</div></div></div>`;
         }).join('');
         const meta = `<div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">分类</div><div class="sm-kv-value">${esc(record.category || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">标签</div><div class="sm-kv-value">${esc(record.tags.join('、') || '—')}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">信息来源</div><div class="sm-kv-value"><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">最近写入标识</div><div class="sm-kv-value">${changeBadge(record.lastChange)}</div></div><div class="sm-kv-row sm-kv-meta"><div class="sm-kv-key">更新时间</div><div class="sm-kv-value">${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</div></div>`;
         return `<div class="sm-kv-card">${fields}${meta}<div class="sm-kv-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">清空</button></div></div>`;
@@ -739,7 +758,7 @@
 
     function renderRowsView(table, rows) {
         const columns = visibleColumns(table);
-        return `<div class="sm-grid-wrap"><table class="sm-grid"><thead><tr>${columns.map(column => `<th>${columnHead(column)}</th>`).join('')}<th>分类</th><th>标签</th><th>信息来源</th><th>记忆标识</th><th>更新时间</th><th></th></tr></thead><tbody>${rows.map(record => `<tr>${columns.map(column => `<td>${renderValue(column, record.values?.[column.id], { truncate: true })}</td>`).join('')}<td>${esc(record.category)}</td><td><span class="sm-cell-truncated" title="${esc(record.tags.join('、'))}">${esc(record.tags.join('、'))}</span></td><td><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></td><td>${changeBadge(record.lastChange)}</td><td>${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</td><td class="sm-row-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('') || `<tr><td colspan="${columns.length + 6}" class="sm-no-records">暂无正式记录</td></tr>`}</tbody></table></div>`;
+        return `<div class="sm-grid-wrap"><table class="sm-grid"><thead><tr>${columns.map(column => `<th>${columnHead(column, fieldUpdateMarker(rows, column.id))}</th>`).join('')}<th>分类</th><th>标签</th><th>信息来源</th><th>记忆标识</th><th>更新时间</th><th></th></tr></thead><tbody>${rows.map(record => `<tr>${columns.map(column => `<td>${renderValue(column, record.values?.[column.id], { truncate: true })}</td>`).join('')}<td>${esc(record.category)}</td><td><span class="sm-cell-truncated" title="${esc(record.tags.join('、'))}">${esc(record.tags.join('、'))}</span></td><td><span class="sm-source ${record.source === 'AI判断' ? 'ai' : 'user'}">${record.source}</span></td><td>${changeBadge(record.lastChange)}</td><td>${esc(text(record.updatedAt).replace('T', ' ').slice(0, 16))}</td><td class="sm-row-actions"><button data-sm-edit-record="${esc(record.id)}">编辑</button><button data-sm-delete-record="${esc(record.id)}">删除</button></td></tr>`).join('') || `<tr><td colspan="${columns.length + 6}" class="sm-no-records">暂无正式记录</td></tr>`}</tbody></table></div>`;
     }
 
     function activeTable(chat) {
@@ -789,12 +808,12 @@
   <section class="sm-layout">
     <aside class="sm-sidebar">
       <div class="sm-sidebar-head"><strong>自定义表</strong><span>${store.tables.length}</span></div>
-      <div class="sm-table-list">${store.tables.map(item => `<button class="sm-table-item ${item.id === table?.id ? 'active' : ''}" data-sm-table="${esc(item.id)}"><span>${esc(item.name)}</span><b class="sm-level sm-${item.level}">${levelLabel(item.level)}</b></button>`).join('') || '<div class="sm-empty-card">还没有表格</div>'}</div>
+      <div class="sm-table-list">${store.tables.map(item => { const marker = tableUpdateMarker(store, item); return `<button class="sm-table-item ${item.id === table?.id ? 'active' : ''}" data-sm-table="${esc(item.id)}"><span class="sm-table-name">${esc(item.name)}${updateDot(marker, '该表已有写入或更新')}</span><b class="sm-level sm-${item.level}">${levelLabel(item.level)}</b></button>`; }).join('') || '<div class="sm-empty-card">还没有表格</div>'}</div>
     </aside>
     <section class="sm-main">
       ${table ? `
       <div class="sm-table-head">
-        <div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<p class="sm-extract-prompt"><b>extractPrompt：</b>${esc(table.extractPrompt)}</p>` : ''}</div>
+        <div><h2 class="sm-active-table-title">${esc(table.name)}${updateDot(tableUpdateMarker(store, table), '该表已有写入或更新')}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<p class="sm-extract-prompt"><b>extractPrompt：</b>${esc(table.extractPrompt)}</p>` : ''}</div>
         <div class="sm-table-actions">
           ${table.level === 'medium' ? '<button class="btn btn-small btn-primary" data-sm-action="aggregate">执行积累</button>' : ''}
           <button class="btn btn-small btn-primary" data-sm-action="new-record">${table.recordMode === 'singleton' && rows.length ? '编辑内容' : '新增记录'}</button>
