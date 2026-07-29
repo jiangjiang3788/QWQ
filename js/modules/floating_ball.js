@@ -1,9 +1,10 @@
-// QuickDock · V2.15：运行状态、来源摘要与数据结果；完整上下文由 Proment 管理。
+// QuickDock · QWQ 5.6.6：同类来源分组盘点、收藏数量对账、历史无上限与长内容滚动修复。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyVisible: 20 };
+    const PACKAGE_VERSION = '5.6.6';
+    const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyVisible: 8 };
     let rootEl = null;
     let panelEl = null;
     let ballEl = null;
@@ -331,7 +332,7 @@
 
     const PROMPT_SOURCE_META = Object.freeze({
         identity: { title: '身份与设定', icon: '👤' }, knowledge: { title: '世界书与知识', icon: '📚' },
-        memory: { title: '记忆', icon: '🧠' }, conversation: { title: '聊天历史', icon: '💬' },
+        memory: { title: '记忆', icon: '🧠' }, collection: { title: '收藏', icon: '⭐' }, conversation: { title: '聊天历史', icon: '💬' },
         runtime: { title: '运行环境', icon: '⏱️' }, protocol: { title: '输出协议', icon: '📐' },
         tools: { title: '工具定义', icon: '🛠️' }, request: { title: '请求参数', icon: '⚙️' },
         context: { title: '上下文来源', icon: '📎' }
@@ -346,103 +347,240 @@
         return labels[section?.state] || (section?.sent === false ? '未发送' : '参与组装');
     }
 
-    function promptSourceFocusAttributes(operation, request, section) {
-        return `data-operation-id="${escapeHtml(operation?.id || '')}" data-request-id="${escapeHtml(request?.id || '')}" data-source-id="${escapeHtml(section?.id || '')}"`;
-    }
-
-    function manifestSourceSections(request, operation) {
-        const manifest = request?.contextManifest;
-        if (!Array.isArray(manifest?.sources)) return [];
-        const characterId = operation?.scope?.characterId || operation?.scope?.chatId || window.currentChatId || '';
-        return manifest.sources.map(item => {
-            const definition = window.OVOContextSourceRegistry?.get?.(item.sourceId) || {};
-            const navigation = definition.navigation ? { ...definition.navigation, characterId } : null;
-            return {
-                id: item.sourceId || '', sourceId: item.sourceId || '', type: item.domain || item.layer || 'context',
-                title: item.title || definition.title || item.sourceId || '上下文来源', icon: '',
-                sent: item.included !== false, state: item.included === false ? 'excluded' : 'sent',
-                chars: Math.max(0, Number(item.chars) || Number(item.matchedChars) || 0),
-                reason: item.reason || '由真实 Context Manifest 登记', navigation,
-                domain: item.domain || definition.domain || '', layer: item.layer || definition.layer || ''
-            };
-        });
-    }
-
     function requestSourceSections(request, operation) {
-        const manifestSections = manifestSourceSections(request, operation);
-        if (manifestSections.length) return manifestSections;
-        return Array.isArray(request?.promptTrace?.sections) ? request.promptTrace.sections.filter(section => !section?.metadata?.verificationView) : [];
-    }
-
-    function findPromptSource(trigger) {
-        const operation = getOperationRuntime()?.get?.(trigger?.dataset?.operationId || state.selectedOperationId);
-        const request = (operation?.requests || []).find(item => item.id === trigger?.dataset?.requestId) || null;
-        const source = requestSourceSections(request, operation).find(item => item.id === trigger?.dataset?.sourceId || item.sourceId === trigger?.dataset?.sourceId) || null;
-        return { operation, request, source };
-    }
-
-
-    function activatePromptCharacter(characterId) {
-        if (!characterId || !Array.isArray(window.db?.characters)) return null;
-        const character = db.characters.find(item => String(item.id) === String(characterId));
-        if (!character) return null;
-        window.currentChatId = character.id;
-        window.currentChatType = 'private';
-        return character;
-    }
-
-    function installSourceReturnButton() {
-        document.getElementById('quick-dock-source-return')?.remove();
-        const button = document.createElement('button');
-        button.id = 'quick-dock-source-return';
-        button.type = 'button';
-        button.textContent = '‹ 返回操作详情';
-        button.addEventListener('click', () => { button.remove(); state.panel = 'operation'; state.open = true; render(); });
-        document.body.appendChild(button);
-    }
-
-    function openPromptSourceManagement(source) {
-        const navigation = source?.navigation || {};
-        activatePromptCharacter(navigation.characterId);
-        installSourceReturnButton();
-        state.open = false; render();
-        if (navigation.kind === 'worldbook') {
-            if (typeof renderWorldBookList === 'function') renderWorldBookList();
-            if (typeof switchScreen === 'function') switchScreen('world-book-screen');
-            return;
+        const manifestSources = Array.isArray(request?.contextManifest?.sources) ? request.contextManifest.sources : [];
+        if (manifestSources.length) {
+            return manifestSources.map(source => ({
+                id: source?.sourceId || '',
+                sourceId: source?.sourceId || '',
+                type: source?.domain || source?.layer || 'context',
+                title: source?.title || source?.sourceId || '上下文来源',
+                sent: source?.included !== false,
+                state: source?.included === false ? 'excluded' : (source?.accounted === false ? 'contributed' : 'sent'),
+                chars: Math.max(0, Number(source?.chars || source?.matchedChars) || 0),
+                count: Math.max(0, Number(source?.count) || 0),
+                metadata: source?.metadata && typeof source.metadata === 'object' ? source.metadata : null,
+                reason: source?.reason || '',
+                content: typeof source?.content === 'string' ? source.content : '',
+                items: Array.isArray(source?.items) ? source.items : []
+            }));
         }
-        if (navigation.kind === 'structured-memory') {
-            if (navigation.characterId && typeof window.openMemoryTableForCharacter === 'function') window.openMemoryTableForCharacter(navigation.characterId);
-            else if (typeof switchScreen === 'function') switchScreen('memory-table-screen');
-            return;
+        const requestTrace = Array.isArray(request?.promptTrace?.sections) ? request.promptTrace.sections : [];
+        if (requestTrace.length) return requestTrace;
+        const operationTrace = Array.isArray(operation?.promptTrace?.sections) ? operation.promptTrace.sections : [];
+        return operationTrace;
+    }
+
+    function historyTimeLabel(value) {
+        const text = String(value || '').trim();
+        if (!text || text === '时间未记录') return '时间未记录';
+        return text.replace(/\s+UTC[+-]\d{2}:?\d{2}$/i, '');
+    }
+
+    function parseHistoryDisplayItem(item) {
+        const raw = String(item?.content || '');
+        const metadata = item?.metadata || {};
+        const role = String(metadata.role || '').toLowerCase();
+        const sentAt = metadata.sentAt
+            || raw.match(/<message_meta\b[^>]*sent_at=["']([^"']+)["'][^>]*\/?>(?:<\/message_meta>)?/i)?.[1]
+            || '';
+        let content = raw
+            .replace(/<message_meta\b[^>]*\/?>(?:<\/message_meta>)?/gi, '')
+            .replace(/^\s*\[id:[^\]\r\n]+\]\s*/i, '')
+            .trim();
+        let sender = role === 'user' ? '用户' : (role === 'assistant' || role === 'model') ? '角色' : (item?.title || '消息');
+        const messageMatch = content.match(/^\s*\[([^\]\r\n]+?)的消息[：:]([\s\S]*?)\]\s*$/);
+        const voiceMatch = content.match(/^\s*\[([^\]\r\n]+?)的语音[：:]([\s\S]*?)\]\s*$/);
+        if (messageMatch) {
+            sender = messageMatch[1].trim() || sender;
+            content = String(messageMatch[2] || '').trim();
+        } else if (voiceMatch) {
+            sender = voiceMatch[1].trim() || sender;
+            content = `[语音] ${String(voiceMatch[2] || '').trim()}`.trim();
         }
-        if (navigation.kind === 'vector-memory') { if (navigation.characterId && typeof window.openMemoryTableForCharacter === 'function') window.openMemoryTableForCharacter(navigation.characterId); else if (typeof switchScreen === 'function') switchScreen('memory-table-screen'); return; }
-        if (navigation.kind === 'journal-memory' && typeof switchScreen === 'function') { switchScreen('memory-journal-screen'); return; }
-        if (navigation.kind === 'character') { if (typeof window.loadSettingsToSidebar === 'function') window.loadSettingsToSidebar(); if (typeof switchScreen === 'function') switchScreen('chat-settings-screen'); return; }
-        if (navigation.kind === 'user' && typeof switchScreen === 'function') { switchScreen('my-profile-screen'); return; }
-        if (navigation.kind === 'reminder') { if (typeof window.openReminderScreen === 'function') window.openReminderScreen(); else if (typeof switchScreen === 'function') switchScreen('reminder-screen'); return; }
-        if (navigation.kind === 'collection' && typeof switchScreen === 'function') { switchScreen('favorites-screen'); return; }
-        toast('该来源没有可直接打开的管理页面');
+        return { sender, time: historyTimeLabel(sentAt), content: content || '（空）' };
+    }
+
+    function renderHistorySourceItems(items) {
+        return `<div class="quick-dock-history-message-list">${items.map(item => {
+            const message = parseHistoryDisplayItem(item);
+            return `<article class="quick-dock-history-message">
+                <header><b>${escapeHtml(message.sender)}</b><time>${escapeHtml(message.time)}</time></header>
+                <pre>${escapeHtml(message.content)}</pre>
+            </article>`;
+        }).join('')}</div>`;
+    }
+
+    function sourceMatches(section, sourceId) {
+        return section?.sourceId === sourceId || section?.id === sourceId;
+    }
+
+    function renderFlatSourceRows(items, options = {}) {
+        const list = Array.isArray(items) ? items : [];
+        if (!list.length) return '<p class="quick-dock-operation-muted">本组没有可展示的实际条目。</p>';
+        return `<div class="quick-dock-source-flat-list">${list.map((item, index) => {
+            const content = String(item?.content || '');
+            const itemChars = Math.max(0, Number(item?.chars) || content.length);
+            const title = typeof options.titleFor === 'function'
+                ? options.titleFor(item, index)
+                : (item?.title || `条目 ${index + 1}`);
+            return `<article class="quick-dock-source-flat-item ${item?.sent === false ? 'is-excluded' : ''}">
+                <header><b>${escapeHtml(title)}</b><em>${escapeHtml(item?.sent === false ? '未发送' : formatSourceChars(itemChars))}</em></header>
+                ${content ? `<pre>${escapeHtml(content)}</pre>` : '<p class="quick-dock-operation-muted">本条没有发送文本。</p>'}
+            </article>`;
+        }).join('')}</div>`;
+    }
+
+    function renderGroupedSourceItems(groups) {
+        const list = (Array.isArray(groups) ? groups : []).filter(group => group && (group.count > 0 || group.items?.length));
+        if (!list.length) return '<p class="quick-dock-operation-muted">没有可展示的分组条目。</p>';
+        return `<div class="quick-dock-source-groups">${list.map(group => {
+            const captured = Array.isArray(group.items) ? group.items.length : 0;
+            const total = Math.max(captured, Number(group.count) || 0);
+            const note = group.note || (captured < total ? `当前记录保留 ${captured}/${total} 条；后续新请求会完整记录。` : '');
+            return `<details class="quick-dock-source-group">
+                <summary><span><b>${escapeHtml(group.title || '分组')}</b><small>${escapeHtml(note)}</small></span><em>${total} 条</em></summary>
+                <div class="quick-dock-source-group-body">${renderFlatSourceRows(group.items, { titleFor: group.titleFor })}</div>
+            </details>`;
+        }).join('')}</div>`;
+    }
+
+    function favoriteCountsFromSection(section) {
+        const items = Array.isArray(section?.items) ? section.items : [];
+        const metadataCounts = section?.metadata?.favoriteCounts || {};
+        const content = String(section?.content || '');
+        const title = String(section?.title || '');
+        const readTagCount = tag => {
+            const match = content.match(new RegExp(`<${tag}\\b[^>]*\\bcount=["'](\\d+)["'][^>]*>`, 'i'));
+            return match ? Math.max(0, Number(match[1]) || 0) : null;
+        };
+        const titleMatch = title.match(/用户\s*(\d+)[^\d]+角色\s*(\d+)/i);
+        const capturedUser = items.filter(item => item?.metadata?.favoriteType !== 'character').length;
+        const capturedCharacter = items.filter(item => item?.metadata?.favoriteType === 'character').length;
+        const user = Number.isFinite(Number(metadataCounts.user))
+            ? Math.max(0, Number(metadataCounts.user))
+            : (readTagCount('user_favorites') ?? (titleMatch ? Number(titleMatch[1]) : capturedUser));
+        const character = Number.isFinite(Number(metadataCounts.character))
+            ? Math.max(0, Number(metadataCounts.character))
+            : (readTagCount('character_favorites') ?? (titleMatch ? Number(titleMatch[2]) : capturedCharacter));
+        return { user, character, total: user + character, capturedUser, capturedCharacter };
+    }
+
+    function renderFavoriteSource(section) {
+        const items = Array.isArray(section.items) ? section.items : [];
+        const counts = favoriteCountsFromSection(section);
+        const userItems = items.filter(item => item?.metadata?.favoriteType !== 'character');
+        const characterItems = items.filter(item => item?.metadata?.favoriteType === 'character');
+        return renderGroupedSourceItems([
+            {
+                title: '用户收藏', count: counts.user, items: userItems,
+                titleFor: (_item, index) => `收藏 ${index + 1}`
+            },
+            {
+                title: '角色收藏', count: counts.character, items: characterItems,
+                titleFor: (_item, index) => `收藏 ${index + 1}`
+            }
+        ]);
+    }
+
+    function renderStructuredMemorySource(section) {
+        const items = Array.isArray(section.items) ? section.items : [];
+        const tableMap = new Map();
+        items.forEach((item, index) => {
+            const tableName = String(item?.metadata?.tableName || item?.title || '结构化记忆').replace(/\s*·\s*第\s*\d+\s*条\s*$/, '').trim() || '结构化记忆';
+            if (!tableMap.has(tableName)) tableMap.set(tableName, []);
+            tableMap.get(tableName).push({ ...item, __sourceIndex: index });
+        });
+        const groups = Array.from(tableMap.entries()).map(([title, records]) => ({
+            title,
+            count: records.length,
+            items: records,
+            titleFor: (item, index) => `第 ${Number(item?.metadata?.recordIndex) || index + 1} 条`
+        }));
+        return renderGroupedSourceItems(groups);
+    }
+
+    function renderGenericSourceItems(section) {
+        const items = Array.isArray(section.items) ? section.items : [];
+        return `<div class="quick-dock-source-items">${items.map((item, index) => {
+            const content = String(item?.content || '');
+            const itemChars = Math.max(0, Number(item?.chars) || content.length);
+            const status = item?.sent === false ? '未发送' : '已发送';
+            return `<details class="quick-dock-source-item ${item?.sent === false ? 'is-excluded' : ''}">
+                <summary><span><b>${escapeHtml(item?.title || `条目 ${index + 1}`)}</b><small>${escapeHtml(item?.reason || '点击展开实际内容')}</small></span><em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(itemChars))}</em></summary>
+                <div class="quick-dock-source-item-body">${content ? `<pre>${escapeHtml(content)}</pre>` : '<p class="quick-dock-operation-muted">本条没有发送文本。</p>'}</div>
+            </details>`;
+        }).join('')}</div>`;
     }
 
     function renderPromptTrace(request, operation) {
         const sections = requestSourceSections(request, operation);
-        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求没有来源摘要。</p>';
+        if (!sections.length) return '<p class="quick-dock-operation-muted">当前请求没有来源记录。</p>';
+
+        const renderItems = section => {
+            const items = Array.isArray(section.items) ? section.items : [];
+            if (!items.length) return '';
+            if (sourceMatches(section, 'chat.history')) return renderHistorySourceItems(items);
+            if (sourceMatches(section, 'collection.relevant')) return renderFavoriteSource(section);
+            if (sourceMatches(section, 'memory.structured')) return renderStructuredMemorySource(section);
+            return renderGenericSourceItems(section);
+        };
+
         const renderSection = section => {
             const meta = promptSourceMeta(section.type);
             const status = promptSourceStateLabel(section);
-            const canOpenSource = !!section.navigation?.kind;
-            return `<article class="quick-dock-source-summary-row ${section.sent === false ? 'is-excluded' : ''}">
-                <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon || '•')}</span>
-                <span class="quick-dock-source-title"><b>${escapeHtml(section.title || meta.title)}</b><small>${escapeHtml(section.reason || '真实请求来源')}</small></span>
-                <em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(section.chars))}</em>
-                ${canOpenSource ? `<button type="button" data-qd-action="open-source-management" ${promptSourceFocusAttributes(operation, request, section)}>打开</button>` : ''}
-            </article>`;
+            const content = String(section.content || '');
+            const items = Array.isArray(section.items) ? section.items : [];
+            const hasText = !!content || items.some(item => String(item?.content || ''));
+            const sourceBody = items.length
+                ? renderItems(section)
+                : (content ? `<pre class="quick-dock-source-content">${escapeHtml(content)}</pre>` : '<p class="quick-dock-operation-muted">本项没有发送文本。</p>');
+            const isHistorySection = sourceMatches(section, 'chat.history');
+            const isFavoriteSection = sourceMatches(section, 'collection.relevant');
+            const isStructuredMemory = sourceMatches(section, 'memory.structured');
+            let countHint = items.length ? `${Math.max(items.length, Number(section.count) || 0)} 条明细` : (hasText ? '实际正文' : (section.reason || '本次未发送'));
+            let displayTitle = section.title || meta.title;
+            if (isHistorySection) countHint = `${items.length} 条消息`;
+            if (isFavoriteSection) {
+                const counts = favoriteCountsFromSection(section);
+                displayTitle = '收藏盘点';
+                countHint = `用户 ${counts.user} · 角色 ${counts.character} · 共 ${counts.total} 条`;
+            }
+            if (isStructuredMemory) {
+                const tableCount = new Set(items.map(item => String(item?.metadata?.tableName || item?.title || '结构化记忆').replace(/\s*·\s*第\s*\d+\s*条\s*$/, ''))).size;
+                countHint = `${tableCount} 个表 · ${items.length} 条记录`;
+            }
+            const reasonHtml = isHistorySection ? '' : `<p class="quick-dock-source-summary">${escapeHtml(section.reason || '来自最终模型请求')}</p>`;
+            return `<details class="quick-dock-source-card ${section.sent === false ? 'is-excluded' : ''}">
+                <summary>
+                    <span class="quick-dock-source-icon">${escapeHtml(section.icon || meta.icon || '•')}</span>
+                    <span class="quick-dock-source-title"><b>${escapeHtml(displayTitle)}</b><small>${escapeHtml(countHint)}</small></span>
+                    <em>${escapeHtml(status)} · ${escapeHtml(formatSourceChars(section.chars))}</em>
+                </summary>
+                <div class="quick-dock-source-body">
+                    ${reasonHtml}
+                    ${sourceBody}
+                </div>
+            </details>`;
         };
         const manifest = request?.contextManifest;
-        const included = sections.filter(item => item.sent !== false && Number(item.chars) > 0).length;
+        const included = sections.filter(item => item.sent !== false && (Number(item.chars) > 0 || String(item.content || '') || (item.items || []).some(entry => String(entry?.content || '')))).length;
         const complete = manifest?.coverage?.complete !== false;
-        return `<div class="quick-dock-source-summary-head"><span>来源 ${included}/${sections.length} 项</span><span class="${complete ? 'is-ok' : 'is-warning'}">${complete ? '登记完整' : '需要检查'}</span></div><div class="quick-dock-source-summary-list">${sections.map(renderSection).join('')}</div><p class="quick-dock-source-summary-note">完整 Prompt 与真实清单请在 Proment 查看；悬浮球仅保留运行摘要。</p>`;
+        const hasSavedText = sections.some(section => String(section.content || '') || (section.items || []).some(item => String(item?.content || '')));
+        const legacyNote = hasSavedText ? '' : '<p class="quick-dock-source-summary-note">旧记录只保存了来源名称和字数；新请求会保存逐项实际文本。</p>';
+        const coverageText = complete ? '文本已对账' : '需要检查';
+        return `<div class="quick-dock-source-summary-head"><span>实际来源 ${included}/${sections.length} 项</span><span class="${complete ? 'is-ok' : 'is-warning'}">${coverageText}</span></div>${legacyNote}<div class="quick-dock-source-list">${sections.map(renderSection).join('')}</div>`;
+    }
+
+    function renderRequestBody(request) {
+        const body = String(request?.bodyPreview || '').trim();
+        if (!body) {
+            return '<p class="quick-dock-operation-muted quick-dock-request-body-missing">该条记录未保留原始请求 JSON；请直接查看上方逐项来源文本。</p>';
+        }
+        const truncated = !!request?.bodyTruncated;
+        const totalChars = Math.max(0, Number(request?.bodyChars || request?.requestChars) || 0);
+        const label = truncated ? `原始请求 JSON · 存在超大单项省略 · ${totalChars} 字符` : `原始请求 JSON · 完整保存 · ${totalChars || body.length} 字符`;
+        return `<details class="quick-dock-raw-request"><summary>${escapeHtml(label)}</summary>${truncated ? '<p class="quick-dock-request-truncated">仅超大单项（超过 24 万字符）会被保护性省略；普通文本请求不再按 16000 字符截断。</p>' : ''}<pre>${escapeHtml(body)}</pre></details>`;
     }
 
     function mutationActionMeta(action) {
@@ -492,44 +630,60 @@
         const groups = new Map();
         collectOperationMutations(operation).forEach(({ mutation, operation: owner }) => {
             const key = [mutation.action || 'other', mutation.entityType || 'other', mutation.title || '', owner?.id || ''].join('|');
-            if (!groups.has(key)) groups.set(key, { mutation: { ...mutation }, operation: owner, contents: [], ids: [], count: 0 });
+            if (!groups.has(key)) groups.set(key, { mutation: { ...mutation }, operation: owner, contents: [], count: 0 });
             const group = groups.get(key);
             group.count += Math.max(1, Number(mutation.count) || 1);
             if (mutation.after) group.contents.push(String(mutation.after));
             else if (mutation.summary) group.contents.push(String(mutation.summary));
-            if (mutation.entityId) group.ids.push(String(mutation.entityId));
             group.mutation.at = group.mutation.at || mutation.at;
         });
         return Array.from(groups.values());
     }
 
+    function renderMemoryWriteStatus(operation) {
+        const runtime = getOperationRuntime();
+        const records = [operation, ...(runtime?.getChildren?.(operation?.id, { recursive: true }) || [])];
+        const memoryRecords = records.filter(record => String(record?.type || '').startsWith('memory.'));
+        if (!memoryRecords.length) return '';
+        const memoryMutationCount = memoryRecords.reduce((sum, record) => sum + (Array.isArray(record?.mutations) ? record.mutations.filter(item => String(item?.entityType || '').includes('memory')).length : 0), 0);
+        if (memoryMutationCount) return `<p class="quick-dock-memory-write-status is-written">记忆写入已记录，下面展示实际表格内容。</p>`;
+        const failed = memoryRecords.find(record => record.status === 'failed');
+        if (failed) return `<p class="quick-dock-memory-write-status is-failed">记忆写入失败：${escapeHtml(failed.error?.message || failed.summary || '未知错误')}</p>`;
+        const skipped = memoryRecords.find(record => record.status === 'skipped');
+        if (skipped) return `<p class="quick-dock-memory-write-status">记忆已检查：${escapeHtml(skipped.summary || '本轮没有可写入的记忆')}</p>`;
+        return '<p class="quick-dock-memory-write-status">记忆检查已执行，但本轮没有产生记忆数据变化。</p>';
+    }
+
     function renderOperationMutations(operation) {
         const entries = compactOperationMutations(operation);
-        if (!entries.length) return '<p class="quick-dock-operation-muted">本次操作没有写入数据。</p>';
+        const memoryStatus = renderMemoryWriteStatus(operation);
+        if (!entries.length) return `${memoryStatus}<p class="quick-dock-operation-muted">本次操作没有写入数据。</p>`;
 
         const entityCounts = new Map();
         const actionCounts = new Map();
         const contentLines = [];
         const detailRows = [];
-        entries.slice(0, 100).forEach(({ mutation, operation: owner, contents, count, ids }) => {
+        entries.slice(0, 100).forEach(({ mutation, operation: owner, contents, count }) => {
             const action = mutationActionMeta(mutation.action);
             const entity = mutationEntityMeta(mutation.entityType);
             entityCounts.set(entity.label, (entityCounts.get(entity.label) || 0) + count);
             actionCounts.set(action.label, (actionCounts.get(action.label) || 0) + count);
             const uniqueContents = [...new Set(contents.filter(Boolean))];
-            uniqueContents.forEach(text => contentLines.push(`${mutation.title || entity.label}：${text}`));
-            detailRows.push(`<div class="quick-dock-write-detail-row"><b>${escapeHtml(mutation.title || entity.label)}</b><span>${escapeHtml(action.label)}${count > 1 ? ` × ${escapeHtml(count)}` : ''}</span>${uniqueContents.length ? `<p>${uniqueContents.map(text => escapeHtml(text)).join('<br>')}</p>` : '<p>已写入，未保留正文预览。</p>'}${ids.length ? `<small>ID：${escapeHtml([...new Set(ids)].join('、'))} · ${escapeHtml(owner?.title || '当前操作')} · ${escapeHtml(formatOperationTime(mutation.at))}</small>` : ''}</div>`);
+            uniqueContents.forEach(value => contentLines.push(`${mutation.title || entity.label}：${value}`));
+            const fields = Array.isArray(mutation.fields) && mutation.fields.length ? ` · 字段：${mutation.fields.join('、')}` : '';
+            detailRows.push(`<div class="quick-dock-write-detail-row"><b>${escapeHtml(mutation.title || entity.label)}</b><span>${escapeHtml(action.label)}${count > 1 ? ` × ${escapeHtml(count)}` : ''}</span>${uniqueContents.length ? `<p>${uniqueContents.map(value => escapeHtml(value)).join('<br>')}</p>` : '<p>跟踪记录没有提供实际正文。</p>'}<small>${escapeHtml(owner?.title || '当前操作')} · ${escapeHtml(formatOperationTime(mutation.at))}${escapeHtml(fields)}</small></div>`);
         });
 
         const entityText = [...entityCounts.entries()].map(([label, count]) => `${label} ${count} 条`).join('、');
         const actionText = [...actionCounts.entries()].map(([label, count]) => `${label} ${count} 条`).join('、');
         const uniqueLines = [...new Set(contentLines)].slice(0, 6);
-        const contentText = uniqueLines.length ? uniqueLines.join('；') : '正文未保留';
+        const contentText = uniqueLines.length ? uniqueLines.join('；') : '跟踪记录没有提供实际正文';
         return `<div class="quick-dock-write-summary">
-            <p><b>已写入：</b>${escapeHtml(entityText)}。</p>
-            <p><b>具体内容：</b>${escapeHtml(contentText)}${contentLines.length > 6 ? `；另有 ${escapeHtml(contentLines.length - 6)} 条` : ''}</p>
+            ${memoryStatus}
+            <p><b>写入类型：</b>${escapeHtml(entityText)}。</p>
+            <p><b>实际内容：</b>${escapeHtml(contentText)}${contentLines.length > 6 ? `；另有 ${escapeHtml(contentLines.length - 6)} 条` : ''}</p>
             <small>${escapeHtml(actionText)}</small>
-            <details class="quick-dock-write-details"><summary>查看写入明细</summary>${detailRows.join('')}${entries.length > 100 ? '<p class="quick-dock-truncation-note">仅显示最近 100 组写入。</p>' : ''}</details>
+            <details class="quick-dock-write-details"><summary>展开全部写入内容</summary>${detailRows.join('')}${entries.length > 100 ? '<p class="quick-dock-truncation-note">仅显示最近 100 组写入。</p>' : ''}</details>
         </div>`;
     }
 
@@ -565,7 +719,7 @@
         const hasFailure = recent[0] && (recent[0].status === 'failed' || recent[0].status === 'interrupted');
         rootEl.classList.toggle('quick-dock--operation-active', active.length > 0);
         rootEl.classList.toggle('quick-dock--operation-error', !active.length && hasFailure);
-        ballEl.textContent = active.length ? String(Math.min(active.length, 9)) : 'AI';
+        ballEl.innerHTML = `<span>${active.length ? String(Math.min(active.length, 9)) : 'AI'}</span><small>v${PACKAGE_VERSION}</small>`;
         ballEl.setAttribute('aria-label', active.length ? `${active.length} 个操作正在进行` : '打开 AI 操作中心');
         ballEl.setAttribute('aria-expanded', state.open ? 'true' : 'false');
     }
@@ -634,19 +788,59 @@
                 ${renderOperationCard(current)}
             </section>
             <section class="quick-dock-history-workbench">
-                <div class="quick-dock-section-title"><b>操作历史</b><small>${allRoots.length} 条</small></div>
+                <div class="quick-dock-section-title"><b>操作记录</b><small>最近 ${allRoots.length} 条 · 非聊天消息</small></div>
                 <div class="quick-dock-history-actions">
-                    ${allRoots.length ? '<button type="button" data-qd-action="clear-operations">清除全部已完成</button>' : ''}
-                    <span>记录占用 ${escapeHtml(formatStorageSize(storage.chars))} / ${escapeHtml(formatStorageSize(storage.budget))}${storage.compacted ? ' · 已自动压缩' : ''}</span>
+                    ${allRoots.length ? '<button type="button" data-qd-action="clear-operations">清除已完成</button>' : ''}
+                    <span>仅保存在本次浏览会话 · ${escapeHtml(formatStorageSize(storage.chars))} / ${escapeHtml(formatStorageSize(storage.budget))}${storage.compacted ? ' · 旧记录已压缩' : ''}</span>
                 </div>
                 <div class="quick-dock-operation-list">${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">暂无历史记录。</p>'}</div>
                 ${history.length < allRoots.filter(item => !current || item.id !== current.id).length ? '<button type="button" class="quick-dock-show-more" data-qd-action="show-more-history">显示更多</button>' : ''}
             </section>
-            <p class="quick-dock-status">点击任意记录查看阶段、来源摘要、后台工作和写入结果；完整上下文统一在 Proment 查看。</p>`;
-        renderPanelShell('AI 操作中心', `V2.14 · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
+            <p class="quick-dock-status">操作记录与聊天历史是两套数量；进入详情后可查看本次实际请求、实际来源和实际写入内容。</p>`;
+        renderPanelShell('AI 操作中心', `QWQ v${PACKAGE_VERSION} · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
     }
 
 
+
+    function findRequestSource(request, operation, sourceId) {
+        return requestSourceSections(request, operation).find(item => item.id === sourceId || item.sourceId === sourceId) || null;
+    }
+
+    function requestHistoryFacts(request, operation) {
+        const history = findRequestSource(request, operation, 'chat.history');
+        const current = findRequestSource(request, operation, 'chat.current_input');
+        const control = findRequestSource(request, operation, 'cot.instructions');
+        const historyCount = Array.isArray(history?.items) ? history.items.length : 0;
+        const currentCount = Array.isArray(current?.items) ? current.items.length : 0;
+        const controlCount = Array.isArray(control?.items) ? control.items.length : 0;
+        const policy = request?.contextManifest?.policy || {};
+        const policyText = policy.historyEnabled === false
+            ? '历史已关闭（仅保留本轮输入）'
+            : (Number(policy.historyCount) === 0
+                ? '历史不设上限（发送全部可用消息）'
+                : (Number.isFinite(Number(policy.historyCount)) ? `历史上限 ${Number(policy.historyCount)} 条消息` : '历史上限未记录'));
+        const systemInstructionCount = Math.max(0, Number(request.systemMessageCount) || 0);
+        return `<div class="quick-dock-history-facts">
+            <span><b>消息数组</b>${escapeHtml(request.messageCount || 0)} 条</span>
+            <span><b>其中历史</b>${escapeHtml(historyCount)} 条</span>
+            <span><b>本轮输入</b>${escapeHtml(currentCount)} 条</span>
+            ${controlCount ? `<span><b>控制消息</b>${escapeHtml(controlCount)} 条</span>` : ''}
+            ${systemInstructionCount ? `<span><b>系统指令</b>${escapeHtml(systemInstructionCount)} 条</span>` : ''}
+            <span><b>策略</b>${escapeHtml(policyText)}</span>
+            <small>这里按最终请求里的消息条目计数，不按“对话轮次”计数；Gemini 的 system instruction 独立于 contents 消息数组。</small>
+        </div>`;
+    }
+
+    function renderRequestEntry(request, operation, index, total) {
+        const content = `<div class="quick-dock-request-meta"><span>调用来源：${escapeHtml(request.source || '未标记')}</span><span>耗时：${escapeHtml(formatDuration(request.durationMs))}</span><span>请求字符：${escapeHtml(request.requestChars || request.bodyChars || 0)}</span></div>${requestHistoryFacts(request, operation)}${request.errorMessage ? `<p class="quick-dock-request-error">${escapeHtml(request.errorMessage)}</p>` : ''}${renderPromptTrace(request, operation)}${renderRequestBody(request)}`;
+        if (total === 1) {
+            return `<section class="quick-dock-request-flat">
+                <header><div><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></div><em>${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em></header>
+                <div class="quick-dock-request-row-body">${content}</div>
+            </section>`;
+        }
+        return `<details class="quick-dock-request-row" ${index === 0 ? 'open' : ''}><summary><span><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></span><em>第 ${index + 1} 次 · ${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em></summary><div class="quick-dock-request-row-body">${content}</div></details>`;
+    }
 
     function renderOperationDetail() {
         const runtime = getOperationRuntime();
@@ -658,7 +852,7 @@
         const requests = Array.isArray(operation.requests) ? operation.requests : [];
         const fold = (title, metaText, content, open = false, cls = '') => `<details class="quick-dock-fold ${cls}" ${open ? 'open' : ''}><summary><span>${escapeHtml(title)}</span><small>${metaText || ''}</small></summary><div class="quick-dock-fold-body">${content}</div></details>`;
         const stepContent = `<div class="quick-dock-step-list">${steps.length ? steps.map(step => `<div class="quick-dock-step" data-step-status="${escapeHtml(step.status || '')}"><i></i><span><b>${escapeHtml(step.title || '处理')}</b>${step.detail ? `<small>${escapeHtml(step.detail)}</small>` : ''}</span><time>${escapeHtml(formatOperationTime(step.at))}</time></div>`).join('') : '<p class="quick-dock-operation-muted">暂无阶段记录</p>'}</div>`;
-        const requestContent = requests.length ? requests.map((request, index) => `<details class="quick-dock-request-row"><summary><span><b>${escapeHtml(request.model || request.task || 'AI 请求')}</b><small>${escapeHtml(request.provider || 'API')} · ${escapeHtml(request.phase || '')}</small></span><em>第 ${index + 1} 次 · ${escapeHtml(request.requestChars || request.bodyChars || 0)} 字符</em></summary><div class="quick-dock-request-row-body"><div class="quick-dock-request-meta"><span>来源：${escapeHtml(request.source || '未标记')}</span><span>消息：${escapeHtml(request.messageCount || 0)} 条</span><span>耗时：${escapeHtml(formatDuration(request.durationMs))}</span></div>${request.errorMessage ? `<p class="quick-dock-request-error">${escapeHtml(request.errorMessage)}</p>` : ''}${renderPromptTrace(request, operation)}</div></details>`).join('') : '<p class="quick-dock-operation-muted">本次操作没有发送模型请求，或属于本地操作。</p>';
+        const requestContent = requests.length ? requests.map((request, index) => renderRequestEntry(request, operation, index, requests.length)).join('') : '<p class="quick-dock-operation-muted">本次操作没有发送模型请求，或属于本地操作。</p>';
         const body = `
             <section class="quick-dock-operation-detail-head" data-operation-status="${escapeHtml(meta.className)}">
                 <div><b>${escapeHtml(meta.label)}</b><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>
@@ -667,7 +861,7 @@
             </section>
             <div class="quick-dock-fold-list">
                 ${fold('执行阶段', `${steps.length} 条`, stepContent, true)}
-                ${fold('模型请求', `${requests.length} 次实际网络调用`, requestContent)}
+                ${fold('模型请求', `${requests.length} 次实际网络调用`, requestContent, true)}
                 ${fold('后台工作', `${escapeHtml(operation?.background?.total || 0)} 项`, renderChildOperationList(operation))}
                 ${fold('写入结果', `${escapeHtml(operation?.mutationSummary?.total || 0)} 项`, renderOperationMutations(operation), true, 'quick-dock-mutation-section')}
                 ${operation.error ? fold('错误信息', '', `<pre class="quick-dock-result-pre">${escapeHtml(operation.error.message || '操作失败')}</pre>`, true) : ''}
@@ -734,7 +928,7 @@
         if (action === 'close') { state.open = false; state.panel = 'main'; render(); return; }
         if (action === 'main') { state.panel = 'main'; state.selectedOperationId = null; render(); return; }
         if (action === 'open-console') { state.panel = 'console'; render(); return; }
-        if (action === 'show-more-history') { state.historyVisible = Math.min(100, state.historyVisible + 20); render(); return; }
+        if (action === 'show-more-history') { state.historyVisible = Math.min(20, state.historyVisible + 6); render(); return; }
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
             state.panel = 'operation';
@@ -751,12 +945,6 @@
             getOperationRuntime()?.clear?.({ keepActive: true });
             state.selectedOperationId = null;
             render();
-            return;
-        }
-        if (action === 'open-source-management') {
-            const { source } = findPromptSource(trigger);
-            if (!source) { toast('没有找到该来源记录'); return; }
-            openPromptSourceManagement(source);
             return;
         }
         if (action === 'open-git-settings') { openGitSettings(); return; }
@@ -818,7 +1006,7 @@
         rootEl = document.createElement('div');
         rootEl.id = 'quick-dock-root';
         rootEl.className = 'quick-dock-root';
-        rootEl.innerHTML = '<section class="quick-dock-panel" hidden></section><button type="button" class="quick-dock-ball" aria-label="快捷悬浮球" aria-expanded="false">悬</button>';
+        rootEl.innerHTML = `<section class="quick-dock-panel" hidden></section><button type="button" class="quick-dock-ball" aria-label="快捷悬浮球" aria-expanded="false"><span>AI</span><small>v${PACKAGE_VERSION}</small></button>`;
         document.body.appendChild(rootEl);
         panelEl = rootEl.querySelector('.quick-dock-panel');
         ballEl = rootEl.querySelector('.quick-dock-ball');

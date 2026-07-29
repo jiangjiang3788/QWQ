@@ -178,6 +178,217 @@ function extractPromptTagContent(systemPrompt, tagName) {
     return match ? String(match[1] || '').trim() : '';
 }
 
+function extractPromptHeadingBlock(systemPrompt, heading) {
+    const safeHeading = String(heading || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!safeHeading) return '';
+    const match = String(systemPrompt || '').match(new RegExp(`【${safeHeading}】([\\s\\S]*?)(?=\\n【|\\n<[^>]+>|$)`, 'i'));
+    return match ? String(match[1] || '').trim() : '';
+}
+
+function normalizeFavoritePromptText(value) {
+    return String(value == null ? '' : value)
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function favoriteInventoryKey(item) {
+    const explicitId = String(item?.id || '').trim();
+    if (explicitId) return `id:${explicitId}`;
+    return [
+        item?.favoriteBy === 'character' ? 'character' : 'user',
+        String(item?.characterId || ''),
+        String(item?.chatType || 'private'),
+        String(item?.chatId || ''),
+        String(item?.messageId || ''),
+        normalizeFavoritePromptText(item?.plainText || item?.content || ''),
+        normalizeFavoritePromptText(item?.note || '')
+    ].join('|');
+}
+
+function dedupeFavoriteInventory(items) {
+    const seen = new Set();
+    return (Array.isArray(items) ? items : []).filter(item => {
+        const key = favoriteInventoryKey(item);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function getFavoritePromptInventory(character) {
+    const allFavorites = Array.isArray(db?.favorites) ? db.favorites : [];
+    let userFavorites = allFavorites.filter(item => item?.favoriteBy !== 'character');
+    if (character?.awareFavoriteScope !== 'all') {
+        userFavorites = userFavorites.filter(item => String(item?.chatId || '') === String(character?.id || '') && (item?.chatType || 'private') === 'private');
+    }
+    const characterFavorites = allFavorites.filter(item => item?.favoriteBy === 'character'
+        && String(item?.characterId || item?.chatId || '') === String(character?.id || ''));
+    return {
+        userFavorites: dedupeFavoriteInventory(userFavorites),
+        characterFavorites: dedupeFavoriteInventory(characterFavorites)
+    };
+}
+
+function formatFavoritePromptEntry(favorite, kind, index) {
+    const preview = favorite?.plainText
+        || window.OvoMessageContent?.getPreview?.(favorite?.content)
+        || favorite?.content
+        || '';
+    const content = normalizeFavoritePromptText(preview);
+    const parts = [];
+    if (favorite?.chatName) parts.push(`会话：${normalizeFavoritePromptText(favorite.chatName)}`);
+    if (favorite?.sender) parts.push(`发送方：${normalizeFavoritePromptText(favorite.sender)}`);
+    parts.push(`内容：${content || '（空）'}`);
+    if (favorite?.note) parts.push(`${kind === 'character' ? '角色寄语' : '用户寄语'}：${normalizeFavoritePromptText(favorite.note)}`);
+    return `${index + 1}. ${parts.join('｜')}`;
+}
+
+function buildFavoriteAwarenessPrompt(character) {
+    const inventory = getFavoritePromptInventory(character);
+    if (!inventory.userFavorites.length && !inventory.characterFavorites.length) return '';
+    const userLines = inventory.userFavorites.map((favorite, index) => formatFavoritePromptEntry(favorite, 'user', index));
+    const characterLines = inventory.characterFavorites.map((favorite, index) => formatFavoritePromptEntry(favorite, 'character', index));
+    return `<favorite_inventory>
+收藏盘点：以下是本次实际提供给模型、与当前角色相关的收藏。用户收藏 ${userLines.length} 条；当前角色收藏 ${characterLines.length} 条。
+<user_favorites count="${userLines.length}">
+${userLines.join('\n')}
+</user_favorites>
+<character_favorites count="${characterLines.length}">
+${characterLines.join('\n')}
+</character_favorites>
+</favorite_inventory>`;
+}
+
+function parseFavoritePromptItems(content) {
+    const text = String(content || '');
+    const items = [];
+    const blocks = [
+        { kind: 'user', tag: 'user_favorites', title: '用户收藏' },
+        { kind: 'character', tag: 'character_favorites', title: '角色收藏' }
+    ];
+    blocks.forEach(block => {
+        const match = text.match(new RegExp(`<${block.tag}\\b[^>]*>([\\s\\S]*?)<\\/${block.tag}>`, 'i'));
+        if (!match) return;
+        String(match[1] || '').split(/\n+/).map(line => line.trim()).filter(Boolean).forEach((line, index) => {
+            const body = line.replace(/^\d+[.、]\s*/, '').trim();
+            if (!body) return;
+            items.push({
+                id: `${block.kind}-favorite-${index + 1}`,
+                title: `${block.title} ${index + 1}`,
+                content: body,
+                chars: body.length,
+                sent: true,
+                reason: '来自最终 system prompt 中实际发送的收藏内容',
+                metadata: { favoriteType: block.kind }
+            });
+        });
+    });
+    if (items.length) return items;
+    return text.split(/\n+/).map(line => line.trim()).filter(line => /^-\s*内容[：:]/.test(line)).map((line, index) => {
+        const body = line.replace(/^-\s*/, '');
+        return {
+            id: `user-favorite-${index + 1}`,
+            title: `用户收藏 ${index + 1}`,
+            content: body,
+            chars: body.length,
+            sent: true,
+            reason: '来自旧版最终 system prompt 中实际发送的用户收藏内容',
+            metadata: { favoriteType: 'user' }
+        };
+    });
+}
+
+function parseFavoritePromptCounts(content, items) {
+    const text = String(content || '');
+    const readCount = tag => {
+        const match = text.match(new RegExp(`<${tag}\\b[^>]*\\bcount=["'](\\d+)["'][^>]*>`, 'i'));
+        return match ? Math.max(0, Number(match[1]) || 0) : null;
+    };
+    const parsedItems = Array.isArray(items) ? items : [];
+    const userItems = parsedItems.filter(item => item?.metadata?.favoriteType !== 'character').length;
+    const characterItems = parsedItems.filter(item => item?.metadata?.favoriteType === 'character').length;
+    const user = readCount('user_favorites');
+    const character = readCount('character_favorites');
+    return {
+        user: user == null ? userItems : user,
+        character: character == null ? characterItems : character,
+        total: (user == null ? userItems : user) + (character == null ? characterItems : character),
+        captured: parsedItems.length
+    };
+}
+
+function parseStructuredMemoryPromptItems(content) {
+    const clean = String(content || '')
+        .replace(/<\/?structured_memory\b[^>]*>/gi, '')
+        .trim();
+    if (!clean) return [];
+    const headingPattern = /【([^】]+)】/g;
+    const matches = Array.from(clean.matchAll(headingPattern));
+    if (!matches.length) {
+        return [{ id: 'memory-record-1', title: '结构化记忆', content: clean, chars: clean.length, sent: true, reason: '来自最终请求中的结构化记忆正文' }];
+    }
+    const items = [];
+    matches.forEach((match, tableIndex) => {
+        const tableName = String(match[1] || `记忆表 ${tableIndex + 1}`).trim();
+        const start = match.index + match[0].length;
+        const end = matches[tableIndex + 1]?.index ?? clean.length;
+        const body = clean.slice(start, end).trim();
+        const records = body.split(/\n\s*---\s*\n/g).map(value => value.trim()).filter(Boolean);
+        (records.length ? records : [body]).forEach((record, recordIndex) => {
+            if (!record) return;
+            items.push({
+                id: `memory-${tableIndex + 1}-${recordIndex + 1}`,
+                title: records.length > 1 ? `${tableName} · 第 ${recordIndex + 1} 条` : tableName,
+                content: record,
+                chars: record.length,
+                sent: true,
+                reason: '来自最终请求中实际发送的记忆表记录',
+                metadata: { tableName, recordIndex: recordIndex + 1 }
+            });
+        });
+    });
+    return items;
+}
+
+function describeStructuredMemoryChange(character, change) {
+    const store = character?.memoryStore || null;
+    const table = store?.tables?.find?.(item => String(item.id) === String(change?.tableId || '')) || null;
+    const record = store?.records?.[change?.tableId]?.find?.(item => String(item.id) === String(change?.recordId || '')) || null;
+    const formatter = window.MemoryV5?.engine?.formatRecordText || window.OvoMemory?.engine?.formatRecordText;
+    const fallbackRecordText = table && record
+        ? (table.fields || []).map(field => {
+            const value = record.values && Object.prototype.hasOwnProperty.call(record.values, field.id)
+                ? record.values[field.id]
+                : record[field.id];
+            if (value == null || value === '' || (Array.isArray(value) && !value.length)) return '';
+            return `${field.name || field.id}: ${Array.isArray(value) ? value.join('、') : String(value)}`;
+        }).filter(Boolean).join('\n')
+        : '';
+    const actualText = table && record && typeof formatter === 'function'
+        ? formatter(table, record)
+        : fallbackRecordText;
+    const fieldNames = Array.isArray(change?.fields) && table
+        ? change.fields.map(fieldId => table.fields?.find?.(field => String(field.id) === String(fieldId))?.name).filter(Boolean)
+        : [];
+    const actionLabel = change?.action === 'add' ? '新增' : change?.action === 'delete' ? '删除' : '更新';
+    const tableName = table?.name || '结构化记忆';
+    return {
+        action: change?.action === 'add' ? 'create' : change?.action === 'delete' ? 'delete' : 'update',
+        entityType: 'structured_memory',
+        entityId: change?.recordId || '',
+        title: tableName,
+        summary: actualText ? `${actionLabel}：${actualText.slice(0, 160)}${actualText.length > 160 ? '…' : ''}` : `${actionLabel}${tableName}`,
+        after: actualText,
+        fields: fieldNames,
+        meta: {
+            characterId: character?.id || '',
+            tableId: change?.tableId || null,
+            tableName,
+            recordId: change?.recordId || null
+        }
+    };
+}
+
 // V3：动态记忆表是聊天上下文中的唯一记忆来源。
 function getStructuredArchiveContextApi() {
     const contextApi = window.OvoMemory?.context;
@@ -399,15 +610,43 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         });
     }
 
+    const favoriteInventoryMatch = String(systemPrompt || '').match(/<favorite_inventory\b[^>]*>[\s\S]*?<\/favorite_inventory>/i);
+    const favoriteContext = favoriteInventoryMatch?.[0]
+        || extractPromptHeadingBlock(systemPrompt, '用户收藏的内容');
+    if (favoriteContext) {
+        const favoriteItems = parseFavoritePromptItems(favoriteContext);
+        const favoriteCounts = parseFavoritePromptCounts(favoriteContext, favoriteItems);
+        sources.push({
+            type: 'favorite_inventory',
+            registryId: 'collection.relevant',
+            title: '收藏盘点',
+            content: favoriteContext,
+            items: favoriteItems,
+            count: favoriteCounts.total,
+            metadata: {
+                favoriteCounts,
+                scope: character?.awareFavoriteScope === 'all' ? 'all' : 'current',
+                characterId: character?.id || ''
+            },
+            sent: true,
+            reason: '从最终 system prompt 的收藏区块提取，按用户收藏与当前角色收藏盘点本次实际发送内容',
+            traceMode: 'request_exact'
+        });
+    }
+
     const structuredArchive = extractPromptTagContent(systemPrompt, 'structured_archive_memory');
     if (structuredArchive) {
+        const structuredItems = parseStructuredMemoryPromptItems(structuredArchive);
         sources.push({
             type: 'structured_memory',
             registryId: 'memory.structured',
-            title: '角色档案记忆（结构化档案）',
+            title: '结构化记忆',
             content: structuredArchive,
+            items: structuredItems,
+            count: structuredItems.length,
+            metadata: { groupedBy: 'tableName' },
             sent: true,
-            reason: '从最终 system prompt 的 structured_archive_memory 中提取，已实际发送；不受补充记忆模式影响',
+            reason: '从最终 system prompt 的 structured_archive_memory 中提取，展示本次实际发送的记忆表记录',
             traceMode: 'request_exact',
             sourceId: character.id
         });
@@ -672,6 +911,19 @@ async function generateImageDescription(msg, chat, apiConfig, parentOperationId 
     }
 }
 
+// 私聊历史窗口由 PROMENT 统一控制：0 表示发送全部可用消息，不再受角色 maxMemory 二次截断。
+function getRequestHistorySlice(chat, chatType, sourceHistory) {
+    const list = Array.isArray(sourceHistory) ? sourceHistory : [];
+    if (chatType === 'private' && window.OVOContextCompiler?.getPolicy) {
+        const policy = window.OVOContextCompiler.getPolicy();
+        if (policy.historyEnabled === false || Number(policy.historyCount) === 0) return list.slice();
+        const count = Math.max(1, Math.trunc(Number(policy.historyCount) || 30));
+        return list.slice(-count);
+    }
+    const fallback = Math.max(1, Math.trunc(Number(chat?.maxMemory) || 20));
+    return list.slice(-fallback);
+}
+
 // AI 交互逻辑
 async function getAiReply(chatId, chatType, isBackground = false, isSummary = false, isCharBlockedMonologue = false, isPhoneControlRevokeAttempt = false) {
     let operationRecord = null;
@@ -781,7 +1033,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         window.OVOOperationRuntime?.stage(operationRecord?.id, '准备聊天上下文');
         window.OVORetiredFeaturePolicy?.applyToDatabase?.(db);
         if (chatType === 'private') window.OVORetiredFeaturePolicy?.applyToCharacter?.(chat);
-        let historySlice = chat.history.slice(-chat.maxMemory);
+        let historySlice = getRequestHistorySlice(chat, chatType, chat.history);
         
         // 节点系统：上下文截断与记忆隔离
         if (chatType === 'private' && chat.activeNodeId && chat.nodes) {
@@ -798,7 +1050,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 if (startIndex !== -1) {
                     // 无论是否开启 readMemory，当前对话视口严格只保留节点内的消息
                     const nodeMsgs = chat.history.slice(startIndex + 1);
-                    historySlice = nodeMsgs.slice(-chat.maxMemory);
+                    historySlice = getRequestHistorySlice(chat, chatType, nodeMsgs);
                 }
             }
         }
@@ -1753,14 +2005,11 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             const changedCount = Array.isArray(finalReport.changed) ? finalReport.changed.length : 0;
             const rejectedCount = Array.isArray(finalReport.rejected) ? finalReport.rejected.length : 0;
             if (sidecarOperation) {
-                runtime.recordMutations?.(sidecarOperation.id, (Array.isArray(finalReport.changed) ? finalReport.changed : []).map(change => ({
-                    action: change?.action === 'add' ? 'create' : change?.action === 'delete' ? 'delete' : 'update',
-                    entityType: 'character_memory',
-                    entityId: change?.recordId || targetChatId,
-                    title: 'USER记忆',
-                    summary: `${change?.action || 'update'} ${change?.tableId || ''} ${change?.recordId || ''}`.trim(),
-                    meta: { characterId: targetChatId, tableId: change?.tableId || null, recordId: change?.recordId || null, roundId: memoryRoundToken?.id || null }
-                })));
+                runtime.recordMutations?.(sidecarOperation.id, (Array.isArray(finalReport.changed) ? finalReport.changed : []).map(change => {
+                    const mutation = describeStructuredMemoryChange(chat, change);
+                    mutation.meta = Object.assign({}, mutation.meta, { roundId: memoryRoundToken?.id || null });
+                    return mutation;
+                }));
                 runtime.complete(sidecarOperation.id, {
                     summary: changedCount ? `已应用 ${changedCount} 项档案更新` : (rejectedCount ? `没有应用更新，拒绝 ${rejectedCount} 项` : '没有可应用的档案变化'),
                     result: { changedCount, rejectedCount, changed: (finalReport.changed || []).slice(0, 100), rejected: (finalReport.rejected || []).slice(0, 100), roundId: memoryRoundToken?.id || null }
@@ -2812,22 +3061,8 @@ function generatePrivateSystemPrompt(character, opts) {
         }
 
         if (character.charAwareUserFavorites) {
-            const allFavs = db.favorites || [];
-            let userFavs = allFavs.filter(f => f.favoriteBy === 'user');
-            if (character.awareFavoriteScope !== 'all') {
-                userFavs = userFavs.filter(f => f.chatId === character.id && f.chatType === 'private');
-            }
-            if (userFavs.length > 0) {
-                let favText = '';
-                userFavs.forEach(f => {
-                    favText += `- 内容：${f.content || ''}`;
-                    if (f.note) {
-                        favText += ` （用户寄语：${f.note}）`;
-                    }
-                    favText += `\n`;
-                });
-                template += `\n\n【用户收藏的内容】\n这是用户在${character.awareFavoriteScope === 'all' ? '所有对话' : '与你的对话'}中主动收藏的消息内容，你可以借此了解用户的喜好和内心想法：\n${favText}`;
-            }
+            const favoritePrompt = buildFavoriteAwarenessPrompt(character);
+            if (favoritePrompt) template += `\n\n${favoritePrompt}`;
         }
 
         if (opts && opts.historyText) {
@@ -3328,27 +3563,8 @@ function generatePrivateSystemPrompt(character, opts) {
     }
 
     if (character.charAwareUserFavorites) {
-        const allFavs = db.favorites || [];
-        let userFavs = allFavs.filter(f => f.favoriteBy === 'user');
-        
-        if (character.awareFavoriteScope === 'all') {
-            // 包含所有的收藏
-        } else {
-            // 仅当前角色
-            userFavs = userFavs.filter(f => f.chatId === character.id && f.chatType === 'private');
-        }
-        
-        if (userFavs.length > 0) {
-            let favText = '';
-            userFavs.forEach(f => {
-                favText += `- 内容：${f.content || ''}`;
-                if (f.note) {
-                    favText += ` （用户寄语：${f.note}）`;
-                }
-                favText += `\n`;
-            });
-            prompt += `\n\n【用户收藏的内容】\n这是用户在${character.awareFavoriteScope === 'all' ? '所有对话' : '与你的对话'}中主动收藏的消息内容，你可以借此了解用户的喜好和内心想法：\n${favText}`;
-        }
+        const favoritePrompt = buildFavoriteAwarenessPrompt(character);
+        if (favoritePrompt) prompt += `\n\n${favoritePrompt}`;
     }
 
     if (character.myName) {
@@ -3502,7 +3718,7 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
     const systemRulesTokens = Math.max(0, fullSystemTokens - identifiedPromptTokens);
 
     // 12) 短期记忆（对话历史）
-    let historySlice = (chat.history || []).slice(-(chat.maxMemory || 20));
+    let historySlice = getRequestHistorySlice(chat, 'private', chat.history || []);
     historySlice = historySlice.filter(m => !m.isContextDisabled);
     
     let lastAiIndex = -1;

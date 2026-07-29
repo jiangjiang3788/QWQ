@@ -1,6 +1,6 @@
 .quick-dock-root{position:fixed;z-index:10020;width:56px;height:56px;left:calc(100vw - 64px);top:52vh;touch-action:none;user-select:none;font-family:var(--font-family,system-ui,sans-serif)}
-.quick-dock-ball{width:56px;height:56px;border:1px solid rgba(255,255,255,.75);border-radius:50%;background:linear-gradient(145deg,rgba(45,45,50,.94),rgba(15,15,18,.94));color:#fff;font-size:17px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 1px rgba(255,255,255,.25);backdrop-filter:blur(18px);cursor:grab}
-.quick-dock-ball:active{cursor:grabbing;transform:scale(.96)}
+.quick-dock-ball{width:56px;height:56px;border:1px solid rgba(255,255,255,.75);border-radius:50%;background:linear-gradient(145deg,rgba(45,45,50,.94),rgba(15,15,18,.94));color:#fff;font-size:17px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.28),inset 0 1px 1px rgba(255,255,255,.25);backdrop-filter:blur(18px);cursor:grab;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1}
+.quick-dock-ball span{font-size:15px;font-weight:800}.quick-dock-ball small{font-size:8px;font-weight:700;letter-spacing:-.2px;opacity:.86}.quick-dock-ball:active{cursor:grabbing;transform:scale(.96)}
 .quick-dock-panel{position:absolute;right:66px;top:50%;transform:translateY(-50%);width:min(390px,calc(100vw - 86px));max-height:min(680px,calc(100vh - 28px));overflow:auto;background:rgba(250,250,252,.97);color:#222;border:1px solid rgba(0,0,0,.09);border-radius:22px;box-shadow:0 22px 65px rgba(0,0,0,.28);backdrop-filter:blur(22px);padding:14px;touch-action:auto;user-select:text}
 .quick-dock-root[style*="left: 8px"] .quick-dock-panel{left:66px;right:auto}
 .quick-dock-panel-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
@@ -266,3 +266,140 @@ body.quick-dock-body-open{overflow:hidden!important}
 .quick-dock-source-summary-list{display:flex;flex-direction:column;border-top:1px solid rgba(0,0,0,.06)}
 .quick-dock-source-summary-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;gap:7px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.06)}.quick-dock-source-summary-row.is-excluded{opacity:.55}.quick-dock-source-summary-row .quick-dock-source-title{display:flex;flex-direction:column;gap:2px;min-width:0}.quick-dock-source-summary-row .quick-dock-source-title b{font-size:12px;color:#333}.quick-dock-source-summary-row .quick-dock-source-title small{font-size:10px;color:#888;line-height:1.35}.quick-dock-source-summary-row em{font-style:normal;font-size:10px;color:#777;white-space:nowrap}.quick-dock-source-summary-row button{border:1px solid rgba(0,0,0,.1);border-radius:7px;background:#fff;padding:5px 7px;font-size:10px;cursor:pointer}.quick-dock-source-summary-note{margin:8px 0 0;color:#999;font-size:10px;line-height:1.45}
 @media(max-width:520px){.quick-dock-source-summary-row{grid-template-columns:22px minmax(0,1fr) auto}.quick-dock-source-summary-row button{grid-column:2/4;justify-self:start}}
+
+/* QWQ 5.6.3 · 操作记录展示逐项来源文本和完整请求正文 */
+.quick-dock-request-body-missing{margin:8px 0 10px;padding:9px 10px;border-radius:10px;background:#f5f5f7}
+.quick-dock-request-truncated{margin:0;padding:8px 10px;background:#fff3d8;color:#8a5a00;font-size:10px;line-height:1.45}
+.quick-dock-request-row-body>.quick-dock-raw-request{margin:8px 0 10px}
+
+/* QWQ 5.6.3 · 每个来源可展开查看实际发送文本 */
+.quick-dock-source-list{margin:0 0 10px}
+.quick-dock-source-card{margin-bottom:7px}
+.quick-dock-source-card>summary{grid-template-columns:28px minmax(0,1fr) auto}
+.quick-dock-source-card>summary>em{font-size:9px;color:#756b84}
+.quick-dock-source-card[open]>summary{border-bottom:1px solid #eceaf1;background:#fbfaff}
+.quick-dock-source-summary{margin:8px 9px;color:#777}
+.quick-dock-source-content{max-height:420px;margin:0 8px 8px}
+.quick-dock-source-items{display:grid;gap:7px;margin:0 8px 8px}
+.quick-dock-source-item{border:1px solid #e8e6ed;border-radius:8px;background:#fafafd;overflow:hidden}
+.quick-dock-source-item>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;cursor:pointer;list-style:none}
+.quick-dock-source-item>summary::-webkit-details-marker{display:none}
+.quick-dock-source-item>summary b{font-size:10px}.quick-dock-source-item>summary em{font-size:8px;font-style:normal;color:#81788e}
+.quick-dock-source-item>p{margin:0;padding:0 8px 7px;font-size:9px;color:#888;line-height:1.45}
+.quick-dock-source-item>pre{margin:0;padding:9px;max-height:320px;overflow:auto;border-top:1px solid #eceaf1;background:#f5f5f8;white-space:pre-wrap;word-break:break-word;font:9px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#333}
+.quick-dock-source-manage{margin:0 8px 8px;border:1px solid #ded9e8;border-radius:7px;background:#fff;padding:6px 8px;color:#65577e;font-size:9px;cursor:pointer}
+
+/* QWQ 5.6.3 · 原始 JSON 作为二级核对，不抢占逐项来源文本 */
+.quick-dock-raw-request>summary{font-size:10px;color:#65577e}
+
+/* QWQ 5.6.4 · 信息密度、字号层级与扁平来源视图 */
+.quick-dock-panel--app-fullscreen .quick-dock-panel-header,
+.quick-dock-panel--app-fullscreen .quick-dock-action-hub,
+.quick-dock-panel--app-fullscreen .quick-dock-panel-content{width:min(100%,1280px);margin-left:auto;margin-right:auto}
+.quick-dock-panel-header strong{font-size:20px;line-height:1.25}.quick-dock-panel-header span{font-size:13px;line-height:1.45}
+.quick-dock-action-hub{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:12px;padding:8px 0 10px}
+.quick-dock-model-control{display:grid;grid-template-columns:auto minmax(260px,1fr) auto auto;align-items:center;gap:8px;margin:0}
+.quick-dock-model-control label{flex-direction:row;align-items:baseline;gap:6px}.quick-dock-model-control label span{font-size:13px}.quick-dock-model-control label small{font-size:11px}
+.quick-dock-model-control select{min-height:40px;padding:9px 11px;font-size:13px}.quick-dock-model-control button{min-height:40px;padding:9px 13px;font-size:12px}
+.quick-dock-compact-tools{display:flex;align-items:center;gap:7px}.quick-dock-compact-tools>button,.quick-dock-compact-tools summary{min-height:40px;box-sizing:border-box;border:1px solid #d8d8df;border-radius:10px;padding:10px 13px;background:#fff;color:#4b4559;font-size:12px;font-weight:750;cursor:pointer;list-style:none}
+.quick-dock-compact-tools summary::-webkit-details-marker{display:none}.quick-dock-compact-tools details{position:relative}.quick-dock-compact-tools details[open] summary{border-color:#8170aa;background:#f3f0fa}.quick-dock-compact-tools details>div{position:absolute;right:0;top:calc(100% + 6px);z-index:50;display:grid;min-width:112px;padding:6px;border:1px solid #dedee5;border-radius:11px;background:#fff;box-shadow:0 12px 30px rgba(25,20,40,.15)}.quick-dock-compact-tools details button{border:0;border-radius:8px;padding:9px 10px;background:transparent;text-align:left;font-size:12px;cursor:pointer}.quick-dock-compact-tools details button:hover{background:#f3f1f7}
+.quick-dock-section-title b{font-size:15px}.quick-dock-section-title small{font-size:12px}.quick-dock-history-actions span{font-size:11px;line-height:1.45}.quick-dock-history-actions button,.quick-dock-show-more{font-size:12px}
+.quick-dock-operation-open{padding:14px}.quick-dock-operation-title b{font-size:15px}.quick-dock-operation-title small{font-size:12px}.quick-dock-operation-status{font-size:11px}.quick-dock-operation-stage{font-size:13px;line-height:1.55}.quick-dock-operation-meta{font-size:11px}.quick-dock-operation-card.is-compact .quick-dock-operation-open{padding:11px 12px}.quick-dock-operation-card.is-compact .quick-dock-operation-title b{font-size:13px}.quick-dock-operation-card.is-compact .quick-dock-operation-stage{font-size:12px}.quick-dock-operation-card.is-compact .quick-dock-operation-status{font-size:10px}.quick-dock-operation-muted,.quick-dock-operation-empty{font-size:12px}
+.quick-dock-operation-detail-head b{font-size:15px}.quick-dock-operation-detail-head span{font-size:12px}.quick-dock-operation-detail-head p{font-size:13px}.quick-dock-fold>summary span{font-size:15px}.quick-dock-fold>summary small{font-size:12px}.quick-dock-fold-body{font-size:13px}
+.quick-dock-step b{font-size:13px}.quick-dock-step small{font-size:12px}.quick-dock-step time{font-size:11px}
+.quick-dock-request-flat{margin:0 0 12px;padding:14px;border:1px solid #e2e2e8;border-radius:15px;background:#fff}.quick-dock-request-flat>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid #ededf1}.quick-dock-request-flat>header>div{display:flex;min-width:0;flex-direction:column;gap:3px}.quick-dock-request-flat>header b{font-size:15px;overflow-wrap:anywhere}.quick-dock-request-flat>header small{font-size:12px;color:#85858d}.quick-dock-request-flat>header em{font-size:11px;font-style:normal;color:#756b84;white-space:nowrap}.quick-dock-request-flat .quick-dock-request-row-body{padding:12px 0 0}
+.quick-dock-request-row>summary b{font-size:14px}.quick-dock-request-row>summary small,.quick-dock-request-row>summary em{font-size:11px}.quick-dock-request-meta{gap:6px 14px;padding:0 0 10px;font-size:12px}.quick-dock-request-error{font-size:12px}.quick-dock-request-body-missing{font-size:12px}.quick-dock-raw-request>summary{font-size:12px}.quick-dock-raw-request pre,.quick-dock-result-pre{font-size:12px;line-height:1.6}
+.quick-dock-history-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:7px;margin:0 0 12px}.quick-dock-history-facts span{display:flex;flex-direction:column;gap:2px;padding:9px 10px;border-radius:10px;background:#f4f4f7;color:#555;font-size:12px}.quick-dock-history-facts b{font-size:11px;color:#7a7580}.quick-dock-history-facts small{grid-column:1/-1;color:#777;font-size:11px;line-height:1.5}
+.quick-dock-source-summary-head{font-size:13px}.quick-dock-source-summary-note{font-size:12px}.quick-dock-source-card{margin-bottom:9px;border-radius:13px}.quick-dock-source-card>summary{grid-template-columns:34px minmax(0,1fr) auto;gap:10px;padding:12px}.quick-dock-source-icon{width:34px;height:34px;font-size:17px}.quick-dock-source-title b{font-size:14px}.quick-dock-source-title small{font-size:11px;line-height:1.4}.quick-dock-source-card>summary>em{font-size:11px}.quick-dock-source-summary{margin:10px 12px;font-size:12px;line-height:1.5}
+.quick-dock-source-items{display:grid;gap:8px;margin:0 12px 12px}.quick-dock-source-item{border:1px solid #e8e6ed;border-radius:10px;background:#fafafd;overflow:hidden}.quick-dock-source-item>header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 11px;border-bottom:1px solid #eceaf1}.quick-dock-source-item>header b{font-size:13px;line-height:1.45}.quick-dock-source-item>header em{font-size:11px;font-style:normal;color:#81788e;white-space:nowrap}.quick-dock-source-item>small{display:block;padding:7px 11px 0;color:#888;font-size:11px;line-height:1.45}.quick-dock-source-item>pre{margin:0;padding:11px;max-height:360px;overflow:auto;background:#f6f6f8;white-space:pre-wrap;word-break:break-word;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;color:#333}.quick-dock-source-content{margin:0 12px 12px;padding:11px;max-height:420px;border-radius:10px;background:#f6f6f8;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace}.quick-dock-source-items.is-history{gap:0;border:1px solid #e8e6ed;border-radius:10px;overflow:hidden}.quick-dock-source-items.is-history .quick-dock-source-item{border:0;border-bottom:1px solid #e8e6ed;border-radius:0}.quick-dock-source-items.is-history .quick-dock-source-item:last-child{border-bottom:0}.quick-dock-source-items.is-history .quick-dock-source-item>pre{max-height:240px;background:#fff}
+.quick-dock-write-summary>p{font-size:13px;line-height:1.65}.quick-dock-write-summary>p b{font-size:13px}.quick-dock-write-summary>small{font-size:11px}.quick-dock-write-details>summary{font-size:12px}.quick-dock-write-detail-row>b{font-size:13px}.quick-dock-write-detail-row>span{font-size:11px}.quick-dock-write-detail-row>p{font-size:12px;line-height:1.6}.quick-dock-write-detail-row>small{font-size:11px}.quick-dock-memory-write-status{margin:0 0 10px!important;padding:9px 11px;border-radius:10px;background:#f4f4f7;color:#555}.quick-dock-memory-write-status.is-written{background:#edf8f1;color:#2f7047}.quick-dock-memory-write-status.is-failed{background:#fff0ee;color:#9c3b36}
+.quick-dock-status{font-size:12px;line-height:1.55}
+#quick-dock-source-return{display:none!important}
+@media(max-width:760px){.quick-dock-action-hub{grid-template-columns:1fr}.quick-dock-model-control{grid-template-columns:minmax(0,1fr) auto auto}.quick-dock-model-control label{grid-column:1/-1;justify-content:space-between}.quick-dock-compact-tools{justify-content:flex-end}.quick-dock-panel-header strong{font-size:18px}}
+@media(max-width:440px){.quick-dock-model-control{grid-template-columns:minmax(0,1fr) auto}.quick-dock-model-control button[data-qd-action="refresh-models"]{grid-column:2}.quick-dock-model-control button[data-qd-action="switch-api"]{grid-column:1/-1}.quick-dock-history-facts{grid-template-columns:1fr 1fr}.quick-dock-source-card>summary{grid-template-columns:32px minmax(0,1fr)}.quick-dock-source-card>summary>em{grid-column:2}.quick-dock-source-item>header{flex-direction:column}.quick-dock-source-item>header em{white-space:normal}}
+
+/* QWQ 5.6.5 · 来源标题统一折叠、二级明细折叠、聊天历史极简化 */
+.quick-dock-source-card>summary{cursor:pointer;user-select:none}
+.quick-dock-source-card>summary>em:after{content:'⌄';display:inline-block;margin-left:8px;font-size:14px;transition:transform .18s ease}
+.quick-dock-source-card[open]>summary>em:after{transform:rotate(180deg)}
+.quick-dock-source-body{padding:0 0 12px}
+.quick-dock-source-summary{margin:10px 12px 9px}
+.quick-dock-source-items{gap:7px;margin:0 12px}
+.quick-dock-source-item>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 11px;cursor:pointer;list-style:none}
+.quick-dock-source-item>summary::-webkit-details-marker{display:none}
+.quick-dock-source-item>summary>span{display:flex;min-width:0;flex-direction:column;gap:2px}
+.quick-dock-source-item>summary b{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.quick-dock-source-item>summary small{font-size:11px;line-height:1.4;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick-dock-source-item>summary em{font-size:11px;font-style:normal;color:#81788e;white-space:nowrap}
+.quick-dock-source-item>summary em:after{content:'⌄';display:inline-block;margin-left:7px;transition:transform .18s ease}
+.quick-dock-source-item[open]>summary{border-bottom:1px solid #eceaf1;background:#fbfaff}
+.quick-dock-source-item[open]>summary em:after{transform:rotate(180deg)}
+.quick-dock-source-item-body{padding:0}
+.quick-dock-source-item-body>pre{margin:0;padding:11px;max-height:360px;overflow:auto;background:#f6f6f8;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;color:#333}
+.quick-dock-source-item-body>.quick-dock-operation-muted{margin:0;padding:10px 11px}
+.quick-dock-history-message-list{display:flex;flex-direction:column;margin:0 12px;border:1px solid #e8e6ed;border-radius:10px;overflow:hidden;background:#fff}
+.quick-dock-history-message{padding:10px 11px;border-bottom:1px solid #eceaf1;background:#fff}
+.quick-dock-history-message:last-child{border-bottom:0}
+.quick-dock-history-message>header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:5px}
+.quick-dock-history-message>header b{font-size:12px;line-height:1.4;color:#4f4564}
+.quick-dock-history-message>header time{font-size:10px;line-height:1.4;color:#929299;white-space:nowrap}
+.quick-dock-history-message>pre{margin:0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font:12px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#333}
+@media(max-width:440px){
+  .quick-dock-source-card>summary>em{white-space:normal}
+  .quick-dock-source-item>summary{grid-template-columns:1fr}
+  .quick-dock-source-item>summary em{justify-self:start;white-space:normal}
+  .quick-dock-history-message>header{align-items:flex-start;flex-direction:column;gap:2px}
+}
+
+/* QWQ 5.6.6 · 同类二级分组 + 单一页面滚动容器，避免长内容覆盖后续标题 */
+.quick-dock-panel.quick-dock-panel--app-fullscreen{
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+}
+.quick-dock-panel.quick-dock-panel--app-fullscreen .quick-dock-panel-header--shared,
+.quick-dock-panel.quick-dock-panel--app-fullscreen .quick-dock-action-hub{
+  position:relative!important;
+  top:auto!important;
+  flex:0 0 auto;
+}
+.quick-dock-panel.quick-dock-panel--app-fullscreen .quick-dock-panel-content{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:max(18px,env(safe-area-inset-bottom));
+}
+.quick-dock-source-item-body>pre,
+.quick-dock-source-content,
+.quick-dock-source-flat-item>pre{
+  max-height:none!important;
+  overflow:visible!important;
+}
+.quick-dock-source-groups{display:flex;flex-direction:column;gap:8px;margin:0 12px}
+.quick-dock-source-group{border:1px solid #e6e3ec;border-radius:11px;background:#fbfafd;overflow:clip}
+.quick-dock-source-group>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 12px;cursor:pointer;list-style:none}
+.quick-dock-source-group>summary::-webkit-details-marker{display:none}
+.quick-dock-source-group>summary>span{display:flex;min-width:0;flex-direction:column;gap:2px}
+.quick-dock-source-group>summary b{font-size:13px;line-height:1.45;color:#393342}
+.quick-dock-source-group>summary small{font-size:10px;line-height:1.45;color:#8c8792;white-space:normal}
+.quick-dock-source-group>summary em{font-size:11px;font-style:normal;color:#756b84;white-space:nowrap}
+.quick-dock-source-group>summary em:after{content:'⌄';display:inline-block;margin-left:7px;transition:transform .18s ease}
+.quick-dock-source-group[open]>summary{border-bottom:1px solid #e9e6ee;background:#f5f2fa}
+.quick-dock-source-group[open]>summary em:after{transform:rotate(180deg)}
+.quick-dock-source-group-body{background:#fff}
+.quick-dock-source-flat-list{display:flex;flex-direction:column}
+.quick-dock-source-flat-item{margin:0;padding:11px 12px;border-bottom:1px solid #ece9f0;background:#fff}
+.quick-dock-source-flat-item:last-child{border-bottom:0}
+.quick-dock-source-flat-item>header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+.quick-dock-source-flat-item>header b{font-size:12px;line-height:1.45;color:#504760}
+.quick-dock-source-flat-item>header em{font-size:10px;font-style:normal;color:#98939e;white-space:nowrap}
+.quick-dock-source-flat-item>pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font:12px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#333}
+.quick-dock-source-flat-item>.quick-dock-operation-muted{margin:0;padding:0}
+@media(max-width:440px){
+  .quick-dock-source-group>summary{grid-template-columns:1fr}
+  .quick-dock-source-group>summary em{justify-self:start}
+  .quick-dock-source-flat-item>header{align-items:flex-start;flex-direction:column;gap:2px}
+}

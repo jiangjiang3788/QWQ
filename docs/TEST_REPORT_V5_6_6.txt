@@ -1,0 +1,40 @@
+QWQ V5.6.6 专项测试报告
+测试日期：2026-07-29
+
+一、专项回归：通过
+1. PROMENT 输入框已移除 max=200；0 表示全部。
+2. 上下文编译器：650 条历史在 historyCount=0 时保留 650 条；historyCount=500 时保留 500 条；historyCount=1000 时保留全部 650 条。
+3. 来源注册表：用户 16 + 角色 192，共 208 条收藏，count、metadata 和 208 个 items 全部进入最终 manifest。
+4. 操作运行时：最新请求不再被统一截成 120 条；208 个收藏 items 与 201 条网络 messages 均完整保存。
+5. 悬浮球：收藏按用户/角色二级分组，结构化记忆按表名二级分组，组内记录平铺。
+6. CSS：全屏面板只有主内容区滚动；标题区不再 sticky；来源正文取消 max-height 和嵌套 overflow。
+
+二、通过的回归测试
+- memory_custom_required_fields.test.js
+- memory_kv_dynamic_schema.test.js
+- memory_kv_field_categories.test.js
+- memory_v5_1_chat_integration.test.js
+- memory_v5_2_compression.test.js
+- v5_4_1_context_compiler.test.js
+- v5_4_2_ai_gateway.test.js
+- v5_4_3_governance.test.js
+- v5_4_context_retirement.test.js
+- v5_6_3_request_trace.test.js
+- v5_6_4_floating_ball_audit.test.js
+- v5_6_5_request_panel.test.js
+- v5_6_6_grouped_inventory_history.test.js
+
+三、JavaScript 语法检查：通过
+- js/core/context_compiler.js
+- js/core/context_source_registry.js
+- js/features/settings/magic_room.js
+- js/modules/chat_ai.js
+- js/modules/operation_runtime.js
+- js/modules/floating_ball.js
+
+四、未纳入本次通过结论的旧测试
+- memory_kv_singleton_migration.test.js：依赖包外的 /mnt/data/memoryStore_V5_4_1b_阿沉_2026-07-29.json，当前测试环境没有该外部样本。
+- memory_v5_1.test.js、memory_v5_3_stability.test.js：断言旧 MemoryV5 版本号，与当前代码的 5.6.0 不一致。
+- v5_4_4_cleanup_navigation.test.js：该旧测试断言当前状态写入必须返回 1 条 changed，当前实现返回 0；该断言与本次来源面板、收藏计数和历史窗口修改无关。
+
+以上旧测试与本次悬浮球分组、收藏完整性、PROMENT 历史限制和滚动修复无关。

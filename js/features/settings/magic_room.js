@@ -1,4 +1,4 @@
-// QWQ V5.4.4 · Proment policy and prompt-template settings only.
+// QWQ V5.6.6 · Proment policy and prompt-template settings only.
 function setupMagicRoomApp() {
     const app = document.getElementById('magic-room-screen');
     if (!app) return;
@@ -44,9 +44,11 @@ function setupMagicRoomApp() {
     }
 
     function readPromentPolicy() {
-        const number = (key, fallback, min, max) => {
+        const number = (key, fallback, min, max = null) => {
             const value = Number(policyEls[key]?.value);
-            return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+            if (!Number.isFinite(value)) return fallback;
+            const normalized = Math.max(min, value);
+            return Number.isFinite(max) ? Math.min(max, normalized) : normalized;
         };
         return {
             worldBookEnabled: !!policyEls.worldBookEnabled?.checked,
@@ -56,7 +58,7 @@ function setupMagicRoomApp() {
             structuredBudget: number('structuredBudget', 1800, 0, 100000),
             structuredPriority: number('structuredPriority', 30, 1, 99),
             historyEnabled: !!policyEls.historyEnabled?.checked,
-            historyCount: number('historyCount', 30, 1, 200),
+            historyCount: Math.trunc(number('historyCount', 30, 0)),
             statusEnabled: !!policyEls.statusEnabled?.checked
         };
     }

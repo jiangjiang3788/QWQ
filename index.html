@@ -33,7 +33,7 @@
 <link href="css/core/ui_tokens.css" rel="stylesheet"/>
 <link href="css/components/settings_components.css" rel="stylesheet"/>
 <link href="css/layout.css" rel="stylesheet"/>
-<link href="css/modules/quick_dock.css" rel="stylesheet"/>
+<link href="css/modules/quick_dock.css?v=566" rel="stylesheet"/>
 <!-- CSS Split: Core Features -->
 <link href="css/chat.css" rel="stylesheet"/>
 <link href="css/settings.css" rel="stylesheet"/>
@@ -5330,7 +5330,7 @@
 <label class="proment-policy-card proment-policy-number"><span><b>记忆预算</b><small>真实请求最大字符数</small></span><input id="proment-structured-budget" min="0" step="100" type="number" value="1800"></label>
 <label class="proment-policy-card proment-policy-number"><span><b>记忆优先级</b><small>数值越小越优先</small></span><input id="proment-structured-priority" min="1" max="99" type="number" value="30"></label>
 <label class="proment-policy-card"><span><b>最近聊天</b><small>真实控制历史消息是否进入请求</small></span><input id="proment-history-enabled" type="checkbox" checked></label>
-<label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>真实请求最多保留条数</small></span><input id="proment-history-count" min="1" max="200" type="number" value="30"></label>
+<label class="proment-policy-card proment-policy-number"><span><b>聊天条数</b><small>0 = 全部；不设最大值</small></span><input id="proment-history-count" min="0" step="1" type="number" value="30"></label>
 <label class="proment-policy-card"><span><b>当前状态</b><small>真实控制角色状态是否注入</small></span><input id="proment-status-enabled" type="checkbox" checked></label>
 </div>
 <div class="proment-independent-note"><b>这里的开关和预算直接作用于真实 AI 请求</b><span>预览与真实请求不再使用两套逻辑；最近一次真实请求由统一 Context Manifest 展示。</span></div>
@@ -6086,8 +6086,8 @@
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
 <script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <script src="js/core/deprecated_feature_policy.js?v=540"></script> <!-- V5.4 已停用业务的统一关闭与防泄漏 -->
-<script src="js/core/context_source_registry.js?v=542"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
-<script src="js/core/context_compiler.js?v=544"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
+<script src="js/core/context_source_registry.js?v=566"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
+<script src="js/core/context_compiler.js?v=566"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
 <script src="js/core/api_service_registry.js"></script> <!-- 统一 API 角色、端点与向量请求 -->
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
@@ -6103,10 +6103,10 @@
 <script src="js/modules/character_create.js"></script>
 <script src="js/modules/chat_render.js"></script>
 <script src="js/modules/ai_capability_catalog.js"></script>
-<script src="js/modules/operation_runtime.js"></script>
+<script src="js/modules/operation_runtime.js?v=566"></script>
 <script src="js/modules/ai_request_runtime.js"></script>
 <script src="js/core/ai_request_gateway.js?v=544"></script> <!-- V5.4.2 所有AI任务统一请求入口 -->
-    <script src="js/modules/chat_ai.js?v=544"></script>
+    <script src="js/modules/chat_ai.js?v=566"></script>
 <script src="js/modules/chat_features.js"></script>
 <script src="js/modules/avatar_recognition.js"></script>
 <script src="js/modules/chat_ops.js"></script>
@@ -6159,8 +6159,8 @@
 <script src="js/modules/appearance_settings.js"></script> <!-- 外观设置：整体 UI 切换 -->
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
-<script src="js/modules/quick_dock_action_bar.js"></script> <!-- 悬浮球顶部主操作 -->
-<script src="js/modules/floating_ball.js"></script> <!-- 悬浮球快捷工具 -->
+<script src="js/modules/quick_dock_action_bar.js?v=564"></script> <!-- 悬浮球顶部主操作 -->
+<script src="js/modules/floating_ball.js?v=566"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
 <script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>

@@ -1,4 +1,4 @@
-// QWQ V5.4.1 · unified final context compiler for private chat requests
+// QWQ V5.6.6 · unified final context compiler for private chat requests
 (function (global) {
     'use strict';
 
@@ -25,6 +25,12 @@
             const number = Number(value);
             return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
         };
+        const unboundedCount = (value, fallback) => {
+            const number = Number(value);
+            if (!Number.isFinite(number)) return fallback;
+            if (number <= 0) return 0;
+            return Math.max(1, Math.trunc(number));
+        };
         return {
             worldBookEnabled: source.worldBookEnabled !== false,
             worldBookBudget: bounded(source.worldBookBudget, 2400, 0, 100000),
@@ -33,7 +39,7 @@
             structuredBudget: bounded(source.structuredBudget, 1800, 0, 100000),
             structuredPriority: bounded(source.structuredPriority, 30, 1, 999),
             historyEnabled: source.historyEnabled !== false,
-            historyCount: bounded(source.historyCount, 30, 1, 500),
+            historyCount: unboundedCount(source.historyCount, 30),
             statusEnabled: source.statusEnabled !== false
         };
     }
@@ -156,7 +162,10 @@
         });
         let keepConversation = new Set();
         if (policy.historyEnabled) {
-            conversationIndexes.slice(-policy.historyCount).forEach(index => keepConversation.add(index));
+            const selected = Number(policy.historyCount) === 0
+                ? conversationIndexes
+                : conversationIndexes.slice(-policy.historyCount);
+            selected.forEach(index => keepConversation.add(index));
         } else {
             const lastUserIndex = [...conversationIndexes].reverse().find(index => {
                 const role = entries[index]?.role === 'model' ? 'assistant' : String(entries[index]?.role || '');
@@ -175,18 +184,24 @@
         return { output, removed, kept: keepConversation.size };
     }
 
+    function historyPolicyReason(policy) {
+        if (policy.historyEnabled === false) return 'Proment 已关闭历史，仅保留本轮用户输入';
+        if (Number(policy.historyCount) === 0) return 'Proment 不设历史条数上限，保留全部可用对话消息';
+        return `仅保留最近 ${policy.historyCount} 条对话消息`;
+    }
+
     function applyHistoryPolicy(body, provider, policy, changes) {
         if (provider === 'gemini') {
             const source = Array.isArray(body.contents) ? body.contents : [];
             const result = trimConversationEntries(source, policy);
             body.contents = result.output;
-            if (result.removed) changes.push({ sourceId: 'chat.history', action: 'trimmed', reason: policy.historyEnabled ? `仅保留最近 ${policy.historyCount} 条对话消息` : 'Proment 已关闭历史，仅保留本轮用户输入', removed: result.removed });
+            if (result.removed) changes.push({ sourceId: 'chat.history', action: 'trimmed', reason: historyPolicyReason(policy), removed: result.removed });
             return;
         }
         const source = Array.isArray(body.messages) ? body.messages : [];
         const result = trimConversationEntries(source, policy);
         body.messages = result.output;
-        if (result.removed) changes.push({ sourceId: 'chat.history', action: 'trimmed', reason: policy.historyEnabled ? `仅保留最近 ${policy.historyCount} 条对话消息` : 'Proment 已关闭历史，仅保留本轮用户输入', removed: result.removed });
+        if (result.removed) changes.push({ sourceId: 'chat.history', action: 'trimmed', reason: historyPolicyReason(policy), removed: result.removed });
     }
 
     function compilePrivateChatRequest(options) {

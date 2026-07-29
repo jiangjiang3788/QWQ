@@ -1,9 +1,9 @@
-// QWQ V5.4.1 · AI context source registry and compiled request manifest
+// QWQ V5.6.6 · AI context source registry with grouped inventories and exact source counts
 // 第一阶段只登记、对账和诊断，不改变现有 Prompt 的业务效果。
 (function (global) {
     'use strict';
 
-    const VERSION = 'context-registry.v3';
+    const VERSION = 'context-registry.v4';
     const definitions = new Map();
     let lastManifest = null;
 
@@ -105,6 +105,52 @@
         return 0;
     }
 
+    function sourceItems(source) {
+        return (Array.isArray(source?.items) ? source.items : []).map((item, index) => ({
+            id: String(item?.id || item?.sourceId || `item-${index + 1}`),
+            title: String(item?.title || `条目 ${index + 1}`),
+            content: typeof item?.content === 'string' ? item.content : contentToText(item?.content),
+            chars: Math.max(0, Number(item?.chars) || sourceChars(item)),
+            sent: item?.sent !== false,
+            clipped: !!item?.clipped,
+            reason: String(item?.reason || ''),
+            metadata: clone(item?.metadata || null)
+        }));
+    }
+
+    function stringifyRequestPart(value) {
+        if (value == null) return '';
+        if (typeof value === 'string') return value;
+        try { return JSON.stringify(value, null, 2); } catch (_) { return contentToText(value); }
+    }
+
+    function formatMessageSnapshot(message, index) {
+        const role = String(message?.role || 'unknown');
+        const labels = { system: 'SYSTEM', user: 'USER', assistant: 'ASSISTANT', model: 'ASSISTANT', char: 'ASSISTANT' };
+        return `【${labels[role] || role.toUpperCase()} ${index + 1}】
+${String(message?.content || '')}`;
+    }
+
+    function unmatchedText(source, ranges) {
+        const text = String(source || '');
+        const merged = mergeRanges(ranges);
+        if (!merged.length) return text;
+        const parts = [];
+        let cursor = 0;
+        merged.forEach(range => {
+            if (range.start > cursor) {
+                const part = text.slice(cursor, range.start);
+                if (part.trim()) parts.push(part);
+            }
+            cursor = Math.max(cursor, range.end);
+        });
+        if (cursor < text.length) {
+            const part = text.slice(cursor);
+            if (part.trim()) parts.push(part);
+        }
+        return parts.join('\n\n');
+    }
+
     function buildShadowManifest(options = {}) {
         const body = options.requestBody || options.body || {};
         const messages = extractMessages(body);
@@ -124,7 +170,11 @@
                 chars: sourceChars(source),
                 reason: source?.reason || '',
                 traceType: source?.type || 'other',
-                sourceRef: source?.sourceId ? { id: String(source.sourceId) } : null
+                sourceRef: source?.sourceId ? { id: String(source.sourceId) } : null,
+                content: typeof source?.content === 'string' ? source.content : contentToText(source?.content),
+                items: sourceItems(source),
+                count: Math.max(0, Number(source?.count) || (Array.isArray(source?.items) ? source.items.length : 0)),
+                metadata: clone(source?.metadata || null)
             };
         });
 
@@ -234,20 +284,27 @@
                 reason: source?.reason || (matchedChars ? '内容已在最终请求中精确定位' : '来源已登记，具体格式由核心模板包装'),
                 traceType: source?.type || 'other',
                 sourceRef: source?.sourceId ? { id: String(source.sourceId) } : null,
-                accounted: matchedChars > 0
+                accounted: matchedChars > 0,
+                content,
+                items: sourceItems(source),
+                count: Math.max(0, Number(source?.count) || (Array.isArray(source?.items) ? source.items.length : 0)),
+                metadata: clone(source?.metadata || null)
             };
         });
 
         const merged = mergeRanges(matchedRanges);
         const matchedSystemChars = merged.reduce((sum, item) => sum + item.end - item.start, 0);
         const residualSystemChars = Math.max(0, systemText.length - matchedSystemChars);
+        const residualSystemText = unmatchedText(systemText, merged);
         const core = get('system.core_rules');
         sourceEntries.unshift({
             sourceId: 'system.core_rules', registered: !!core, title: core?.title || '核心系统规则',
             domain: core?.domain || 'prompt', layer: core?.layer || 'system', role: 'system', priority: core?.priority || 10,
             included: systemText.length > 0, chars: residualSystemChars, matchedChars: residualSystemChars,
-            reason: '统一编译器对未被子来源精确覆盖的模板、包装标签和核心规则进行兜底登记',
-            traceType: 'compiled_residual', sourceRef: null, accounted: true
+            reason: '最终 system prompt 中未被角色档案、世界书、记忆和输出协议单独覆盖的实际文本',
+            traceType: 'compiled_residual', sourceRef: null, accounted: true,
+            content: residualSystemText,
+            items: [], count: 0, metadata: null
         });
 
         const nonSystem = messages.filter(message => message.role !== 'system');
@@ -255,37 +312,64 @@
         for (let index = nonSystem.length - 1; index >= 0; index--) {
             if (nonSystem[index].role === 'user' && !isControlMessageText(nonSystem[index].content)) { currentInputIndex = index; break; }
         }
-        let historyChars = 0;
-        let currentInputChars = 0;
-        let controlChars = 0;
+        const historyMessages = [];
+        const currentInputMessages = [];
+        const controlMessages = [];
         nonSystem.forEach((message, index) => {
-            if (isControlMessageText(message.content)) controlChars += message.content.length;
-            else if (index === currentInputIndex) currentInputChars += message.content.length;
-            else historyChars += message.content.length;
+            if (isControlMessageText(message.content)) controlMessages.push(message);
+            else if (index === currentInputIndex) currentInputMessages.push(message);
+            else historyMessages.push(message);
         });
-        const pushRequestSource = (sourceId, chars, reason, role) => {
+        const messageItems = (list, prefix) => list.map((message, index) => {
+            const content = String(message.content || '');
+            const role = String(message.role || 'unknown').toLowerCase();
+            const sentAt = content.match(/<message_meta\b[^>]*sent_at=["']([^"']+)["'][^>]*\/?>(?:<\/message_meta>)?/i)?.[1] || '';
+            const roleTitle = role === 'user' ? '用户' : role === 'assistant' || role === 'model' ? '角色' : role === 'system' ? '系统' : '消息';
+            return {
+                id: `${prefix}-${index + 1}`,
+                title: roleTitle,
+                content,
+                chars: content.length,
+                sent: true,
+                reason: '来自最终请求消息数组',
+                metadata: { role, sentAt, sequence: index + 1 }
+            };
+        });
+        const joinMessages = list => list.map(formatMessageSnapshot).join('\n\n');
+        const pushRequestSource = (sourceId, content, reason, role, items = []) => {
             const definition = get(sourceId);
+            const text = String(content || '');
             sourceEntries.push({
                 sourceId, registered: !!definition, title: definition?.title || sourceId,
                 domain: definition?.domain || 'other', layer: definition?.layer || 'other', role: role || definition?.role || 'request',
-                priority: definition?.priority ?? 100, included: chars > 0, chars, matchedChars: chars,
-                reason, traceType: 'compiled_exact', sourceRef: null, accounted: true
+                priority: definition?.priority ?? 100, included: text.length > 0, chars: text.length, matchedChars: text.length,
+                reason, traceType: 'compiled_exact', sourceRef: null, accounted: true,
+                content: text,
+                items,
+                count: Array.isArray(items) ? items.length : 0,
+                metadata: null
             });
         };
-        pushRequestSource('chat.history', historyChars, '最终请求中除本轮输入和控制消息之外的会话消息', 'mixed');
-        pushRequestSource('chat.current_input', currentInputChars, '最终请求中最后一条真实用户输入', 'user');
-        pushRequestSource('cot.instructions', controlChars, '继续对话、CoT触发与预填等控制消息', 'mixed');
+        pushRequestSource('chat.history', joinMessages(historyMessages), '最终请求中除本轮输入和控制消息之外的实际会话文本', 'mixed', messageItems(historyMessages, 'history'));
+        pushRequestSource('chat.current_input', joinMessages(currentInputMessages), '最终请求中最后一条真实用户输入', 'user', messageItems(currentInputMessages, 'current-input'));
+        pushRequestSource('cot.instructions', joinMessages(controlMessages), '最终请求中的继续对话、CoT触发与预填控制文本', 'mixed', messageItems(controlMessages, 'control'));
 
-        const toolsChars = body.tools ? contentToText(body.tools).length : 0;
+        const toolsContent = body.tools ? stringifyRequestPart(body.tools) : '';
         const parameterObject = {};
         Object.keys(body || {}).forEach(key => {
             if (['messages', 'contents', 'system_instruction', 'systemInstruction', 'tools'].includes(key)) return;
             parameterObject[key] = body[key];
         });
-        const paramsChars = contentToText(parameterObject).length;
-        pushRequestSource('request.tools', toolsChars, toolsChars ? '最终请求携带的模型工具定义' : '本次未发送工具定义', 'request');
-        pushRequestSource('request.parameters', paramsChars, '最终请求中的模型、采样、流式及Provider参数', 'request');
-        pushRequestSource('provider.wrapper', 0, `Provider消息结构：${String(options.provider || 'unknown')}`, 'request');
+        const paramsContent = stringifyRequestPart(parameterObject);
+        const toolsChars = toolsContent.length;
+        const paramsChars = paramsContent.length;
+        pushRequestSource('request.tools', toolsContent, toolsContent ? '最终请求携带的模型工具定义' : '本次未发送工具定义', 'request');
+        pushRequestSource('request.parameters', paramsContent, '最终请求中的模型、采样、流式及 Provider 参数', 'request');
+        const provider = String(options.provider || 'unknown');
+        const wrapperContent = provider === 'gemini'
+            ? 'Gemini 请求结构：system_instruction + contents'
+            : 'OpenAI 兼容请求结构：messages';
+        pushRequestSource('provider.wrapper', wrapperContent, `Provider消息结构：${provider}`, 'request');
 
         const retiredAudit = global.OVORetiredFeaturePolicy?.auditRequest?.(body) || { ok: true, findings: [] };
         const unregisteredSourceIds = sourceEntries.filter(entry => !entry.registered).map(entry => entry.sourceId);
@@ -362,7 +446,11 @@
                 reason: source?.reason || (matchedChars ? '内容已在最终任务请求中定位' : '来源已登记，由任务模板或Provider包装'),
                 traceType: source?.type || 'other',
                 sourceRef: source?.sourceId ? { id: String(source.sourceId) } : null,
-                accounted: true
+                accounted: true,
+                content,
+                items: sourceItems(source),
+                count: Math.max(0, Number(source?.count) || (Array.isArray(source?.items) ? source.items.length : 0)),
+                metadata: clone(source?.metadata || null)
             };
         });
         const declaredChars = sourceEntries.filter(item => item.included).reduce((sum, item) => sum + item.matchedChars, 0);
@@ -374,27 +462,43 @@
             priority: taskDef?.priority ?? 80, included: allMessageText.length > 0,
             chars: residualChars, matchedChars: residualChars,
             reason: '统一任务编译对未被细分来源覆盖的提示模板、标签和包装文字进行兜底登记',
-            traceType: 'task_residual', sourceRef: null, accounted: true
+            traceType: 'task_residual', sourceRef: null, accounted: true,
+            content: allMessageText,
+            count: messages.length,
+            metadata: null,
+            items: messages.map((message, index) => ({
+                id: `task-message-${index + 1}`,
+                title: `${String(message.role || 'unknown').toUpperCase()} ${index + 1}`,
+                content: String(message.content || ''),
+                chars: String(message.content || '').length,
+                sent: true,
+                reason: '来自最终任务请求消息'
+            }))
         });
-        const toolsChars = body.tools ? contentToText(body.tools).length : 0;
+        const toolsContent = body.tools ? stringifyRequestPart(body.tools) : '';
         const parameterObject = {};
         Object.keys(body || {}).forEach(key => {
             if (['messages', 'contents', 'system_instruction', 'systemInstruction', 'tools'].includes(key)) return;
             parameterObject[key] = body[key];
         });
-        const paramsChars = contentToText(parameterObject).length;
-        const pushRequestSource = (sourceId, chars, reason) => {
+        const paramsContent = stringifyRequestPart(parameterObject);
+        const toolsChars = toolsContent.length;
+        const paramsChars = paramsContent.length;
+        const pushRequestSource = (sourceId, content, reason) => {
             const definition = get(sourceId);
+            const text = String(content || '');
             sourceEntries.push({
                 sourceId, registered: !!definition, title: definition?.title || sourceId,
                 domain: definition?.domain || 'other', layer: definition?.layer || 'request', role: 'request',
-                priority: definition?.priority ?? 100, included: chars > 0, chars, matchedChars: chars,
-                reason, traceType: 'task_request', sourceRef: null, accounted: true
+                priority: definition?.priority ?? 100, included: text.length > 0, chars: text.length, matchedChars: text.length,
+                reason, traceType: 'task_request', sourceRef: null, accounted: true,
+                content: text,
+                items: [], count: 0, metadata: null
             });
         };
-        pushRequestSource('request.tools', toolsChars, toolsChars ? '最终任务请求携带的模型工具定义' : '本次未发送工具定义');
-        pushRequestSource('request.parameters', paramsChars, '最终任务请求中的模型、采样、流式及Provider参数');
-        pushRequestSource('provider.wrapper', 0, `Provider消息结构：${String(options.provider || 'unknown')}`);
+        pushRequestSource('request.tools', toolsContent, toolsContent ? '最终任务请求携带的模型工具定义' : '本次未发送工具定义');
+        pushRequestSource('request.parameters', paramsContent, '最终任务请求中的模型、采样、流式及Provider参数');
+        pushRequestSource('provider.wrapper', `Provider消息结构：${String(options.provider || 'unknown')}`, `Provider消息结构：${String(options.provider || 'unknown')}`);
         const retiredAudit = global.OVORetiredFeaturePolicy?.auditRequest?.(body) || { ok: true, findings: [] };
         const unregisteredSourceIds = sourceEntries.filter(item => !item.registered).map(item => item.sourceId);
         const manifest = {
@@ -447,7 +551,7 @@
         { id: 'runtime.current_time', domain: 'runtime', layer: 'environment', title: '当前时间与时区', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 60, optional: false },
         { id: 'runtime.weather', domain: 'weather', layer: 'environment', title: '天气', tasks: ['chat.reply', 'call.reply'], role: 'system', priority: 61, optional: true },
         { id: 'reminder.active', domain: 'reminder', layer: 'runtime', title: '提醒事项', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 62, optional: true, navigation: { kind: 'reminder' } },
-        { id: 'collection.relevant', domain: 'collection', layer: 'memory', title: '相关收藏', tasks: ['chat.reply', 'journal.generate'], role: 'system', priority: 63, optional: true, navigation: { kind: 'collection' } },
+        { id: 'collection.relevant', domain: 'collection', layer: 'memory', title: '收藏盘点', tasks: ['chat.reply', 'journal.generate'], role: 'system', priority: 63, optional: true, navigation: { kind: 'collection' } },
         { id: 'character.live_state', domain: 'character', layer: 'runtime', title: '角色实时状态', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 64, optional: true },
         { id: 'chat.history', domain: 'chat', layer: 'conversation', title: '聊天历史', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'mixed', priority: 70, optional: false },
         { id: 'chat.current_input', domain: 'chat', layer: 'conversation', title: '本轮用户输入', tasks: ['chat.reply', 'call.reply'], role: 'user', priority: 71, optional: false },

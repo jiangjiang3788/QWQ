@@ -43,7 +43,7 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(path.join(root, 'js/modules/operation_runtime.js'), 'utf8'), context, { filename: 'operation_runtime.js' });
 const runtime = windowObject.OVOOperationRuntime;
 assert(runtime, 'Operation runtime missing');
-assert.strictEqual(runtime.VERSION, '2.15');
+assert.strictEqual(runtime.VERSION, '2.17');
 
 const op = runtime.start('chat.reply', { title: '测试请求', scope: { characterId: 'char_1' } });
 const manifest = {
@@ -84,7 +84,10 @@ assert(!html.includes('id="proment-preview-ai-request"'), 'Old AI diagnostic sho
 
 const dock = fs.readFileSync(path.join(root, 'js/modules/floating_ball.js'), 'utf8');
 assert(dock.includes('request?.contextManifest'));
-assert(dock.includes('完整 Prompt 与真实清单请在 Proment 查看'));
+assert(dock.includes('function renderRequestBody(request)'));
+assert(dock.includes('消息数组'));
+assert(dock.includes("const PACKAGE_VERSION = '5.6.6'"));
+assert(!dock.includes('完整 Prompt 与真实清单请在 Proment 查看'));
 assert(!dock.includes('downloadText(filename'));
 assert(!dock.includes('reportFilename(prefix'));
 

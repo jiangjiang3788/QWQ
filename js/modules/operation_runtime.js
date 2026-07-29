@@ -1,14 +1,13 @@
-// OVO Operation Runtime - V2.15 · manifest-only single-user operation history
+// OVO Operation Runtime - V2.17 · preserve complete current-request arrays and grouped source snapshots
 // 用户可见的 AI 操作追踪层：统一记录主操作、后台子操作、模型请求与结果回执。
 (function (global) {
     'use strict';
 
     const STORAGE_KEY = 'ovo_operation_history_v1';
     const HISTORY_LIMIT = 20;
-    const DETAIL_LIMIT = 5;
-    const BODY_PREVIEW_LIMIT = 16000;
+    const DETAIL_LIMIT = 8;
     const MUTATION_LIMIT = 40;
-    const MUTATION_TEXT_LIMIT = 1200;
+    const MUTATION_TEXT_LIMIT = 4000;
     const STORAGE_BUDGET_CHARS = 260000;
     const REPORT_OPERATION_LIMIT = 20;
     let lastPersistStats = { chars: 0, budget: STORAGE_BUDGET_CHARS, records: 0, detailRecords: 0, compacted: false, dropped: 0 };
@@ -50,25 +49,33 @@
             .replace(/\bAIza[A-Za-z0-9_-]{20,}\b/g, 'AIza***');
     }
 
-    function safeClone(value, depth = 0) {
+    function safeClone(value, depth = 0, options = {}) {
+        const hasArrayLimit = Object.prototype.hasOwnProperty.call(options, 'arrayLimit');
+        const arrayLimit = hasArrayLimit ? options.arrayLimit : 120;
         if (depth > 10) return '[已省略：层级过深]';
         if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
         if (typeof value === 'string') {
             const redacted = redactSensitiveText(value);
-            return redacted.length > 80000 ? `${redacted.slice(0, 80000)}
-…（内容超过 8 万字符，已截断）` : redacted;
+            return redacted.length > 240000 ? `${redacted.slice(0, 240000)}\n…（单项内容超过 24 万字符，已截断）` : redacted;
         }
         if (typeof value === 'function') return '[函数]';
         if (value instanceof Error) return { name: value.name, message: redactSensitiveText(value.message), stack: redactSensitiveText(String(value.stack || '')).slice(0, 3000) };
-        if (Array.isArray(value)) return value.slice(0, 120).map(item => safeClone(item, depth + 1));
+        if (Array.isArray(value)) {
+            const list = arrayLimit == null ? value : value.slice(0, Math.max(0, Number(arrayLimit) || 0));
+            return list.map(item => safeClone(item, depth + 1, options));
+        }
         if (typeof value === 'object') {
             const output = {};
             Object.keys(value).slice(0, 160).forEach(key => {
-                output[key] = hideSensitiveKey(key) ? '***' : safeClone(value[key], depth + 1);
+                output[key] = hideSensitiveKey(key) ? '***' : safeClone(value[key], depth + 1, options);
             });
             return output;
         }
         return redactSensitiveText(String(value));
+    }
+
+    function fullClone(value) {
+        return safeClone(value, 0, { arrayLimit: null });
     }
 
     function mutationText(value) {
@@ -101,11 +108,14 @@
 
     function createBodyPreview(body) {
         try {
-            const safe = safeClone(body);
+            const safe = fullClone(body);
             const text = JSON.stringify(safe, null, 2);
+            const bodyTruncated = text.includes('…（单项内容超过 24 万字符，已截断）')
+                || text.includes('[已省略：层级过深]');
             return {
-                bodyPreview: text.length > BODY_PREVIEW_LIMIT ? `${text.slice(0, BODY_PREVIEW_LIMIT)}\n…（请求内容过长，已截断）` : text,
-                bodyTruncated: text.length > BODY_PREVIEW_LIMIT,
+                // 5.6.4：完整请求保留；写入变化正文最多保留 4000 字符。
+                bodyPreview: text,
+                bodyTruncated,
                 bodyChars: text.length
             };
         } catch (_) {
@@ -144,7 +154,7 @@
 
     function stripPromptTraceContent(trace, keepMetadata = true) {
         if (!trace || typeof trace !== 'object') return null;
-        const copy = safeClone(trace);
+        const copy = fullClone(trace);
         copy.sections = (copy.sections || []).map(section => ({
             ...(keepMetadata ? section : { id: section.id, type: section.type, title: section.title, state: section.state, sent: section.sent, chars: section.chars, count: section.count, fingerprint: section.fingerprint }),
             content: '',
@@ -156,8 +166,19 @@
         return copy;
     }
 
+    function stripContextManifestContent(manifest) {
+        if (!manifest || typeof manifest !== 'object') return null;
+        const copy = fullClone(manifest);
+        copy.sources = (copy.sources || []).map(source => ({
+            ...source,
+            content: '',
+            items: (source.items || []).map(item => ({ ...item, content: '' }))
+        }));
+        return copy;
+    }
+
     function compactRecordForStorage(record, index, level = 0) {
-        const item = safeClone(record);
+        const item = index === 0 && level === 0 ? fullClone(record) : safeClone(record);
         const stripDetail = index >= DETAIL_LIMIT || level >= 1;
         if (stripDetail && Array.isArray(item?.mutations)) {
             item.mutations = item.mutations.map(mutation => ({ ...mutation, before: '', after: '', fields: [], meta: {} }));
@@ -166,7 +187,8 @@
             item.requests = item.requests.map(request => ({
                 ...request,
                 bodyPreview: '',
-                promptTrace: stripPromptTraceContent(request.promptTrace, level < 2)
+                promptTrace: stripPromptTraceContent(request.promptTrace, level < 2),
+                contextManifest: stripContextManifestContent(request.contextManifest)
             }));
         }
         if (level >= 2) {
@@ -190,11 +212,13 @@
     function buildPersistPayload() {
         const ids = orderedIds.slice(0, HISTORY_LIMIT);
         let level = 0;
-        let list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, level)).filter(Boolean);
+        const compactLevelFor = (index, currentLevel) => index === 0 ? 0 : currentLevel;
+        let list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, compactLevelFor(index, level))).filter(Boolean);
         let text = JSON.stringify(list);
         while (text.length > STORAGE_BUDGET_CHARS && level < 3) {
             level += 1;
-            list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, level)).filter(Boolean);
+            // 始终保住最新一条操作的完整请求和来源文本，只压缩更旧记录。
+            list = ids.map((id, index) => compactRecordForStorage(records.get(id), index, compactLevelFor(index, level))).filter(Boolean);
             text = JSON.stringify(list);
         }
         let dropped = 0;
@@ -418,9 +442,9 @@
         const record = getMutable(id);
         if (!record) return null;
         const preview = createBodyPreview(request.body);
-        const contextManifest = safeClone(request.contextManifest || null);
+        const contextManifest = fullClone(request.contextManifest || null);
         // V5.4.4: no reverse Prompt inference. Only explicit legacy trace data is preserved for old/imported records.
-        const promptTrace = safeClone(request.promptTrace || null);
+        const promptTrace = fullClone(request.promptTrace || null);
         const sourceSummary = summarizeContextManifest(contextManifest);
         const entry = {
             id: request.id || makeId('req'),
@@ -440,7 +464,7 @@
             bodyPreview: preview.bodyPreview,
             bodyTruncated: preview.bodyTruncated,
             bodyChars: preview.bodyChars,
-            promptTrace: safeClone(promptTrace),
+            promptTrace: fullClone(promptTrace),
             contextManifest,
             sourceSummary,
             createdAt: new Date().toISOString(),
@@ -464,7 +488,17 @@
         if (!record) return null;
         const request = record.requests.find(item => item.id === requestId);
         if (!request) return null;
-        Object.assign(request, safeClone(patch));
+        const normalizedPatch = safeClone(patch);
+        if (Object.prototype.hasOwnProperty.call(patch, 'contextManifest')) normalizedPatch.contextManifest = fullClone(patch.contextManifest);
+        if (Object.prototype.hasOwnProperty.call(patch, 'promptTrace')) normalizedPatch.promptTrace = fullClone(patch.promptTrace);
+        if (Object.prototype.hasOwnProperty.call(patch, 'body')) {
+            const preview = createBodyPreview(patch.body);
+            normalizedPatch.bodyPreview = preview.bodyPreview;
+            normalizedPatch.bodyTruncated = preview.bodyTruncated;
+            normalizedPatch.bodyChars = preview.bodyChars;
+            delete normalizedPatch.body;
+        }
+        Object.assign(request, normalizedPatch);
         record.updatedAt = new Date().toISOString();
         persist();
         emit(record, 'request-update');
@@ -580,7 +614,7 @@
     }
 
     function get(id) {
-        return safeClone(records.get(id) || null);
+        return fullClone(records.get(id) || null);
     }
 
     function getChildren(parentId, options = {}) {
@@ -857,7 +891,7 @@
         list: () => Array.from(registry.values()).map(item => safeClone(item))
     };
     global.OVOOperationRuntime = {
-        VERSION: '2.15',
+        VERSION: '2.17',
         start, startChild, run, runChild, update, stage, attachRequest, updateRequest, recordMutation, recordMutations,
         complete, skip, fail, cancel, get, getChildren, list, getFacets, getStorageStats, getActive, getCurrent,
         buildOperationReport, exportReport, exportHistory, redactSensitiveText, summarizeContextManifest,

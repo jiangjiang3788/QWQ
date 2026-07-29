@@ -1,0 +1,26 @@
+QWQ V5.6.5 专项测试报告
+日期：2026-07-29
+
+通过：
+1. node --check js/modules/chat_ai.js
+2. node --check js/modules/floating_ball.js
+3. node --check js/core/context_source_registry.js
+4. tests/v5_6_5_request_panel.test.js
+5. tests/v5_6_4_floating_ball_audit.test.js
+6. tests/v5_6_3_request_trace.test.js
+7. tests/v5_4_3_governance.test.js
+8. tests/v5_4_1_context_compiler.test.js
+
+专项覆盖：
+- 一级来源均为 details 折叠标题；
+- 世界书、记忆、收藏等二级明细为 details 折叠条目；
+- 收藏 Prompt 同时生成 user_favorites 与 character_favorites；
+- 当前角色收藏不会跨角色读取；
+- 聊天历史 manifest 保留 role 与 sentAt；
+- 显示层去除消息 ID 和 message_meta，只保留发送方、时间、内容；
+- 最新请求继续使用最终 contextManifest 的实际来源正文。
+
+项目原有未通过项：
+- memory_kv_singleton_migration.test.js：依赖包外部 JSON 样本；
+- memory_v5_1.test.js / memory_v5_3_stability.test.js：硬编码旧 memory engine 版本；
+- v5_4_2_ai_gateway.test.js / v5_4_4_cleanup_navigation.test.js：原 V5.6.4 包中已失败的旧页面结构断言。
