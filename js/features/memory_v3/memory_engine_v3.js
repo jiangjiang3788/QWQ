@@ -127,11 +127,17 @@
     }
 
     function missingAddFields(table, values) {
-        const requiredKeys = ['category', 'title', 'content'];
-        return requiredKeys.map(key => {
-            const field = table.fields.find(item => item.scope === 'common' && item.commonKey === key);
-            return field && !hasValue(values[field.id]) ? field.name : '';
-        }).filter(Boolean);
+        // KV是单例表单：只校验用户配置为必填的可见自定义字段。
+        // Rows仍保留分类/标题/内容三个基础必填项。
+        const baseRequiredKeys = new Set(['category', 'title', 'content']);
+        return table.fields
+            .filter(field => !field.hidden)
+            .filter(field => table.viewMode === 'kv'
+                ? (field.scope === 'custom' && field.required)
+                : ((field.scope === 'common' && baseRequiredKeys.has(field.commonKey))
+                    || (field.scope === 'custom' && field.required)))
+            .filter(field => !hasValue(values[field.id]))
+            .map(field => field.name);
     }
 
     function operationValuesEqualTarget(table, target, values) {
@@ -177,6 +183,7 @@
             }
 
             const rows = store.records[table.id] ||= [];
+            const effectiveAction = table.viewMode === 'kv' && rows.length ? 'upsert' : action;
             if (action === 'delete') {
                 if (origin === 'ai') {
                     rejected.push({ operation, reason: '聊天AI不能删除正式记忆' });
@@ -194,7 +201,7 @@
                 return;
             }
 
-            if (action === 'add' && text(operation.recordId)) {
+            if (effectiveAction === 'add' && text(operation.recordId)) {
                 rejected.push({ operation, reason: 'add操作不能指定recordId；更新旧记录请使用upsert' });
                 return;
             }
@@ -222,7 +229,7 @@
                 common_time: localStamp
             });
 
-            if (action === 'add') {
+            if (effectiveAction === 'add') {
                 const missing = missingAddFields(table, resolved);
                 if (missing.length) {
                     rejected.push({ operation, reason: `新增记录缺少必要内容：${missing.join('、')}` });
@@ -251,26 +258,28 @@
                     const result = setFieldValue(record, field, value, { table });
                     if (result.status === 'changed') record.changedFieldIds.push(field.id);
                 }
-                setFieldValue(record, table.fields.find(item => item.id === 'common_source'), source, { table });
-                setFieldValue(record, table.fields.find(item => item.id === 'common_time'), localStamp, { table });
-                record.changedFieldIds = unique(record.changedFieldIds.concat(['common_source', 'common_time']));
+                const sourceField = table.fields.find(item => item.id === 'common_source');
+                const timeField = table.fields.find(item => item.id === 'common_time');
+                if (sourceField) setFieldValue(record, sourceField, source, { table });
+                if (timeField) setFieldValue(record, timeField, localStamp, { table });
+                record.changedFieldIds = unique(record.changedFieldIds.concat(table.viewMode === 'rows' ? ['common_source', 'common_time'] : []));
                 rows.push(record);
                 changed.push({ tableId: table.id, recordId: record.id, action: 'add', fields: clone(record.changedFieldIds) });
                 return;
             }
 
-            let target = null;
-            if (text(operation.recordId)) {
+            let target = table.viewMode === 'kv' ? (rows[0] || null) : null;
+            if (!target && text(operation.recordId)) {
                 target = rows.find(row => row.id === text(operation.recordId)) || null;
                 if (!target) {
                     rejected.push({ operation, reason: `指定的recordId不存在：${text(operation.recordId)}` });
                     return;
                 }
-            } else {
+            } else if (!target) {
                 target = findTarget(rows, table, operation, identityValues);
             }
             if (!target) {
-                rejected.push({ operation, reason: 'upsert没有找到目标记录；新增独立记录必须使用add并填写分类、标题和内容' });
+                rejected.push({ operation, reason: 'upsert没有找到目标记录；Rows表新增记录请使用add，KV表会自动更新唯一表单记录' });
                 return;
             }
 
@@ -292,7 +301,7 @@
             target.time = localStamp;
             target.updatedAt = stamp;
             target.roundId = roundId;
-            target.changedFieldIds = unique(changedFields.concat(['common_source', 'common_time']));
+            target.changedFieldIds = unique(changedFields.concat(table.viewMode === 'rows' ? ['common_source', 'common_time'] : []));
             changed.push({ tableId: table.id, recordId: target.id, action: 'update', fields: clone(target.changedFieldIds) });
         });
 
@@ -412,7 +421,8 @@
         }
         const query = normalizeSearch(roundText(chat, { includeAssistant: false }));
         const terms = queryTerms(query);
-        const limit = table.id === 'v5_daily_observation' ? 3 : 6;
+        const configuredLimit = Math.max(1, Math.min(20, Number(store.settings.relevantMaxPerTable) || 5));
+        const limit = table.id === 'v5_daily_observation' ? Math.min(8, configuredLimit) : configuredLimit;
         const scored = rows.map(record => ({ record, score: query ? recordScore(query, terms, table, record, store) : 0 }))
             .sort((a, b) => b.score - a.score || text(b.record.updatedAt).localeCompare(text(a.record.updatedAt)));
         const selected = scored.filter(item => item.score > 0).slice(0, limit).map(item => item.record);
@@ -426,7 +436,9 @@
 
     function fieldPrompt(field) {
         const options = field.options?.length ? `；选项=${field.options.join('/')}` : '';
-        return `- ${field.name}（${field.type}${options}）：${field.aiHint || '按字段名称填写'}`;
+        const required = field.required ? '；必填' : '；选填';
+        const category = field.category ? `；分类=${field.category}` : '';
+        return `- ${field.name}（${field.type}${options}${required}${category}）：${field.aiHint || '按字段名称填写'}`;
     }
 
     function tablePrompt(chat, table, store) {
@@ -435,12 +447,10 @@
             .filter(Boolean);
         const candidates = candidateRecords(chat, table, store).map(record => candidateObject(table, record));
         return `<memory_table id="${table.id}" name="${table.name}">
+数据模式：${table.viewMode === 'kv' ? 'KV单例表单。整张表只有一条记录；字段名就是表单项目。已有记录时必须upsert该recordId，只提交发生变化的字段，禁止为每个字段新增独立记录。' : 'Rows多行记录。一条记录代表一个独立对象或事件。'}
 用途：${table.description || '未填写'}
 提取规则：${table.extractPrompt || table.description || '根据本轮内容判断'}
-分类提示：${table.categoryHints.join('、') || '无预设'}（AI${table.aiCanSupplementCategories ? '可以' : '不可以'}补充）
-标签提示：${table.tagHints.join('、') || '无预设'}（AI${table.aiCanSupplementTags ? '可以' : '不可以'}补充）
-同一记录判断字段：${identityNames.join('＋') || '优先使用recordId'}
-字段：
+${table.viewMode === 'rows' ? `分类提示：${table.categoryHints.join('、') || '无预设'}（AI${table.aiCanSupplementCategories ? '可以' : '不可以'}补充）\n标签提示：${table.tagHints.join('、') || '无预设'}（AI${table.aiCanSupplementTags ? '可以' : '不可以'}补充）\n同一记录判断字段：${identityNames.join('＋') || '优先使用recordId'}\n` : 'KV规则：只允许填写下列动态字段；不存在分类、标签、标题、内容等固定业务字段。\n'}字段：
 ${table.fields.filter(field => !field.hidden).map(fieldPrompt).join('\n')}
 现有候选记录：${candidates.length ? JSON.stringify(candidates) : '[]'}
 </memory_table>`;
@@ -454,19 +464,19 @@ ${table.fields.filter(field => !field.hidden).map(fieldPrompt).join('\n')}
         const currentRound = roundPayload(chat).filter(item => item.role === 'user');
         const roundJson = JSON.stringify(currentRound.slice(-20));
         return `\n<memory_v5_protocol version="${M.VERSION}">
-你同时负责生成正常聊天回复和本轮结构化记忆更新。正常回复仍严格遵守原聊天格式；记忆指令不会展示给用户。
+你负责生成正常聊天回复，并在回复末尾仅根据本轮用户原始消息生成结构化记忆候选。记忆指令不会展示给用户。
 
 【一轮定义】
-本轮包括：用户自上次AI回复后一次性发送的全部消息，以及你这次将一次性生成的全部回复消息。先完整决定本轮可见回复，再结合用户消息和你本轮形成的有效结论，统一判断记忆更新。
+本轮记忆证据只包括用户自上次AI回复后一次性发送的全部消息。禁止把你本轮回复中自行生成的解释、建议、安慰、推测、心理判断、角色动作或结论写入记忆；只有用户在消息中明确确认过的内容才可作为用户证据。
 本轮用户消息批次：${roundJson}
 
 【必须执行】
-1. 逐张、独立检查下面每一张可自动写入的表。当前状态不能替代事项、想法、物品或日常观察；同一信息符合多表时可以产生多条操作。
+1. 先把用户消息拆成独立信息单元，再为每个信息单元选择一张最合适的主表。禁止把同一段概括性内容复制到多张表；只有确实包含不同类型的独立事实时，才可拆分后分别写入不同表。
 2. 只有本轮出现新事实、新进展、新结论或真实状态变化才写入。旧值没有变化时不要重写，不要为了表示“检查过”而更新时间。
 3. 更新旧记录时使用action="upsert"，优先填写候选中的recordId；如果没有目标旧记录，upsert会被拒绝。独立新记录必须使用action="add"。
-4. 更新时只提交本轮变化的字段；不要把候选旧记录整行原样复制回来。新增时分类、标题、内容不能为空，并填写表格要求的关键字段。
+4. 更新时只提交本轮变化的字段；不要把候选旧记录整行原样复制回来。新增时必须填写该表所有标记为“必填”的可见字段；缺少任一必填字段将被程序拒绝。
 5. 分类和标签是用户定义提示，AI可以按表设置补充；它们不构成写入许可。标题不超过10个汉字。
-6. 来源：用户直接说出的事实、决定、需求或观点写“用户明确”；由你归纳、判断或提出的理解写“AI判断”。不要把两者混为一条难以区分的记录。
+6. 来源：用户直接说出的事实、决定、需求或观点写“用户明确”。只有对用户原话进行不增加新含义的保守归纳时才可写“AI判断”；禁止记录隐藏动机、人格、创伤、医学原因或用户未确认的心理解释。
 7. 核心档案、稳定长期记忆和中期总结不在自动写入范围，禁止尝试修改或删除。聊天AI禁止删除任何正式记录。
 8. 日常观察只记录本轮明确提到的内容，不补数字；现阶段只提供少量旧记录候选，不会发送几十条历史记录。
 9. 即使没有更新，也必须在回复最末尾输出空操作标签。不要用Markdown代码块包裹。
@@ -632,11 +642,15 @@ ${tables.map(table => tablePrompt(chat, table, store)).join('\n\n')}
             element.style.display = 'none';
             return;
         }
-        const values = (store.records[table.id] || [])
-            .filter(record => record.content)
-            .sort((a, b) => text(b.updatedAt).localeCompare(text(a.updatedAt)))
-            .slice(0, 4)
-            .map(record => record.content);
+        const tableRecords = store.records[table.id] || [];
+        const kvValues = visibleFields(table).filter(field => field.scope === 'custom')
+            .map(field => getFieldValue(tableRecords[0], field))
+            .filter(hasValue).slice(0, 4).map(value => Array.isArray(value) ? value.join('、') : text(value));
+        const values = table.viewMode === 'kv' && kvValues.length
+            ? kvValues
+            : tableRecords.filter(record => record.content)
+                .sort((a, b) => text(b.updatedAt).localeCompare(text(a.updatedAt)))
+                .slice(0, 4).map(record => record.content);
         element.textContent = values.join(' · ');
         element.classList.toggle('hidden', !values.length);
         element.style.display = values.length ? '' : 'none';

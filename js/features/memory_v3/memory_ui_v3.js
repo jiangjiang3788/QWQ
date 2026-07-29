@@ -150,21 +150,26 @@
             : '';
     }
 
-    function groupKvRows(rows) {
-        const buckets = new Map();
-        rows.forEach(record => {
-            const key = text(record.category) || '未分类';
-            if (!buckets.has(key)) buckets.set(key, []);
-            buckets.get(key).push(record);
-        });
-        return Array.from(buckets.entries()).map(([category, items]) => ({ category, items }));
-    }
-
     function renderKv(chat, table, rows) {
-        if (!rows.length) return '<div class="mv5-empty-page">暂无内容。核心档案和当前状态采用按分类展开的列表视图。</div>';
-        return `<div class="mv5-kv-groups">${groupKvRows(rows).map(group => `<section class="mv5-kv-group"><div class="mv5-kv-group-head">${esc(group.category)}</div><div class="mv5-kv-list">${group.items.map(record => `<article class="mv5-kv-record">
-<div class="mv5-kv-title">${updateDot(chat, record)}<strong>${esc(record.title || '未命名')}</strong></div>
-<div class="mv5-kv-body"><div class="mv5-kv-content"><div class="mv5-kv-text">${esc(record.content || '—')}</div></div><div class="mv5-row-actions"><button data-mv5-edit-record="${esc(record.id)}">编辑</button><button data-mv5-delete-record="${esc(record.id)}">删除</button></div></div>
+        const fields = visibleFields(table).filter(field => field.scope === 'custom');
+        const record = rows[0] || null;
+        if (!fields.length) return '<div class="mv5-empty-page">当前KV表还没有自定义字段。请点击“编辑表格”添加表单字段。</div>';
+        const groups = [];
+        const groupMap = new Map();
+        fields.forEach(field => {
+            const category = text(field.category) || '未分类';
+            if (!groupMap.has(category)) {
+                const group = { category, fields: [] };
+                groupMap.set(category, group);
+                groups.push(group);
+            }
+            groupMap.get(category).fields.push(field);
+        });
+        return `<div class="mv5-kv-groups">${groups.map(group => `<section class="mv5-kv-group" data-kv-category="${esc(group.category)}">
+<div class="mv5-kv-group-head">${esc(group.category)}</div>
+<div class="mv5-kv-form">${group.fields.map(field => `<article class="mv5-kv-record" data-field-id="${esc(field.id)}">
+<div class="mv5-kv-title">${record ? updateDot(chat, record, field.id) : ''}<strong>${esc(field.name)}</strong>${field.required ? '<span class="mv5-required-mark">必填</span>' : ''}</div>
+<div class="mv5-kv-body"><div class="mv5-kv-content"><div class="mv5-kv-text">${record ? renderCell(field, getFieldValue(record, field), false) : '<span class="mv5-empty">—</span>'}</div></div></div>
 </article>`).join('')}</div></section>`).join('')}</div>`;
     }
 
@@ -204,7 +209,7 @@
 <section class="mv5-layout">
 <aside class="mv5-sidebar"><div class="mv5-sidebar-head"><strong>表格</strong><span>${store.tables.length}</span></div><div class="mv5-table-list">${store.tables.map(item => `<button class="mv5-table-item ${item.id === table?.id ? 'active' : ''}" data-mv5-table="${esc(item.id)}"><span class="mv5-table-name">${tableUpdateDot(chat, item.id)}${esc(item.name)}</span><b class="mv5-group mv5-${item.group}">${groupLabel(item.group)}</b></button>`).join('')}</div></aside>
 <section class="mv5-main">${table ? `<div class="mv5-table-head"><div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<div class="mv5-extract"><b>AI提取说明：</b>${esc(table.extractPrompt)}</div>` : ''}</div><div class="mv5-table-actions"><button class="btn btn-small btn-primary" data-mv5-action="new-record">新增记录</button>${['v5_recent_events','v5_thoughts'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="compress">压缩所选短期记录</button><button class="btn btn-small btn-secondary" data-mv5-action="delete-compressed">删除已压缩记录</button>' : ''}${['v5_event_summary','v5_thought_summary'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="long-term-draft">生成长期草稿</button>' : ''}<button class="btn btn-small btn-secondary" data-mv5-action="sort">多维排序</button><button class="btn btn-small btn-secondary" data-mv5-action="edit-table">表设置</button><button class="btn btn-small btn-danger" data-mv5-action="delete-table">删除表</button></div></div>
-<div class="mv5-rule-line"><span>${table.viewMode === 'kv' ? 'KV：标题/内容' : 'Rows：多行记录'}</span><span>${groupLabel(table.group)}</span><span>${writeLabel(table.behavior.writePolicy)}</span><span>${contextLabel(table.behavior.contextPolicy)}</span>${table.behavior.retentionDays ? `<span>保留/引用${table.behavior.retentionDays}天</span>` : '<span>时间不限</span>'}${table.behavior.chatStatus ? '<span>状态栏来源</span>' : ''}</div>
+<div class="mv5-rule-line"><span>${table.viewMode === 'kv' ? 'KV：单例表单' : 'Rows：多行记录'}</span><span>${groupLabel(table.group)}</span><span>${writeLabel(table.behavior.writePolicy)}</span><span>${contextLabel(table.behavior.contextPolicy)}</span>${table.behavior.retentionDays ? `<span>保留/引用${table.behavior.retentionDays}天</span>` : '<span>时间不限</span>'}${table.behavior.chatStatus ? '<span>状态栏来源</span>' : ''}</div>
 <div class="mv5-filters"><input id="mv5-search" type="search" placeholder="搜索当前表" value="${esc(state.search)}"><select id="mv5-category"><option value="">全部分类</option>${categories.map(value => `<option ${value === state.category ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select><select id="mv5-tag"><option value="">全部标签</option>${tags.map(value => `<option ${value === state.tag ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select></div>
 ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table, rows)}${renderPager(page)}` : '<div class="mv5-empty-page">当前没有表格。</div>'}</section>
 </section></main>`;
@@ -257,7 +262,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             try {
                 if (action === 'new-table') openTableEditor(chat, null);
                 if (action === 'edit-table' && table) openTableEditor(chat, table);
-                if (action === 'new-record' && table) openRecordEditor(chat, table, null);
+                if (action === 'new-record' && table) openRecordEditor(chat, table, table.viewMode === 'kv' ? ((store.records[table.id] || [])[0] || null) : null);
                 if (action === 'compress' && table) openCompression(chat, table);
                 if (action === 'long-term-draft' && table) openLongTermDraft(chat, table);
                 if (action === 'delete-compressed' && table) {
@@ -381,9 +386,13 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     function autoGrow(textarea) {
         if (!textarea) return;
         const viewportHeight = global.visualViewport?.height || global.innerHeight || 720;
-        const maxHeight = Math.max(180, Math.min(520, Math.round(viewportHeight * 0.46)));
+        const isFieldHint = textarea.classList.contains('mv5-field-hint');
+        const minHeight = isFieldHint ? 120 : 84;
+        const maxHeight = isFieldHint
+            ? Math.max(220, Math.min(420, Math.round(viewportHeight * 0.52)))
+            : Math.max(180, Math.min(520, Math.round(viewportHeight * 0.46)));
         textarea.style.height = 'auto';
-        const wanted = Math.max(84, textarea.scrollHeight + 2);
+        const wanted = Math.max(minHeight, textarea.scrollHeight + 4);
         textarea.style.height = `${Math.min(maxHeight, wanted)}px`;
         textarea.style.overflowY = wanted > maxHeight ? 'auto' : 'hidden';
     }
@@ -393,11 +402,13 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
         return `<tr class="mv5-field-row" data-field-id="${esc(field.id)}" data-common-key="${esc(field.commonKey || '')}">
 <td><div class="mv5-order-buttons"><button type="button" data-move-field="up">↑</button><button type="button" data-move-field="down">↓</button></div></td>
 <td><input class="mv5-field-name" value="${esc(field.name)}" ${common ? 'readonly' : ''}>${common ? '<small class="mv5-common-mark">公共字段</small>' : ''}</td>
+<td><input class="mv5-field-category" value="${esc(field.category || '')}" placeholder="例如：用户档案" ${common ? 'readonly' : ''}></td>
 <td><select class="mv5-field-type" ${common ? 'disabled' : ''}>${Array.from(M.constants.FIELD_TYPES).map(type => `<option value="${type}" ${type === field.type ? 'selected' : ''}>${type}</option>`).join('')}</select></td>
 <td><input class="mv5-field-width" type="number" min="80" max="800" value="${field.width}"></td>
 <td><input class="mv5-field-options" value="${esc(field.options.join('，'))}" placeholder="选项，逗号分隔" ${common ? 'readonly' : ''}></td>
-<td><label><input class="mv5-field-hidden" type="checkbox" ${field.hidden ? 'checked' : ''}> 隐藏</label></td>
-<td><textarea class="mv5-field-hint" rows="3" placeholder="告诉AI如何填写这个字段">${esc(field.aiHint)}</textarea></td>
+<td class="mv5-check-cell"><input class="mv5-field-required" type="checkbox" aria-label="必填" title="必填" ${field.required ? 'checked' : ''}></td>
+<td class="mv5-check-cell"><input class="mv5-field-visible" type="checkbox" aria-label="显示" title="显示" ${field.hidden ? '' : 'checked'}></td>
+<td class="mv5-hint-cell"><textarea class="mv5-field-hint" rows="6" placeholder="告诉AI如何填写这个字段">${esc(field.aiHint)}</textarea></td>
 <td>${common ? '<span class="mv5-no-delete">必需</span>' : '<button type="button" class="mv5-delete-field" data-remove-field>删除</button>'}</td>
 </tr>`;
     }
@@ -408,12 +419,13 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             scope: row.dataset.commonKey ? 'common' : 'custom',
             commonKey: text(row.dataset.commonKey),
             name: text(row.querySelector('.mv5-field-name').value),
+            category: text(row.querySelector('.mv5-field-category')?.value),
             type: row.querySelector('.mv5-field-type').value,
             width: parseInt(row.querySelector('.mv5-field-width').value, 10) || 160,
             options: unique(row.querySelector('.mv5-field-options').value),
-            hidden: row.querySelector('.mv5-field-hidden').checked,
+            hidden: !row.querySelector('.mv5-field-visible').checked,
             aiHint: text(row.querySelector('.mv5-field-hint').value),
-            required: !!row.dataset.commonKey,
+            required: row.dataset.commonKey ? true : row.querySelector('.mv5-field-required').checked,
             order: index
         }));
     }
@@ -433,10 +445,10 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             behavior: { writePolicy: 'manual', contextPolicy: 'relevant' }
         }, store.tables.length);
         const sourceTables = store.tables.filter(item => item.id !== table.id);
-        const body = `<section class="mv5-form-card"><h3>基本信息</h3><div class="mv5-form-grid"><label><span>表名</span><input name="name" value="${esc(table.name)}" required></label><label><span>显示方式</span><select name="viewMode"><option value="rows">Rows：多行记录</option><option value="kv">KV：标题/内容</option></select></label><label><span>分组</span><select name="group"><option value="core">核心</option><option value="current">状态</option><option value="short">短期</option><option value="medium">中期</option><option value="long">长期</option></select></label></div><label class="mv5-block-field"><span>用途说明</span><textarea name="description" rows="4">${esc(table.description)}</textarea></label><label class="mv5-block-field"><span>extractPrompt（AI理解表格用途）</span><textarea name="extractPrompt" rows="5">${esc(table.extractPrompt)}</textarea></label></section>
+        const body = `<section class="mv5-form-card"><h3>基本信息</h3><div class="mv5-form-grid"><label><span>表名</span><input name="name" value="${esc(table.name)}" required></label><label><span>显示方式</span><select name="viewMode"><option value="rows">Rows：多行记录</option><option value="kv">KV：单例表单</option></select></label><label><span>分组</span><select name="group"><option value="core">核心</option><option value="current">状态</option><option value="short">短期</option><option value="medium">中期</option><option value="long">长期</option></select></label></div><label class="mv5-block-field"><span>用途说明</span><textarea name="description" rows="4">${esc(table.description)}</textarea></label><label class="mv5-block-field"><span>extractPrompt（AI理解表格用途）</span><textarea name="extractPrompt" rows="5">${esc(table.extractPrompt)}</textarea></label></section>
 <section class="mv5-form-card"><h3>写入与上下文</h3><div class="mv5-form-grid"><label><span>写入方式</span><select name="writePolicy"><option value="manual">手动更新</option><option value="auto">随聊天更新（V5.1）</option><option value="summary">短期压缩（V5.2）</option></select></label><label><span>上下文发送</span><select name="contextPolicy"><option value="always">每轮发送</option><option value="relevant">相关时发送</option><option value="never">不发送</option></select></label><label><span>有效/引用天数</span><input name="retentionDays" type="number" min="0" value="${table.behavior.retentionDays}"><small>0表示不限</small></label><label class="mv5-check"><input type="checkbox" name="chatStatus" ${table.behavior.chatStatus ? 'checked' : ''}>聊天状态栏来源</label></div><div class="mv5-form-grid"><label><span>识别同一记录的字段</span><input name="identityFields" value="${esc(table.behavior.identityFieldIds.map(fieldId => table.fields.find(field => field.id === fieldId)?.name).filter(Boolean).join('，'))}" placeholder="标题，相关主体"></label><label><span>上下文内容字段</span><input name="contextFields" value="${esc(table.behavior.contextFieldIds.map(fieldId => table.fields.find(field => field.id === fieldId)?.name).filter(Boolean).join('，'))}" placeholder="标题，内容，标签"></label></div>${sourceTables.length ? `<div class="mv5-source-list"><strong>压缩来源表</strong>${sourceTables.map(item => `<label><input type="checkbox" name="sourceTableIds" value="${esc(item.id)}" ${table.behavior.sourceTableIds.includes(item.id) ? 'checked' : ''}>${esc(item.name)}</label>`).join('')}</div>` : ''}</section>
 <section class="mv5-form-card"><h3>分类与标签提示</h3><p class="mv5-help">分类和标签由用户提供常用提示，AI后续可按开关补充；它们只用于归类与检索，不阻止写入。</p><div class="mv5-form-grid"><label><span>分类提示</span><textarea name="categoryHints" rows="3">${esc(table.categoryHints.join('，'))}</textarea></label><label><span>标签提示</span><textarea name="tagHints" rows="3">${esc(table.tagHints.join('，'))}</textarea></label><label class="mv5-check"><input type="checkbox" name="supplementCategories" ${table.aiCanSupplementCategories ? 'checked' : ''}>AI可以补充新分类</label><label class="mv5-check"><input type="checkbox" name="supplementTags" ${table.aiCanSupplementTags ? 'checked' : ''}>AI可以补充新标签</label></div></section>
-<section class="mv5-form-card mv5-fields-card"><div class="mv5-card-title"><div><h3>字段设置</h3><p>六个公共字段不能删除，但可以移动顺序、调整宽度和隐藏。内部recordId、createdAt、updatedAt不会作为表格字段出现。</p></div><button type="button" id="mv5-add-field" class="btn btn-small btn-secondary">添加字段</button></div><div class="mv5-fields-scroll"><table class="mv5-fields-table"><thead><tr><th>顺序</th><th>字段名</th><th>类型</th><th>宽度</th><th>选项</th><th>显示</th><th>aiHint</th><th class="mv5-sticky-actions">操作</th></tr></thead><tbody id="mv5-fields-list">${table.fields.map(fieldRowHtml).join('')}</tbody></table></div></section>`;
+<section class="mv5-form-card mv5-fields-card"><div class="mv5-card-title"><div><h3>字段设置</h3><p>KV模式是动态单例表单：每个自定义字段可设置所属分类，左侧会按分类分组显示；不存在固定业务字段。Rows模式才使用记录级分类、标签、标题、内容、来源和时间等公共字段。每个自定义字段都可以独立设置必填。</p></div><button type="button" id="mv5-add-field" class="btn btn-small btn-secondary">添加字段</button></div><div class="mv5-fields-scroll"><table class="mv5-fields-table"><thead><tr><th>顺序</th><th>字段名</th><th>分类</th><th>类型</th><th>宽度</th><th>选项</th><th>必填</th><th>显示</th><th>aiHint</th><th class="mv5-sticky-actions">操作</th></tr></thead><tbody id="mv5-fields-list">${table.fields.map(fieldRowHtml).join('')}</tbody></table></div></section>`;
 
         modal(existing ? '编辑表格' : '新建表格', body, async (form, wrap) => {
             table.name = text(form.get('name'));
@@ -446,6 +458,10 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             table.description = text(form.get('description'));
             table.extractPrompt = text(form.get('extractPrompt'));
             table.fields = readFields(wrap);
+            if (table.viewMode === 'kv') {
+                // KV字段结构完全由用户定义；切换为KV时移除全部公共字段。
+                table.fields = table.fields.filter(field => field.scope === 'custom');
+            }
             table.categoryHints = unique(form.get('categoryHints'));
             table.tagHints = unique(form.get('tagHints'));
             table.aiCanSupplementCategories = form.get('supplementCategories') === 'on';
@@ -455,8 +471,11 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             table.behavior.retentionDays = table.id === 'v5_current_state' ? 0 : Math.max(0, parseInt(form.get('retentionDays'), 10) || 0);
             table.behavior.chatStatus = form.get('chatStatus') === 'on';
             table.behavior.allowAiWrite = table.behavior.writePolicy === 'auto' && (table.group === 'current' || table.group === 'short');
-            table.behavior.identityFieldIds = selectedFieldIds(form.get('identityFields'), table.fields);
+            table.behavior.identityFieldIds = table.viewMode === 'kv' ? [] : selectedFieldIds(form.get('identityFields'), table.fields);
             table.behavior.contextFieldIds = selectedFieldIds(form.get('contextFields'), table.fields);
+            if (table.viewMode === 'kv' && !table.behavior.contextFieldIds.length) {
+                table.behavior.contextFieldIds = table.fields.filter(field => field.scope === 'custom' && !field.hidden).map(field => field.id);
+            }
             table.behavior.sourceTableIds = form.getAll('sourceTableIds').map(text).filter(Boolean);
             if (table.group === 'core' || table.group === 'long') {
                 table.behavior.writePolicy = 'manual';
@@ -471,7 +490,12 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             if (existing) {
                 const index = store.tables.findIndex(item => item.id === existing.id);
                 store.tables[index] = normalized;
-                const validCustom = new Set(normalized.fields.filter(field => field.scope === 'custom').map(field => field.id));
+                if (normalized.viewMode === 'kv') {
+                    const migrated = M.model.migrateLegacyKvTable(normalized, store.records[normalized.id] || []);
+                    store.tables[index] = migrated.table;
+                    store.records[normalized.id] = migrated.records;
+                }
+                const validCustom = new Set(store.tables[index].fields.filter(field => field.scope === 'custom').map(field => field.id));
                 (store.records[normalized.id] || []).forEach(record => {
                     Object.keys(record.values || {}).forEach(fieldId => { if (!validCustom.has(fieldId)) delete record.values[fieldId]; });
                 });
@@ -483,7 +507,23 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
             await persist(chat);
             render();
         }, { className: 'mv5-table-editor-overlay', onOpen(wrap) {
-            wrap.querySelector('[name="viewMode"]').value = table.viewMode;
+            const viewModeSelect = wrap.querySelector('[name="viewMode"]');
+            viewModeSelect.value = table.viewMode;
+            const syncModeUi = () => {
+                const isKv = viewModeSelect.value === 'kv';
+                wrap.querySelectorAll('.mv5-field-row').forEach(row => {
+                    if (row.dataset.commonKey) row.hidden = isKv;
+                });
+                const identityInput = wrap.querySelector('[name="identityFields"]');
+                if (identityInput) {
+                    identityInput.disabled = isKv;
+                    identityInput.placeholder = isKv ? 'KV单例无需身份字段' : '标题，相关主体';
+                }
+                const hintSection = wrap.querySelector('[name="categoryHints"]')?.closest('.mv5-form-card');
+                if (hintSection) hintSection.hidden = isKv;
+            };
+            viewModeSelect.addEventListener('change', syncModeUi);
+            syncModeUi();
             wrap.querySelector('[name="group"]').value = table.group;
             wrap.querySelector('[name="writePolicy"]').value = table.behavior.writePolicy;
             wrap.querySelector('[name="contextPolicy"]').value = table.behavior.contextPolicy;
@@ -531,7 +571,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     function openRecordEditor(chat, table, existing) {
         const record = existing ? clone(existing) : normalizeRecord({ source: '用户明确', time: localDateTimeSeconds() }, table);
         const body = `<div class="mv5-record-form">${visibleFields(table).map(field => `<div class="mv5-record-field"><label><span>${esc(field.name)}${field.required ? ' *' : ''}</span>${field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</label><div>${controlForField(field, getFieldValue(record, field))}</div></div>`).join('')}</div>`;
-        modal(existing ? '编辑记录' : '新增记录', body, async form => {
+        modal(table.viewMode === 'kv' ? '编辑表单' : (existing ? '编辑记录' : '新增记录'), body, async form => {
             const values = {};
             visibleFields(table).forEach(field => {
                 if (field.scope === 'common' && ['source', 'time'].includes(field.commonKey)) return;
@@ -541,8 +581,9 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
                 values[field.id] = value;
             });
             const titleField = table.fields.find(field => field.scope === 'common' && field.commonKey === 'title');
-            if (titleField && !text(values[titleField.id])) throw new Error('标题不能为空。');
-            const result = applyOperations(chat, [{ tableId: table.id, action: existing ? 'upsert' : 'add', recordId: existing?.id, values }], { origin: 'manual' });
+            if (table.viewMode !== 'kv' && titleField && !text(values[titleField.id])) throw new Error('标题不能为空。');
+            const operation = { tableId: table.id, action: existing ? 'upsert' : 'add', recordId: existing?.id, values };
+            const result = applyOperations(chat, [operation], { origin: 'manual' });
             if (!result.changed.length && !result.checked.length) throw new Error(result.rejected[0]?.reason || '保存失败。');
             await persist(chat);
             render();

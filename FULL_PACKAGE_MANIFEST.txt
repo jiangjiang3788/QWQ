@@ -1,163 +1,151 @@
-810db839c91ef48777d0888ebf59a302fde7d409f5558bb1ad2e7f3680a411af        2418  CHANGELOG_MEMORY_V5.txt
-96bcbb0a6d63af57fb172f861ca2269c8c3fd26b764ddc222f5f6fc62127df14        4536  FULL_PACKAGE_MANIFEST.txt
-7b148753d6c1c85ab669d4676937f345fc54354c22ce7077be66fb9c58108aa7         649  PACKAGE_MANIFEST.txt
-205947f759169a0cef845bbbb8334b913a7ec0418bda2c1540fd1cb5723b8392         858  README_V5_2.md
-c5032b92bd104e35d2dde8952786b37e5104b8e8557d37c4a4f68a6846326013        1415  README_V5_3.md
-cae4a5a0723bf42bbc399dbece8af32fffe95682dde8dfdcd775354e0a91d09c        1951  README_V5_4.md
-c67cc0d147baef75eaf9c7d14eea379343be9d592149dcf71332aec1224404d2        1961  README_V5_4_1.md
-119d7b4c31be1847d3bc24ac6b6d2b92110a52bac17d4e8f189e89a08b57d023         385  README_V5_4_1a.md
-3f10dfad03f4ddf111a4a71c4406bc03e4120d23404cd1f6915b649c1b1045d8         382  README_V5_4_1b.md
-818907900ef78aa5b237c24a7300a647860cb61cf02b2fab3c1ed5854cc746ea        2304  README_V5_4_2.md
-d1436efd53a09638538c00f94adad39282a20e26bc0c78f6070749a83d28a20d        3013  README_V5_4_3.md
-c09559e4c6b1124523dc9b47fe59e4302ace6365922bf61cbf9a2003b3c4055b        2162  README_V5_4_4.md
-e0817fba40ad8725c80568b7a283834a482d9ee7b3961261cd82c55a009eda91        1407  TEST_REPORT.txt
-e0817fba40ad8725c80568b7a283834a482d9ee7b3961261cd82c55a009eda91        1407  TEST_REPORT_V5_4.txt
-4683d8301d79e0056824476b1f5e5baa36084f76bfd396f74464520c2e708e0f         978  TEST_REPORT_V5_4_1.txt
-20dae0ecb1616e3bc3e47e7bd491c9ff146b9d69419320992e8070c02a287563         439  TEST_REPORT_V5_4_1a.txt
-a700fd91c371879d09f5ff382addfec18fba173756bd024d1c6554905faee94b         420  TEST_REPORT_V5_4_1b.txt
-1e2fdecdcfc9af30dce9150dc614f751f198d80e936fd0d07ba4f6209e85e53e         936  TEST_REPORT_V5_4_2.txt
-a330b18a4ec0790024f67fa8da7d35650ed238ebfc97990a1066e1beafe208a9        1078  TEST_REPORT_V5_4_3.txt
-21f45238280e748c768ed9efb4fe1f50e13dcac919146ce934de566b756af7ab        1370  TEST_REPORT_V5_4_4.txt
-89d88eea4a161f0c69a3ae802234077990877814ee2501ff04c6ced4ef2468cc         155  VERSION.txt
-415672e3da22a7e1a7bf3f7b3a614c91ccb36abab2c085bfaffec2d5529f3e5d         483  architecture/ui_budgets.json
-34eeeac6c069db73358e5ef4f40926d0fd0fad6292643485bff535430c7c8b99       17685  contacts.css
-f83fa081f9c075db2b0d85141755ef0b40c44c9c18d9620df3a5104ab107e20f        8307  css/api_settings_v161.css
-c19dcf842b7fba688f217dac96bd66e3399df748e15780f13ae82e39ba93ddb3       10261  css/base.css
-381363b60a39edadfc87872dbf3523005be9f82649bd4b7e3b939a279142d3df       74991  css/chat.css
-e2e5bc1d4508fb309db54022f78b6a4a1194971e77cd6e6aec9a65c222433fd2        1738  css/components/settings_components.css
-f63109072c9554ac93cf6ce037d080ea4dc06b9767e1596fddf2e94544feba48         357  css/core/ui_tokens.css
-12f937869c3edf0405f78a709075cf2a0670ea7590c4d6b0a47aabfa384af238       26419  css/layout.css
-ccd6c77b88ecd0359ed278db1bfb1e516b2069652e878c8eed12dd1e961da8cd        3065  css/modules/app_launcher.css
-f5f649ccc077059e0b8968cf41df404904825cd741cc0289e9aa1c3c7121ba52        3837  css/modules/app_workspace.css
-57bc9f3a736c0703dc9b6eb231e6aca74c7fdca5f46fa155cd5e8622aed9101e        7372  css/modules/appearance_settings.css
-18aeb83aa8090f73daf33238178894e49bf506814ce26fdfe4ac1d687ab7ff44        4000  css/modules/archive.css
-7e3770194ddca031d2fc6fe7cf6e407679464920165447528219d4483d762600        9107  css/modules/avatar_recognition.css
-bf742d4f109350ea1a39aa3591082fb85fd26c645de1848798c093fed17dad9d         991  css/modules/block_system.css
-0615fce70daffce0c48aaaa3082550acd110a50593c5bffcb498c58b5d4c6eb9        3947  css/modules/cot_settings.css
-40be7b0e60bd23ebfe3ba675f049c362bce9cf63362a498b9109afbc74fcfe64        7437  css/modules/favorites.css
-cddb255a8ae0482775b40a722a6d7d6e7d6321cc225d597b93ad77d1b1cdb0f6        7534  css/modules/journal.css
-fdf7e2f15c131d10cf99e69d806624d0341ed89a1c34610adccbb1dc27fba1fc        1054  css/modules/keep_alive.css
-2b966ebbd76a3f259c43af81a60853d164d08318a3b576df7c906d455a0c3689       18906  css/modules/memory_v3.css
-184a71b313a13492cb6c36cd123a4965ceb41b85b1dff4d3dc2bc6eb9139f029        9483  css/modules/monitor.css
-385cf38c7b3187440badcb2f1de0fd3c51cdf082f48fc50972e313327e5ebc03        4622  css/modules/more.css
-adbe4673cc1efa168414b7887ffed1e1b104b80975d255c752feb34bedda5a13        2375  css/modules/msg_version.css
-cfd1f631a485dff1c2b5769be27256fbc2595ca4da37ab66b9c45074ce3b9230       51026  css/modules/music_player.css
-55d0f38d13201be6cca42018269ffe152e166fd83c1c50a1d779db0d2aa71ab7       39657  css/modules/quick_dock.css
-a97b19d44ad8d8c881c849b0eb5292d88a8c637a48ed2f02eba4d5c17b4fd91b       10778  css/modules/reminder.css
-15e0dba9202f513e1671bf0d13f5903e5b94779bf331899fdb7399b61525dab3        8729  css/modules/search.css
-7271add5881dc8b50b1a216142c88374cdb9f566c94d604814faf3a9fb0c1a61        2653  css/modules/steps.css
-a78d685314916182c0c71903b7a21fd5b0ade90e1d4b5180bd18266a5ad5c8e0       34960  css/modules/theater.css
-8718f783413cf9bb21ced900a7148e5cc2b7dfe5a5b3331de719f397e449141c       16542  css/modules/tutorial.css
-c3915743d48d87ae9256384d1af114d1aa34e0c08c0e5ad3c33a7a14da6fbf5e         975  css/modules/voice_selector.css
-f7a8af34cb39d6eb9c5e0d0f085a965b33d5639889e348cb7a814a2ad937a54b        5412  css/modules/worldbook.css
-3f539b327854877cd1f40d7309247f9419d6cfdd0027123f80b507782b3ac016       26182  css/settings.css
-e2a7be26c8c48fb69861f405fe2e48dbf4f3179c6dca1aa8d37d1493b08b5596         797  css/style.css
-1e3a87acc07bb1db52f90e9b9e8d0d4c5f108b3686879374f9efe32b6ef3f971        4408  docs/MEMORY_V5_1_AUTO_WRITE.md
-a330b18a4ec0790024f67fa8da7d35650ed238ebfc97990a1066e1beafe208a9        1078  docs/TEST_REPORT_V5_4_3.txt
-0724dd8313616d79658de53829a85dfba5b778fe3c5eed202efa2d68e7df86df        1203  docs/UPGRADE_V5_1_1.md
-ad86cc1756fabf0f04e6c16571c665da349d422a46bd4ca5d2d412db8921e079        1627  docs/UPGRADE_V5_2.md
-f304f3e53e305bd3a6984cbf0e48a91a73fe81fbf4d21419913a117f41a9e831        2425  docs/UPGRADE_V5_3.md
-cd149fd83d9870c92207ecef583255ec4dbb214266ae3669aa0d4e53ae70c0d9        3590  docs/UPGRADE_V5_4.md
-9ba53ad4421921b1c77d425256b9927f7505bd09b8d396a3bbb102e1dd2dc62c        2285  docs/UPGRADE_V5_4_1.md
-818907900ef78aa5b237c24a7300a647860cb61cf02b2fab3c1ed5854cc746ea        2304  docs/UPGRADE_V5_4_2.md
-d1436efd53a09638538c00f94adad39282a20e26bc0c78f6070749a83d28a20d        3013  docs/UPGRADE_V5_4_3.md
-c09559e4c6b1124523dc9b47fe59e4302ace6365922bf61cbf9a2003b3c4055b        2162  docs/UPGRADE_V5_4_4.md
-b5e22e9271f03596353eebc27a43b295ce7fc12a03766bea644b94e914c15700      317194  index.html
-3e5066363364d2d551c35e757cb1d35495c5cede51eeb96f45d3792336df168c       14622  js/app_registry.js
-7eb786de5fffe011cf1e53b3ee973829889507a6f19aae130cc40132eba08425       46431  js/chat.js
-b5d07e29ab9d090823fb068e87ffe6a1cd7df3aed7a79d923332972d9bf58f3b        3616  js/core/ai_request_gateway.js
-fdacd12b77741bc99e1ef19ac5c809ae80424d4f0695480bdb14e56c14d8eb45       15383  js/core/api_service_registry.js
-6d759778960208f22c007f44d3c2c23d6773ca27713b5cadf7f7c4c6a7e4291e       11041  js/core/context_compiler.js
-64d1ffc2d5135ee9eb295ed6365b2f40bd2c19ce1f542e4793e1a9ed586d80c5       30411  js/core/context_source_registry.js
-e7fac512daba777841506c2a7e5ac8efccfce24ac9fa4584f3849b83c1d63a78        9195  js/core/deprecated_feature_policy.js
-4642292052b53dc41be98725ddc152496a4dad4caaacd0db533acef18b807dac         911  js/core/feature_flags.js
-2a2b342f55411c1dbc2c41d1e911b57dfb2819fd2956b9402c09db3406864075        3059  js/core/navigation_runtime.js
-3e0b175263163a13efa82eeeba8815e31a83242ec13adb0c197606d5a8283612        6979  js/core/startup_runtime.js
-965bfddf4190e634df8976ebf5fec786fb7295e51de0a5f63bbc5a8c55177a7e        4156  js/core/ui_components.js
-869c0a2be2e8fcf580c7ae25f98c3d02e59fa37790a66515d14ef9b5be821e0d       68148  js/db.js
-d08ce382065889f493776063bec808683acec3526adc53ee3ee4975293fc5650        6269  js/features/apps/api_workspace.js
-150f1228cc16961be208b4f8643b2f028e61bab6ff7609fe4415f9d45afdb150        8390  js/features/apps/settings_hub.js
-a37f364be4c9b1686ad2e6588f70d6a853376ab29bb36541d77cfd9574f559e4        2777  js/features/memory_v3/memory_compat_v3.js
-cd241fa2192d3647fd1b43cfb2776f9e2aa6e2ad95cbd135e5bd6c72fb2c6312       42201  js/features/memory_v3/memory_core_v3.js
-37b5cb3ce02070ed40f070eb35b3fad7ec4efc3372dad51baf46a40c28b326ef       41243  js/features/memory_v3/memory_engine_v3.js
-a53d5a21dff67a4bd70a14eefc32a47ed14a79233c00a1519cf5d097ac05aa70        6273  js/features/memory_v3/memory_rounds_v3.js
-e1af083eb54a7197efd2b9e73604bc5804b3464b7a3c530a8f8b8b679bac98e9       58524  js/features/memory_v3/memory_ui_v3.js
-24b8c3b5447a19f60b730d21b09576a0ff2e51a3e6feb25d731280ed98ee1de1       68786  js/features/settings/api_controller.js
-68968264ed5d4f78a1c6c286bb66ba7c5c20405e432ccbe74c5b870c71327925       48321  js/features/settings/character/behavior_controller.js
-7e4e067da2e5b0d1a6aacfa27131defdb1ff5e1e9c0bb664bfb19c30eba7cc94       26097  js/features/settings/character/chat_controller.js
-4b93c64907c99907ea477dbc39d3e9ee1e7abda1f24f5e8cdeb9ee195480bb8a        2417  js/features/settings/character/context.js
-c0db410583a233951daf7c11b73a3cba61ddc6c6edb577c59e97afd2794c5132       27168  js/features/settings/character/extensions_controller.js
-fdf5c115a318f0ecae21f9311678f95740b7ad59cb8a849d38315dfdf9dcd29d       16561  js/features/settings/character/media_controller.js
-41aa9ebe1d86a1b4cd4a0c75f6c4543b9159fe90a4f59b3a05025326d75f66b5       16963  js/features/settings/character/profile_controller.js
-93216f9bb6eb4961d98e265e836ce21beb18dd1c38649b0c8a051bf233239cf0       69988  js/features/settings/customization.js
-d87cf3f03f79b1988f65fd0c5ab3618654b7d9335db582b4c16260173d7d61cd        1685  js/features/settings/facade.js
-4a749379935fd74bae30492ac5b9fe5a115720ecde0746a280380be74e8ff58f       21083  js/features/settings/magic_room.js
-4175c5172d5ce4a30dad861e9ec402658e959cc81acd077c432afbc3ff1efadb        7911  js/features/settings/preset_manager.js
-74fb1f6eb9ba88a564e36bdb7fb261ec566f1c6c0ff7c1c15ce89854d5f83f9c       39219  js/features/settings/presets.js
-bb5089caf0c9a6197fc76bf7af4bf549daae4d7a4f59d831ad696d10caa451d2       12052  js/features/settings/proment_governance.js
-308b9f7a05bf09c7c8b415295366e40149928510c9f8bf582e29f8bc9a12f78e       17656  js/main.js
-02c968d5a1b8c2af570467d0adfb7cf1410fd6e3dfc54e487005d4567aa19710        6808  js/modules/ai_capability_catalog.js
-cdee769070e7707f6d50a950f5f190a38761bdb0a71e965e9dbd866d0ce436e1       18943  js/modules/ai_request_runtime.js
-b92f98a7c6cbf9d6cec5024fbe2fef1d0cf3c3f441bb686f1b3f5ca47eaf0a5e        9838  js/modules/api_settings_ui.js
-9d64e631ee847a9772267e784245d933847c93770b64b7ae4e41e1c2b026ac7e       11838  js/modules/appearance_settings.js
-06fcbf9770d3b4444996fb960450c22cfd98caef567181e5fd4880d924d3eaff       12105  js/modules/archive.js
-27a838ad9ee413f65ab0c1f6c6721b6efa0d43ea54f483f36114b2a98c261428       77288  js/modules/avatar_recognition.js
-60ad57f8528a56f46f42eb76b58979bf98f6b8ffcd4f22b4e5a080fc19ae372a       12704  js/modules/backup_service.js
-a6238c3c2b1b92aa380579bca9503fe3cbc3eaa52044914fcd63e436105152aa       11548  js/modules/battery_interaction.js
-fada6426f44d3bcce096254506e9aff0817c3da6c3c3ee2e34401cdedabd1f82       33985  js/modules/block_system.js
-ebd2744373d212d97b0826a074fb422372ff5edc2c1769f55ea091afbb766f94        2843  js/modules/character_create.js
-1d1769e4dbf168992a265b72303ade123b43a45da824a99b8f2f1fa96f1b5470      223958  js/modules/chat_ai.js
-e91e2d248d9fc17d7fc0fc6ad4aaab79ba13b5e5d24c652a35a127b93843d1ff       18114  js/modules/chat_features.js
-8422433b4d4267e74934c81b7472419eeb11814b34c92ae964c33e251ab420ba       22910  js/modules/chat_list.js
-639ce7f2458611af756270e5a2838e0cb3750d0b274794ec4cc0316bb203f909       72054  js/modules/chat_ops.js
-8682088d4b62546289a15972d7bd04b205a87aa9e0cdb49835c82a73c8a74a33      127082  js/modules/chat_render.js
-7f1abf3f302dbd4ea798d0d3ae5321f54591948704963692b3cde46c58107bb7       42457  js/modules/cot_settings.js
-05f2fa6ab06a7d0208f05845efa157611e40e4c19136eb44bf2e30fae2714efb       31584  js/modules/favorites.js
-c9321aba0a410fb5b790dd36c374fc14e5d73af51d734292343731228f435616       49680  js/modules/floating_ball.js
-01015525b4c4345dc9b6d8efa9a66bba3b930092a33a5f40da96b7c06502b81c       90449  js/modules/journal.js
-6bbe6dacde1b6d2571437d73197096d66da98cb28d51141cfb1502c1e68c968e       18756  js/modules/keep_alive.js
-c22cd855c49b1f061ea9cee091971688f2c76b9527ebb7f00ec21436fc5e7983        2230  js/modules/message_content.js
-c87c183e5dd118dd53d04b3fc029115bbefa5ba26fc313f0276b1bf32c74ff33       14898  js/modules/more_menu.js
-57fa508bce9685c6f76915a73b8104b47bcd68ea93edb15a40cbb13858f497dc       12903  js/modules/msg_version.js
-1eb23669972fced241d1ba6edfc67fe33b1ffd333ddda738b30a3a4496ffafb8       83386  js/modules/music_player.js
-9c6f0c19ec19903e7d3d9537fc3a61fbbf698da80a78be2c6b0781f2a27aec2b       44628  js/modules/operation_runtime.js
-24a1e746e39695a19576ad672c0c1ec47e26f02b75e22e1dd4321b5649fd06c1        2318  js/modules/quick_dock_action_bar.js
-95ecb019087bd1300ca6c615c7b801317c5305bbac5b357745e7d6d8b1f4c940       16252  js/modules/regex_filter.js
-ebd6655c62d7be408a6ea3706208d1198710f9282db2c9d8906d94a8ee34b537       25239  js/modules/reminder.js
-d382522cebacd4d005f33ebd9e4e561b23455022e8cdc748153f311a2087c997       20093  js/modules/search.js
-1793634c28fd05ddf10e659a75243f278ad5f498c8f6c0130de1d1a789d1a16d       65796  js/modules/sticker.js
-371db945caf2209149e1918fb532c185e437b602a65a9ec3b92dc04d3b5c4a88       21328  js/modules/storage.js
-a5b9563edb89017ee8c2f0e712bd9a4183a43ee3c20355c36e393b2dfe8b4e5b      149013  js/modules/theater.js
-2d23667bd916fbca140d040351171e67ec763f6fefbb19ecca4a5b333e83266e       19122  js/modules/tts_service.js
-8edbc1799efa1009ad59833ebbebcdce7ef902725a3725ab51d05e084ef4f313       16058  js/modules/tts_settings.js
-33e0cae0ff4bebd62a421019a37abdf947d18ddf5803141f1bf05ec9b3b26ea0      147277  js/modules/tutorial.js
-641c464280cbf238d3923188b1c2efcb3f24b75f94d14e354ac9aba7be2d33a0       14428  js/modules/voice_selector.js
-588fd2087c87639d9baa252c7ca0588cef9c817a564e364f00d1e8389edb7f1b        4524  js/modules/volcengine_tts_service.js
-be7e0206b1132f1dcc079595e007d359b611a1775bb25e24828ed8fdb3cc2f4d       10325  js/modules/weather.js
-5159fbafb51242d9b3c5e7ad2d7504e1a294c1ccae9eee6a569da785cf3d9663       58066  js/modules/worldbook.js
-2fdfb1975569e082e3e8c19e6a45ec126b15946f40cceca11e7313bf893ea3b1       19363  js/persona_profile.js
-755e69cd5fe0f8ba20b4d95005b320df1736ad08b6cad424bee11b9c73fb94e6       15439  js/settings.js
-2b64f2cbf164bd895ea2c4ff5592ad26bb6c16dc373e6540f47b3ff0770bfdb0       24056  js/ui.js
-017c01e47cd2769b369a3bb70e82128ea7967a4852e2e92a1aa559f286e8fa7e       84377  js/utils.js
-b9d2b0c03870535ea29857e6485d6461c2200793f004dc46a4e6d62abbaaba49       36892  js/workshop.js
-789ff889ed902990a29336ef4d88c920afa67a0bca65b0d735aa0b882ee7cd85        1003  manifest.json
-654d90481cad49b57d9af2a328ca4f8fa6531ec25d39afa85f685c8d74e3e106        5483  more_menu.css
-c3fd4ed9ace32c57fc58d5693683f81ca9c1253f663e702800001939296fd9a8        2097  sw.js
-75aeaa90494b9c28c3dfb5c1b377d7cdf4ae129ca01d8c52479db67f66e1746e       12522  tests/memory_v5_1.test.js
-9c4e2c3723ae0e1ed6378216be91371b7a28e5721cb4ce5043620a55756f4caa        5676  tests/memory_v5_1_chat_integration.test.js
-a08244dd24a506a1542ea05b2fcd722ef54337e1fd0fb2def3760fe0517b87b8        2837  tests/memory_v5_2_compression.test.js
-f41847958dc9f5386cec1e5d94179baee7876cd56cb502463598a291cc2e844d        3679  tests/memory_v5_3_stability.test.js
-8808ff3c0a27268e1a72cea1b2f4e6c3727c14d22da9e4485cb193210a99708c        6081  tests/v5_4_1_context_compiler.test.js
-6db21a784d8171434c7cbd386d3d0491ea209a4a8d931e77cda3f7c1a0f56222        4667  tests/v5_4_2_ai_gateway.test.js
-d5c4cbb5d1d3f8284ce453c9312b4f9cf65318d1b98599d2b5900a2047616f18        4034  tests/v5_4_3_governance.test.js
-f77d7563dc4270cfd96fc7c0d33174c8140791cfb0b676951129db7060bf30fe        3490  tests/v5_4_4_cleanup_navigation.test.js
-6e47c66bace806b98b18954ac2c48483842902ba10dbab84de7a42f684a3bb31        5786  tests/v5_4_context_retirement.test.js
-2e1451a51fc4f0cb61e2ef9527b371b66873eaafe3b1b76130f4bd3b7a0f7dbe         326  vendor/README.txt
-ca68430703c4f5960e90735867c6e94d29b5a3de37107d8100e5a301007e9e6e       44581  vendor/Sortable.min.js
-f0bdf25fda8f9af5920c82070775864c7e1166eb31540d030e6b80a382e39ce1      198114  vendor/crypto-js.min.js
-cb631befd3ffd2d7fc69a5c0e6d89b6f0659480616b220ccc3cfbf5b366aad8d      275174  vendor/dexie.js
-42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946     1029203  vendor/echarts.min.js
-e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb      198689  vendor/html2canvas.min.js
-acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e       97630  vendor/jszip.min.js
-596ef52239e52d8ee3cee10b2ee4a72596abf900d0e4f468593f956e9f1809b0      642759  vendor/mammoth.browser.min.js
-d48e3c32ba5c79567f39903147035e803da5fc50ff01c7dab7bde9fcbb9919d1       21208  vendor/purify.min.js
+69f974a73866dbcac7125604f9b2a175c8252c8290380075e51b4cdf6cf06d8a  ./CHANGELOG_MEMORY_V5.txt
+b41e8846581dd3e217802602e09c08d6a36b45c6dc4446a8b995c1cf5be458ff  ./PACKAGE_MANIFEST.txt
+58f1a41cb8977aa41d61bc3b29eb6461434469ee0db53c83397d53a5e9258ffd  ./VERSION.txt
+415672e3da22a7e1a7bf3f7b3a614c91ccb36abab2c085bfaffec2d5529f3e5d  ./architecture/ui_budgets.json
+34eeeac6c069db73358e5ef4f40926d0fd0fad6292643485bff535430c7c8b99  ./contacts.css
+f83fa081f9c075db2b0d85141755ef0b40c44c9c18d9620df3a5104ab107e20f  ./css/api_settings_v161.css
+c19dcf842b7fba688f217dac96bd66e3399df748e15780f13ae82e39ba93ddb3  ./css/base.css
+381363b60a39edadfc87872dbf3523005be9f82649bd4b7e3b939a279142d3df  ./css/chat.css
+e2e5bc1d4508fb309db54022f78b6a4a1194971e77cd6e6aec9a65c222433fd2  ./css/components/settings_components.css
+f63109072c9554ac93cf6ce037d080ea4dc06b9767e1596fddf2e94544feba48  ./css/core/ui_tokens.css
+12f937869c3edf0405f78a709075cf2a0670ea7590c4d6b0a47aabfa384af238  ./css/layout.css
+ccd6c77b88ecd0359ed278db1bfb1e516b2069652e878c8eed12dd1e961da8cd  ./css/modules/app_launcher.css
+f5f649ccc077059e0b8968cf41df404904825cd741cc0289e9aa1c3c7121ba52  ./css/modules/app_workspace.css
+57bc9f3a736c0703dc9b6eb231e6aca74c7fdca5f46fa155cd5e8622aed9101e  ./css/modules/appearance_settings.css
+18aeb83aa8090f73daf33238178894e49bf506814ce26fdfe4ac1d687ab7ff44  ./css/modules/archive.css
+7e3770194ddca031d2fc6fe7cf6e407679464920165447528219d4483d762600  ./css/modules/avatar_recognition.css
+bf742d4f109350ea1a39aa3591082fb85fd26c645de1848798c093fed17dad9d  ./css/modules/block_system.css
+0615fce70daffce0c48aaaa3082550acd110a50593c5bffcb498c58b5d4c6eb9  ./css/modules/cot_settings.css
+40be7b0e60bd23ebfe3ba675f049c362bce9cf63362a498b9109afbc74fcfe64  ./css/modules/favorites.css
+cddb255a8ae0482775b40a722a6d7d6e7d6321cc225d597b93ad77d1b1cdb0f6  ./css/modules/journal.css
+fdf7e2f15c131d10cf99e69d806624d0341ed89a1c34610adccbb1dc27fba1fc  ./css/modules/keep_alive.css
+e22078c36a2f603a2c25b9b76e71ccd4fbca2811f51224721e08f0daa944262b  ./css/modules/memory_v3.css
+184a71b313a13492cb6c36cd123a4965ceb41b85b1dff4d3dc2bc6eb9139f029  ./css/modules/monitor.css
+385cf38c7b3187440badcb2f1de0fd3c51cdf082f48fc50972e313327e5ebc03  ./css/modules/more.css
+adbe4673cc1efa168414b7887ffed1e1b104b80975d255c752feb34bedda5a13  ./css/modules/msg_version.css
+cfd1f631a485dff1c2b5769be27256fbc2595ca4da37ab66b9c45074ce3b9230  ./css/modules/music_player.css
+48d17006313072e51d7bb800f1e8de9f3384dfef89781c7d3cd8eb911274cb02  ./css/modules/quick_dock.css
+a97b19d44ad8d8c881c849b0eb5292d88a8c637a48ed2f02eba4d5c17b4fd91b  ./css/modules/reminder.css
+15e0dba9202f513e1671bf0d13f5903e5b94779bf331899fdb7399b61525dab3  ./css/modules/search.css
+7271add5881dc8b50b1a216142c88374cdb9f566c94d604814faf3a9fb0c1a61  ./css/modules/steps.css
+a78d685314916182c0c71903b7a21fd5b0ade90e1d4b5180bd18266a5ad5c8e0  ./css/modules/theater.css
+8718f783413cf9bb21ced900a7148e5cc2b7dfe5a5b3331de719f397e449141c  ./css/modules/tutorial.css
+c3915743d48d87ae9256384d1af114d1aa34e0c08c0e5ad3c33a7a14da6fbf5e  ./css/modules/voice_selector.css
+f7a8af34cb39d6eb9c5e0d0f085a965b33d5639889e348cb7a814a2ad937a54b  ./css/modules/worldbook.css
+0fc3a4f91e5b5ff6149774932512884aba11192fb0970d3c2c359a34eabb7d75  ./css/settings.css
+e2a7be26c8c48fb69861f405fe2e48dbf4f3179c6dca1aa8d37d1493b08b5596  ./css/style.css
+1e3a87acc07bb1db52f90e9b9e8d0d4c5f108b3686879374f9efe32b6ef3f971  ./docs/MEMORY_V5_1_AUTO_WRITE.md
+eb12b1c83a6f939963ad37a01b4bb57cbd25ce65b434b612c1178dfa9513ba27  ./docs/REQUIRED_CUSTOM_FIELDS_FIX.md
+1e0ce411485694f6b8d273acd30cd32ff7b82c51cdaf0d308c7c70ded853ee73  ./docs/TEST_REPORT_V5_4_3.txt
+5afaa320c4e0a94ddcbc154513913dc5318169e4d5578f20e41b311d21a62da0  ./docs/UPGRADE_V5_1_1.md
+f30711e894b923a0bbb3bb5b81e94cb1291330e6a41615f2a742fa7a6dc29012  ./docs/UPGRADE_V5_2.md
+5dc099f1d334401a9d99cc07eccdcbb19c90180cba99cd5d96cb5be1b6312e52  ./docs/UPGRADE_V5_3.md
+5b7285bf12a6d7bb5de03f046e11b23f6ba4521c5ed43c587a70331e814424d8  ./docs/UPGRADE_V5_4.md
+7a761f8c29fff8b12cad4c5aec45aba7f0de0b4aa3e203b82f3c4877366ee7e5  ./docs/UPGRADE_V5_4_1.md
+f062d53afd70254f2e7f6b61e851cce6524921cde9d79f5108a621a698f3da16  ./docs/UPGRADE_V5_4_2.md
+644f3bf4300d255d876dcc0a9d3f6754f742db7c11c1b2cc533489d619e571d3  ./docs/UPGRADE_V5_4_3.md
+6681a52d385fea4b992836e1f27cbbfbc04a85610f5a708ed89449ebd8420c57  ./docs/UPGRADE_V5_4_4.md
+648add515751590a6a0c260137600c49db5dcdffdc716930616c09ea86009b67  ./docs/UPGRADE_V5_4_5_KV_SINGLETON.md
+e5d550631fd446e9aa487f648fdd3fa45a071dbdffc41a057feedcc265ec0f6d  ./docs/UPGRADE_V5_5_0_KV_DYNAMIC_FORM.md
+c036df37bab066dbae749ef73801f3ca73ba3bdd7176d4fb01c604b60e770ad5  ./index.html
+3e5066363364d2d551c35e757cb1d35495c5cede51eeb96f45d3792336df168c  ./js/app_registry.js
+7eb786de5fffe011cf1e53b3ee973829889507a6f19aae130cc40132eba08425  ./js/chat.js
+b52579e708e1f9e72ffdeda5a8f597acc218a174dbd5dcc63eafd3a4c4a8ecaf  ./js/core/ai_request_gateway.js
+fe07e2bb5a79dd6b1981dabdc1a695178876c2f780157893379246027a17f990  ./js/core/api_service_registry.js
+d1f742fd342b9e8987f819c690d3bc2bd1b8e88034504f4e0e13309e2c0d6144  ./js/core/context_compiler.js
+b9ec3d4ef9fe72e5917bf0401322a038d3ddf3551c2a155b5835169c4d10cdd2  ./js/core/context_source_registry.js
+54d0c365b782ad66bec836ff6754f11183acb4330a8a55b283292bc829922e46  ./js/core/deprecated_feature_policy.js
+4642292052b53dc41be98725ddc152496a4dad4caaacd0db533acef18b807dac  ./js/core/feature_flags.js
+2a2b342f55411c1dbc2c41d1e911b57dfb2819fd2956b9402c09db3406864075  ./js/core/navigation_runtime.js
+3e0b175263163a13efa82eeeba8815e31a83242ec13adb0c197606d5a8283612  ./js/core/startup_runtime.js
+965bfddf4190e634df8976ebf5fec786fb7295e51de0a5f63bbc5a8c55177a7e  ./js/core/ui_components.js
+e2916ad0a71e3be3eb5dcbf3f4240e912c06f192c94a84a8f64c7fedf02ac132  ./js/db.js
+d08ce382065889f493776063bec808683acec3526adc53ee3ee4975293fc5650  ./js/features/apps/api_workspace.js
+150f1228cc16961be208b4f8643b2f028e61bab6ff7609fe4415f9d45afdb150  ./js/features/apps/settings_hub.js
+5a18690bd03f900114319b7851b0e4d984872a454d294d9d1996ee766b16aa01  ./js/features/memory_v3/memory_compat_v3.js
+d5c0a7aa4f4b446994823dc0c555d6c2351c06d54b86311925fe1d1f9207fa77  ./js/features/memory_v3/memory_core_v3.js
+5d21719d77b42b35562807b95e57817d19d75502e3dd2e13ae3db6612d00d8db  ./js/features/memory_v3/memory_engine_v3.js
+a53d5a21dff67a4bd70a14eefc32a47ed14a79233c00a1519cf5d097ac05aa70  ./js/features/memory_v3/memory_rounds_v3.js
+0101e53737a66ad8f33491dedc46cd1a34860158aa9cb9867de7104143094621  ./js/features/memory_v3/memory_ui_v3.js
+24b8c3b5447a19f60b730d21b09576a0ff2e51a3e6feb25d731280ed98ee1de1  ./js/features/settings/api_controller.js
+68968264ed5d4f78a1c6c286bb66ba7c5c20405e432ccbe74c5b870c71327925  ./js/features/settings/character/behavior_controller.js
+a86482f3f311b71a5cd49dab1fc4a0848bb37a7dfaaac634680bb63d8b99622d  ./js/features/settings/character/chat_controller.js
+4b93c64907c99907ea477dbc39d3e9ee1e7abda1f24f5e8cdeb9ee195480bb8a  ./js/features/settings/character/context.js
+c0db410583a233951daf7c11b73a3cba61ddc6c6edb577c59e97afd2794c5132  ./js/features/settings/character/extensions_controller.js
+fdf5c115a318f0ecae21f9311678f95740b7ad59cb8a849d38315dfdf9dcd29d  ./js/features/settings/character/media_controller.js
+41aa9ebe1d86a1b4cd4a0c75f6c4543b9159fe90a4f59b3a05025326d75f66b5  ./js/features/settings/character/profile_controller.js
+93216f9bb6eb4961d98e265e836ce21beb18dd1c38649b0c8a051bf233239cf0  ./js/features/settings/customization.js
+d87cf3f03f79b1988f65fd0c5ab3618654b7d9335db582b4c16260173d7d61cd  ./js/features/settings/facade.js
+482ebd7478123e3235810d50862e5b93df9bb1ad9dbeba039823bdf51c2170d0  ./js/features/settings/magic_room.js
+4175c5172d5ce4a30dad861e9ec402658e959cc81acd077c432afbc3ff1efadb  ./js/features/settings/preset_manager.js
+74fb1f6eb9ba88a564e36bdb7fb261ec566f1c6c0ff7c1c15ce89854d5f83f9c  ./js/features/settings/presets.js
+2476ef3407b60d90fd969fc57625ea81905628356cb9aaf51fde185b99296bb8  ./js/features/settings/proment_governance.js
+308b9f7a05bf09c7c8b415295366e40149928510c9f8bf582e29f8bc9a12f78e  ./js/main.js
+712983ff0048b0ba61bcaba4e035945824b565b2b012f7e1fb3159b7967d8f6e  ./js/modules/ai_capability_catalog.js
+30e1a24394007e4391e31b61946872a395e709da71001b3f7f942bb1d2930403  ./js/modules/ai_request_runtime.js
+b92f98a7c6cbf9d6cec5024fbe2fef1d0cf3c3f441bb686f1b3f5ca47eaf0a5e  ./js/modules/api_settings_ui.js
+9d64e631ee847a9772267e784245d933847c93770b64b7ae4e41e1c2b026ac7e  ./js/modules/appearance_settings.js
+06fcbf9770d3b4444996fb960450c22cfd98caef567181e5fd4880d924d3eaff  ./js/modules/archive.js
+5250ccdb211f27e4f7e6e80bf08867d15d21069cf3e0d4df63e0929d7e729683  ./js/modules/avatar_recognition.js
+60ad57f8528a56f46f42eb76b58979bf98f6b8ffcd4f22b4e5a080fc19ae372a  ./js/modules/backup_service.js
+64dd35b1cfdc832e60488a237b085735dbdb7cc5fe917ac26e44a6d760d76c50  ./js/modules/battery_interaction.js
+040bebe1b206aa2f09936ffa04440eda9c253a3f24b27b5cf773ad895c3200f8  ./js/modules/block_system.js
+49a250eb381e96a0e0233d636cc609c81bddce0548b2cf157c4476a46ae1afdd  ./js/modules/character_create.js
+23c36f2752010c1328ee37251d3eb20086a9909b11f541d38b047d7b9ccbba54  ./js/modules/chat_ai.js
+e91e2d248d9fc17d7fc0fc6ad4aaab79ba13b5e5d24c652a35a127b93843d1ff  ./js/modules/chat_features.js
+8422433b4d4267e74934c81b7472419eeb11814b34c92ae964c33e251ab420ba  ./js/modules/chat_list.js
+639ce7f2458611af756270e5a2838e0cb3750d0b274794ec4cc0316bb203f909  ./js/modules/chat_ops.js
+8682088d4b62546289a15972d7bd04b205a87aa9e0cdb49835c82a73c8a74a33  ./js/modules/chat_render.js
+900f8408bb527580985c00da0fd96d5cb7e2a83bc83b78015a3a3fbef93c3322  ./js/modules/cot_settings.js
+05f2fa6ab06a7d0208f05845efa157611e40e4c19136eb44bf2e30fae2714efb  ./js/modules/favorites.js
+e0276e2f3e6927ad4b8d64a74b2359758213906688f5137b2f6546f4996edee8  ./js/modules/floating_ball.js
+84e4eec5fc0af99c1c35ca5bb13eab094a1f5003e3ab52b0431b0a59684f8ad5  ./js/modules/journal.js
+6bbe6dacde1b6d2571437d73197096d66da98cb28d51141cfb1502c1e68c968e  ./js/modules/keep_alive.js
+c22cd855c49b1f061ea9cee091971688f2c76b9527ebb7f00ec21436fc5e7983  ./js/modules/message_content.js
+c87c183e5dd118dd53d04b3fc029115bbefa5ba26fc313f0276b1bf32c74ff33  ./js/modules/more_menu.js
+57fa508bce9685c6f76915a73b8104b47bcd68ea93edb15a40cbb13858f497dc  ./js/modules/msg_version.js
+1eb23669972fced241d1ba6edfc67fe33b1ffd333ddda738b30a3a4496ffafb8  ./js/modules/music_player.js
+9862ab96b3549a34c4761d999cbd3210fb4885f3010e94eae7303f886b582450  ./js/modules/operation_runtime.js
+642e1f32ff74c0bdedb55f420dd92e9d53df7f5a6b6e3bb1c35c013504d9d73a  ./js/modules/quick_dock_action_bar.js
+95ecb019087bd1300ca6c615c7b801317c5305bbac5b357745e7d6d8b1f4c940  ./js/modules/regex_filter.js
+ebd6655c62d7be408a6ea3706208d1198710f9282db2c9d8906d94a8ee34b537  ./js/modules/reminder.js
+d382522cebacd4d005f33ebd9e4e561b23455022e8cdc748153f311a2087c997  ./js/modules/search.js
+9d27c9bfef9bb82dfe838a4267845006889509d81f9477da122b79c5b06813d1  ./js/modules/sticker.js
+371db945caf2209149e1918fb532c185e437b602a65a9ec3b92dc04d3b5c4a88  ./js/modules/storage.js
+a5b9563edb89017ee8c2f0e712bd9a4183a43ee3c20355c36e393b2dfe8b4e5b  ./js/modules/theater.js
+2d23667bd916fbca140d040351171e67ec763f6fefbb19ecca4a5b333e83266e  ./js/modules/tts_service.js
+8edbc1799efa1009ad59833ebbebcdce7ef902725a3725ab51d05e084ef4f313  ./js/modules/tts_settings.js
+33e0cae0ff4bebd62a421019a37abdf947d18ddf5803141f1bf05ec9b3b26ea0  ./js/modules/tutorial.js
+641c464280cbf238d3923188b1c2efcb3f24b75f94d14e354ac9aba7be2d33a0  ./js/modules/voice_selector.js
+588fd2087c87639d9baa252c7ca0588cef9c817a564e364f00d1e8389edb7f1b  ./js/modules/volcengine_tts_service.js
+be7e0206b1132f1dcc079595e007d359b611a1775bb25e24828ed8fdb3cc2f4d  ./js/modules/weather.js
+e6719f1d729e239eb6fa736534aee3d23a7c20ed7b0fb77288bcc30092ff05ac  ./js/modules/worldbook.js
+2fdfb1975569e082e3e8c19e6a45ec126b15946f40cceca11e7313bf893ea3b1  ./js/persona_profile.js
+755e69cd5fe0f8ba20b4d95005b320df1736ad08b6cad424bee11b9c73fb94e6  ./js/settings.js
+2b64f2cbf164bd895ea2c4ff5592ad26bb6c16dc373e6540f47b3ff0770bfdb0  ./js/ui.js
+bc6723b219f2f494bc50c6f171161fd7c5b77d5b4d34866ff722ac3b98bf0313  ./js/utils.js
+b9d2b0c03870535ea29857e6485d6461c2200793f004dc46a4e6d62abbaaba49  ./js/workshop.js
+616adbd53bd86ca772fbbb7eba26cfd65c46ffae4a7df3725947084c1338ab38  ./manifest.json
+654d90481cad49b57d9af2a328ca4f8fa6531ec25d39afa85f685c8d74e3e106  ./more_menu.css
+c3fd4ed9ace32c57fc58d5693683f81ca9c1253f663e702800001939296fd9a8  ./sw.js
+92fd3785ee2c7bd53c5733107ab974e0968eb258e2ac557cad3a7bae1b3364da  ./tests/memory_custom_required_fields.test.js
+ce8a6a5c59400531f18dc60fe1b3a9cb96c1ffa610b9dd8d71df857ea67c2ba8  ./tests/memory_kv_dynamic_schema.test.js
+4094d905dedd0428f50b43e63c23830d0643befd69f84906df7be41b2778ea0a  ./tests/memory_kv_singleton_migration.test.js
+f3d093d2fd82008629d922e6416969dcbe57fbc81b06b39dfc1d6e8aa4db8b10  ./tests/memory_v5_1.test.js
+4b8245200312c964e6e90d53fc2e94a2114bca0bbd4c0ecef63cc47a79b98ca7  ./tests/memory_v5_1_chat_integration.test.js
+accc1e229172df22466c18a43d4a43831e8a929540c0cbd21b06aee3168b9f07  ./tests/memory_v5_2_compression.test.js
+71684516a69ceb935ed70ec7b1f75135a0b9fe511fad0145628a55ea049ed2f2  ./tests/memory_v5_3_stability.test.js
+c4e36a5e5acd43adc3b4940a54680e3739b25a1ae564e137fa5bd3025c00e8c1  ./tests/v5_4_1_context_compiler.test.js
+b32717bbc1681d9bee85b0e8c136abca4c567a4b713882b89d59dc845d5bc644  ./tests/v5_4_2_ai_gateway.test.js
+04b4fa697e2ac2dace4bc4bab3055ad454ded35a7fa617744bcc07fd2097f0a1  ./tests/v5_4_3_governance.test.js
+fd2b176e944a1a602b9023a88e5a917168eaa92eb6b3c3d4e62bdae1fbb87b47  ./tests/v5_4_4_cleanup_navigation.test.js
+880452958576701be2055c7c57ab9c09fe2b1409f122ee6c7d75aef52d4702b6  ./tests/v5_4_context_retirement.test.js
+2e1451a51fc4f0cb61e2ef9527b371b66873eaafe3b1b76130f4bd3b7a0f7dbe  ./vendor/README.txt
+ca68430703c4f5960e90735867c6e94d29b5a3de37107d8100e5a301007e9e6e  ./vendor/Sortable.min.js
+f0bdf25fda8f9af5920c82070775864c7e1166eb31540d030e6b80a382e39ce1  ./vendor/crypto-js.min.js
+cb631befd3ffd2d7fc69a5c0e6d89b6f0659480616b220ccc3cfbf5b366aad8d  ./vendor/dexie.js
+42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946  ./vendor/echarts.min.js
+e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb  ./vendor/html2canvas.min.js
+acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e  ./vendor/jszip.min.js
+596ef52239e52d8ee3cee10b2ee4a72596abf900d0e4f468593f956e9f1809b0  ./vendor/mammoth.browser.min.js
+d48e3c32ba5c79567f39903147035e803da5fc50ff01c7dab7bde9fcbb9919d1  ./vendor/purify.min.js

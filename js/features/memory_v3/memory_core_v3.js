@@ -2,7 +2,7 @@
     'use strict';
 
     const M = global.MemoryV5 = global.MemoryV5 || {};
-    const VERSION = '5.4.4';
+    const VERSION = '5.6.0';
     const STORE_VERSION = 3;
 
     const GROUPS = new Set(['core', 'current', 'short', 'medium', 'long']);
@@ -61,6 +61,7 @@
             type,
             options: [],
             aiHint: '',
+            category: '',
             width: type === 'longtext' ? 260 : 150,
             hidden: false,
             required: false
@@ -80,14 +81,28 @@
             type,
             options: scope === 'common' && def.options ? clone(def.options) : unique(field?.options || []),
             aiHint: Object.prototype.hasOwnProperty.call(field || {}, 'aiHint') ? text(field.aiHint) : text(def?.aiHint),
+            category: scope === 'custom' ? text(field?.category || field?.group || field?.section) : '',
             required: scope === 'common' ? true : field?.required === true,
             hidden: field?.hidden === true,
             width: Math.max(80, Math.min(800, parseInt(field?.width, 10) || def?.width || (type === 'longtext' ? 260 : 150)))
         };
     }
 
-    function normalizeFields(fields) {
+    function normalizeFields(fields, viewMode = 'rows') {
         const incoming = Array.isArray(fields) ? fields.map(normalizeField) : [];
+        // KV 是真正的动态单例表单：字段结构完全由用户定义，
+        // 不注入分类/标签/标题/内容/来源/时间等公共业务字段。
+        if (viewMode === 'kv') {
+            const seenIds = new Set();
+            const seenNames = new Set();
+            return incoming.filter(field => field.scope === 'custom').filter(field => {
+                if (seenIds.has(field.id) || seenNames.has(field.name)) return false;
+                seenIds.add(field.id);
+                seenNames.add(field.name);
+                return true;
+            });
+        }
+        // Rows 保留公共字段体系，确保每行记录具备通用检索和审计信息。
         const seenCommon = new Set();
         const result = [];
         incoming.forEach(field => {
@@ -114,18 +129,20 @@
                 alwaysInject: ['始终注入'],
                 neverInject: ['不进入上下文']
             },
-            stage: 'V5.4.4：遗留代码清理与稳定收尾'
+            stage: 'V5.6.0：KV字段分类与动态表单统一'
         };
     }
 
     function baseTable(definition = {}) {
-        const fields = normalizeFields(definition.fields || COMMON_KEYS.map(key => commonField(key)));
+        const viewMode = VIEW_MODES.has(text(definition.viewMode)) ? text(definition.viewMode) : 'rows';
+        const defaultFields = viewMode === 'kv' ? [] : COMMON_KEYS.map(key => commonField(key));
+        const fields = normalizeFields(definition.fields || defaultFields, viewMode);
         const fieldIds = new Set(fields.map(field => field.id));
         return {
             id: text(definition.id) || id('memory_table'),
             name: text(definition.name) || '新记忆表',
             group: GROUPS.has(text(definition.group)) ? text(definition.group) : 'short',
-            viewMode: VIEW_MODES.has(text(definition.viewMode)) ? text(definition.viewMode) : 'rows',
+            viewMode,
             description: text(definition.description),
             extractPrompt: text(definition.extractPrompt || definition.description),
             fields,
@@ -170,10 +187,11 @@
             extractPrompt: '本表仅供每轮上下文发送。所有更新必须由用户手动完成，AI不得输出本表写入操作。',
             categoryHints: ['用户', '角色', '双方关系', '称呼', '边界', '核心原则', '固定设定'],
             tagHints: ['始终注入', '长期稳定', '已确认'],
+            fields: [],
             behavior: { writePolicy: 'manual', contextPolicy: 'always', allowAiWrite: false, retentionDays: 0 }
         });
-        core.behavior.identityFieldIds = [fieldId(core, 'category'), fieldId(core, 'title')];
-        core.behavior.contextFieldIds = [fieldId(core, 'category'), fieldId(core, 'title'), fieldId(core, 'content'), fieldId(core, 'tags')];
+        core.behavior.identityFieldIds = [];
+        core.behavior.contextFieldIds = [];
         tables.push(core);
 
         const current = baseTable({
@@ -185,10 +203,11 @@
             extractPrompt: '同一分类和标题更新原记录；只有真实变化才更新，未变化时不改时间。',
             categoryHints: ['用户状态', '角色状态', '关系状态', '当前需求', '当前风险', '当前策略'],
             tagHints: ['当前', '短期有效', '需关注'],
+            fields: [],
             behavior: { writePolicy: 'auto', contextPolicy: 'always', allowAiWrite: true, retentionDays: 0, chatStatus: true }
         });
-        current.behavior.identityFieldIds = [fieldId(current, 'category'), fieldId(current, 'title')];
-        current.behavior.contextFieldIds = [fieldId(current, 'title'), fieldId(current, 'content'), fieldId(current, 'tags')];
+        current.behavior.identityFieldIds = [];
+        current.behavior.contextFieldIds = [];
         tables.push(current);
 
         const events = baseTable({
@@ -478,6 +497,72 @@
         return out;
     }
 
+    function kvFieldId(record, usedIds) {
+        const base = `kv_field_${text(record?.id).replace(/[^a-zA-Z0-9_\-]/g, '_') || 'item'}`;
+        let candidate = base;
+        let index = 2;
+        while (usedIds.has(candidate)) candidate = `${base}_${index++}`;
+        usedIds.add(candidate);
+        return candidate;
+    }
+
+    function uniqueKvFieldName(record, usedNames) {
+        const rawTitle = text(record?.title) || text(record?.category) || '未命名字段';
+        let candidate = rawTitle;
+        let index = 2;
+        while (usedNames.has(candidate)) candidate = `${rawTitle}${index++}`;
+        usedNames.add(candidate);
+        return candidate;
+    }
+
+    // KV V5.5：动态单例表单迁移。
+    // 旧版多条 title/content 记录转换为自定义字段；新版单例仅保留 values。
+    function migrateLegacyKvTable(table, inputRecords) {
+        const rows = Array.isArray(inputRecords) ? inputRecords : [];
+        const customFields = table.fields.filter(field => field.scope === 'custom');
+        if (customFields.length) {
+            const latest = rows.slice().sort((a, b) => text(b?.updatedAt).localeCompare(text(a?.updatedAt)))[0];
+            if (!latest) return { table, records: [] };
+            const singleton = normalizeRecord(Object.assign({}, latest, {
+                id: text(latest.id) || `kv_singleton_${table.id}`,
+                tableId: table.id,
+                values: latest.values || {}
+            }), table);
+            table.behavior.identityFieldIds = [];
+            if (!table.behavior.contextFieldIds.length) table.behavior.contextFieldIds = customFields.filter(f => !f.hidden).map(f => f.id);
+            return { table, records: [singleton] };
+        }
+        if (!rows.length) return { table, records: [] };
+
+        const usedIds = new Set();
+        const usedNames = new Set();
+        const generatedFields = rows.map(record => normalizeField({
+            id: kvFieldId(record, usedIds),
+            scope: 'custom',
+            name: uniqueKvFieldName(record, usedNames),
+            type: 'longtext',
+            aiHint: `更新该字段当前有效内容；没有新证据时保持原值。`,
+            category: text(record?.category) || '未分类',
+            required: false,
+            hidden: false,
+            width: 320
+        }, 0));
+        table.fields = generatedFields;
+        table.behavior.identityFieldIds = [];
+        table.behavior.contextFieldIds = generatedFields.map(field => field.id);
+        const latest = rows.slice().sort((a, b) => text(b?.updatedAt).localeCompare(text(a?.updatedAt)))[0] || {};
+        const singleton = normalizeRecord({
+            id: `kv_singleton_${table.id}`,
+            tableId: table.id,
+            source: text(latest.source) || '用户明确',
+            time: text(latest.time) || localDateTimeSeconds(),
+            createdAt: rows.map(record => text(record?.createdAt)).filter(Boolean).sort()[0] || nowIso(),
+            updatedAt: rows.map(record => text(record?.updatedAt)).filter(Boolean).sort().slice(-1)[0] || nowIso(),
+            values: Object.fromEntries(generatedFields.map((field, index) => [field.id, text(rows[index]?.content)]))
+        }, table);
+        return { table, records: [singleton] };
+    }
+
     function normalizeStore(store) {
         const settings = Object.assign(defaultSettings(), clone(store?.settings || {}));
         const previousStage = text(store?.settings?.stage);
@@ -503,7 +588,13 @@
         });
         const records = {};
         tables.forEach(table => {
-            records[table.id] = (Array.isArray(store?.records?.[table.id]) ? store.records[table.id] : []).map(record => normalizeRecord(record, table));
+            const incoming = Array.isArray(store?.records?.[table.id]) ? store.records[table.id] : [];
+            if (table.viewMode === 'kv') {
+                const migrated = migrateLegacyKvTable(table, incoming);
+                records[table.id] = migrated.records;
+            } else {
+                records[table.id] = incoming.map(record => normalizeRecord(record, table));
+            }
         });
         return { version: STORE_VERSION, settings, tables, records };
     }
@@ -616,9 +707,13 @@
         tables.forEach(table => {
             if (ids.has(table.id)) throw new Error(`表ID重复：${table.id}`);
             ids.add(table.id);
-            COMMON_KEYS.forEach(key => {
-                if (!table.fields.some(field => field.scope === 'common' && field.commonKey === key)) throw new Error(`表格“${table.name}”缺少公共字段：${COMMON_FIELD_DEFS[key].name}`);
-            });
+            // Rows 是多记录数据表，必须具备公共检索与审计字段。
+            // KV 是动态单例表单，分类属于字段结构，不要求任何固定公共字段。
+            if (table.viewMode === 'rows') {
+                COMMON_KEYS.forEach(key => {
+                    if (!table.fields.some(field => field.scope === 'common' && field.commonKey === key)) throw new Error(`表格“${table.name}”缺少公共字段：${COMMON_FIELD_DEFS[key].name}`);
+                });
+            }
         });
         const records = {};
         tables.forEach(table => {
@@ -637,6 +732,10 @@
 
     function mergeImport(store, plan, options = {}) {
         const includeRecords = options.includeRecords !== false;
+        const normalizedImportedRecords = (table, rows) => {
+            if (table.viewMode === 'kv') return migrateLegacyKvTable(table, rows).records;
+            return (rows || []).map(record => normalizeRecord(record, table));
+        };
         const conflictMode = options.conflictMode === 'replace' ? 'replace' : 'duplicate';
         const result = { added: 0, replaced: 0, duplicated: 0, records: 0 };
         plan.tables.forEach(sourceTable => {
@@ -648,8 +747,8 @@
                 const previousRows = Array.isArray(store.records[oldId]) ? store.records[oldId] : [];
                 store.tables[existingIndex] = table;
                 store.records[oldId] = includeRecords
-                    ? (plan.records[sourceTable.id] || []).map(record => normalizeRecord(record, table))
-                    : previousRows.map(record => normalizeRecord(record, table));
+                    ? normalizedImportedRecords(table, plan.records[sourceTable.id] || [])
+                    : normalizedImportedRecords(table, previousRows);
                 result.replaced += 1;
                 result.records += store.records[oldId].length;
                 return;
@@ -660,13 +759,13 @@
                 table.name = `${table.name}（导入）`;
                 table.behavior.sourceTableIds = table.behavior.sourceTableIds.map(sourceId => sourceId === oldId ? table.id : sourceId);
                 store.tables.push(table);
-                store.records[table.id] = includeRecords ? (plan.records[oldId] || []).map(record => normalizeRecord(record, table)) : [];
+                store.records[table.id] = includeRecords ? normalizedImportedRecords(table, plan.records[oldId] || []) : [];
                 result.duplicated += 1;
                 result.records += store.records[table.id].length;
                 return;
             }
             store.tables.push(table);
-            store.records[table.id] = includeRecords ? (plan.records[sourceTable.id] || []).map(record => normalizeRecord(record, table)) : [];
+            store.records[table.id] = includeRecords ? normalizedImportedRecords(table, plan.records[sourceTable.id] || []) : [];
             result.added += 1;
             result.records += store.records[table.id].length;
         });
@@ -689,6 +788,7 @@
         normalizeTable,
         normalizeRecord,
         normalizeStore,
+        migrateLegacyKvTable,
         ensureStore,
         migrateAllCharacters,
         getCurrentChat,

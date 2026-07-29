@@ -80,7 +80,7 @@ for (const file of ['js/core/context_source_registry.js', 'js/core/ai_request_ga
   assert(memoryEngine.includes("event.key !== 'Enter' && event.key !== ' '"), 'state bar must support keyboard navigation');
 
   const memoryCore = fs.readFileSync(path.join(root, 'js/features/memory_v3/memory_core_v3.js'), 'utf8');
-  assert(memoryCore.includes("const VERSION = '5.4.4'"));
+  assert(memoryCore.includes("const VERSION = '5.5.0'"));
   assert(memoryCore.includes('const STORE_VERSION = 3'));
 
   console.log('V5.4.2 AI gateway tests passed.');

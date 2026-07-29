@@ -48,7 +48,7 @@ for (const file of [
 }
 
 const M = sandbox.MemoryV5;
-assert.equal(M.VERSION, '5.2.0');
+assert.equal(M.VERSION, '5.5.0');
 assert.equal(M.STORE_VERSION, 3, '升级必须继续使用原STORE_VERSION，避免清空已有表格');
 const chat = { id: 'char_1', history: [
   { id: 'a0', role: 'assistant', content: '上一轮回复' },
@@ -67,7 +67,7 @@ assert.equal(M.rounds.roundPayload(chat).length, 2);
 assert(M.rounds.roundText(chat).includes('昨晚没睡好'));
 assert(M.rounds.roundText(chat).includes('充电线'));
 const prompt = M.engine.buildSystemPrompt(chat);
-assert(prompt.includes('<memory_v5_protocol version="5.2.0">'));
+assert(prompt.includes('<memory_v5_protocol version="5.5.0">'));
 assert(prompt.includes('昨晚没睡好'));
 assert(prompt.includes('v5_current_state'));
 assert(prompt.includes('v5_recent_events'));
@@ -91,9 +91,13 @@ report = M.engine.applyOperations(chat, [{
 assert.equal(report.changed.length, 0);
 assert(report.rejected[0].reason.includes('聊天AI没有写入权限'));
 
-// 同一回复可写入多张短期表。
+// 同一回复可写入多张短期表。KV当前状态先由用户定义动态字段。
+const currentTable = store.tables.find(table => table.id === 'v5_current_state');
+const stateField = M.model.customField('精神状态', 'longtext');
+currentTable.fields = [stateField];
+currentTable.behavior.contextFieldIds = [stateField.id];
 report = M.engine.applyOperations(chat, [
-  { tableId: 'v5_current_state', action: 'add', source: '用户明确', values: { 分类: '用户状态', 标签: ['疲惫', '需关注'], 标题: '精神状态', 内容: '睡眠不足，精力偏低' } },
+  { tableId: 'v5_current_state', action: 'add', source: '用户明确', values: { 精神状态: '睡眠不足，精力偏低' } },
   { tableId: 'v5_recent_events', action: 'add', source: '用户明确', values: { 分类: '工作', 标签: ['待办'], 标题: '完成报告', 内容: '今天需要完成报告', 事项状态: '待办', 相关主体: ['报告'] } },
   { tableId: 'v5_items', action: 'add', source: '用户明确', values: { 分类: '设备', 标签: ['待购买'], 标题: '充电线', 内容: '想购买一条充电线', 物品状态: '待购买', 所属人: '用户' } },
   { tableId: 'v5_daily_observation', action: 'add', source: '用户明确', values: { 分类: '睡眠', 标签: ['不足'], 标题: '昨夜睡眠', 内容: '昨晚睡眠不好', 状况: '不足' } }

@@ -7,7 +7,7 @@
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "description": "多 App 角色聊天工具；动态记忆 V5.4.4 完成统一上下文治理、AI 请求入口、Proment/悬浮球收敛、遗留清理与记忆状态栏直达修复",
+  "description": "多 App 角色聊天工具；动态记忆 V5.5.0：KV重构为无固定业务字段的动态单例表单，字段设置、展示、编辑、AI写入和上下文统一使用同一结构。",
   "icons": [
     {
       "src": "https://i.postimg.cc/Vk042Snv/5F3BCD91056B989330AE34D11901BD6E.png",
@@ -29,5 +29,6 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "version": "5.6.1"
 }

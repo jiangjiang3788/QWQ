@@ -92,10 +92,14 @@ assert.equal(emptyAudit.audit.structuredArchiveExpected, false);
 assert.equal(emptyAudit.audit.structuredArchiveSent, false);
 assert.equal(emptyRequest.messages[0].content, '角色系统提示');
 
-// 有真实记录时仍必须注入结构化档案。
+// KV表不含固定字段；用户先定义动态字段，再保存单例表单。
+const coreTable = store.tables.find(table => table.id === 'v5_core_profile');
+const preferredNameField = M.model.customField('称呼', 'text', { required: true });
+coreTable.fields = [preferredNameField];
+coreTable.behavior.contextFieldIds = [preferredNameField.id];
 let write = M.engine.applyOperations(chat, [{
   tableId: 'v5_core_profile', action: 'add',
-  values: { 分类: '用户', 标题: '称呼', 内容: '用户希望被称为小海' }
+  values: { 称呼: '用户希望被称为小海' }
 }], { origin: 'manual' });
 assert.equal(write.changed.length, 1);
 const filledRequest = { messages: [{ role: 'system', content: '角色系统提示' }, { role: 'user', content: '你好' }] };
