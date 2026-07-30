@@ -1056,21 +1056,24 @@ async function generateTheaterScenario() {
         if (charIds.length > 0) {
             const chars = charIds.map(id => db.characters.find(c => c.id === id)).filter(Boolean);
             if (chars.length > 0) {
-                const charInfoText = chars.map(char => 
-                    `角色名：${char.realName || char.remarkName || '未命名角色'}\n角色人设：${char.persona || '未设定'}`
-                ).join('\n\n');
+                const charInfoText = chars.map(char => {
+                    const identity = window.OVORoleplayPromptProjects?.getIdentity?.(char);
+                    return identity || `角色名：${char.realName || char.remarkName || '未命名角色'}
+角色人设：${char.persona || '未设定'}`;
+                }).join('\n\n---\n\n');
                 finalPrompt = `【角色信息】\n${charInfoText}\n\n【用户提示】\n${customPrompt}`;
                 theaterPromptSources.push({
-                    type: 'character_profile',
-                    title: `角色档案（${chars.length} 人）`,
+                    type: 'structured_memory',
+                    registryId: 'identity.core',
+                    title: `核心档案（${chars.length} 人）`,
                     content: charInfoText,
                     count: chars.length,
-                    reason: '来自本次选中的角色及其人设',
+                    reason: '来自本次选中角色的核心档案；核心档案为空时回退旧角色人设',
                     traceMode: 'source_exact',
                     items: chars.map(char => ({
                         id: char.id,
                         title: char.realName || char.remarkName || char.name || '未命名角色',
-                        content: char.persona || '未设定',
+                        content: window.OVORoleplayPromptProjects?.getIdentity?.(char) || char.persona || '未设定',
                         sourceId: char.id,
                         reason: '用户在小剧场中选中该角色'
                     }))
@@ -2522,11 +2525,15 @@ async function generateCharTheater(charId, options = {}) {
     const format = char.charTheaterFormat || 'text';
     const customPrompt = (char.charTheaterPrompt || '').trim();
     const charName = char.realName || char.remarkName || '角色';
-    const charPersona = char.persona || '';
+    const myName = char.myName || '用户';
+    const identityProjectContent = window.OVORoleplayPromptProjects?.getIdentity?.(char)
+        || `角色名：${charName}
+用户称呼：${myName}
+角色设定：${char.persona || '（未设定）'}
+用户设定：${char.myPersona || '（未设定）'}`;
 
     // ── 1. 读取聊天记录（条数可配置）────────────────────────────
     const chatCount = Math.max(0, Math.min(parseInt(char.charTheaterChatCount) || 20, 200));
-    const myName = char.myName || '用户';
     const recentHistory = chatCount > 0
         ? (char.history || [])
             .filter(m => !m.isContextDisabled && !m.isThinking && (m.role === 'user' || m.role === 'assistant'))
@@ -2574,14 +2581,7 @@ async function generateCharTheater(charId, options = {}) {
         }
     }
 
-    // ── 4. 读取当前用户人设──────────────────────────────────────
-    // 优先使用角色绑定的 myPersona，其次尝试全局当前人设预设
-    let userPersonaText = (char.myPersona || '').trim();
-    if (!userPersonaText && db.myPersonaPresets && db.myPersonaPresets.length > 0) {
-        // 取第一个预设作为默认（若存在）
-        const firstPreset = db.myPersonaPresets[0];
-        if (firstPreset) userPersonaText = `${firstPreset.name}：${firstPreset.content || ''}`;
-    }
+    // ── 4. 核心档案已统一包含角色、用户与关系身份 ───────────────
 
     // ── 5. 决定格式（"both"随机选一种）──────────────────────────
     // Math.random() 是真随机，确保不固定
@@ -2614,11 +2614,7 @@ async function generateCharTheater(charId, options = {}) {
     }
 
     // ── 7. 构建用户提示词──────────────────────────────────────
-    let userPrompt = `【我的角色设定（${charName}）】\n${charPersona || '（未设定）'}`;
-
-    if (userPersonaText) {
-        userPrompt += `\n\n【与我互动的用户人设】\n用户名：${myName}\n${userPersonaText}`;
-    }
+    let userPrompt = `【角色与用户核心档案】\n${identityProjectContent}`;
 
     if (worldBookText) {
         userPrompt += `\n\n【世界观参考设定】\n${worldBookText}`;
@@ -2645,19 +2641,15 @@ async function generateCharTheater(charId, options = {}) {
             traceMode: 'source_exact'
         },
         {
-            type: 'character_profile',
-            content: `角色名：${charName}\n角色人设：${charPersona || '（未设定）'}`,
-            reason: '来自当前角色档案',
+            type: 'structured_memory',
+            registryId: 'identity.core',
+            title: '角色与用户核心档案',
+            content: identityProjectContent,
+            reason: '来自当前角色的核心档案；为空时回退旧人设字段',
             traceMode: 'source_exact',
             sourceId: char.id
         }
     ];
-    if (userPersonaText) characterTheaterPromptSources.push({
-        type: 'user_profile',
-        content: `用户名：${myName}\n${userPersonaText}`,
-        reason: '来自角色绑定的用户人设或默认用户人设',
-        traceMode: 'source_exact'
-    });
     if (worldBookText) characterTheaterPromptSources.push({
         type: 'worldbook',
         content: worldBookText,

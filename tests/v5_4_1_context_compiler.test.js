@@ -116,7 +116,7 @@ assert.strictEqual(disabledBody.messages.some(item => item.content === '当前�
 assert.strictEqual(disabledBody.messages.some(item => item.content === '<thinking>'), true);
 
 const indexText = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-assert(indexText.includes('js/core/context_compiler.js?v=570'), 'compiler must load before chat requests');
+assert(indexText.includes('js/core/context_compiler.js?v=582'), 'compiler must load before chat requests');
 const chatText = fs.readFileSync(path.join(root, 'js/modules/chat_ai.js'), 'utf8');
 assert(chatText.includes('buildCompiledManifest'), 'private chat should use compiled manifest');
 assert(chatText.includes('WorldBookContextProvider'), 'chat module should call the worldbook domain provider');

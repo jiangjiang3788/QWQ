@@ -479,7 +479,7 @@ function setupMemoryJournalScreen() {
 
             const rawContent = await fetchAiResponse({
                 ...db.apiSettings, runtimeTask: 'journal-summary', runtimeSource: 'journal',
-                runtimePromptSources: [{ type: 'task_instruction', title: '日记合并要求', content: summaryPrompt, reason: '合并所选日记的最终提示词' }]
+                runtimePromptSources: [{ type: 'user_input', registryId: 'journal.source', title: `待合并日记（${journalsToMerge.length} 篇）`, content: combinedContent, count: journalsToMerge.length, reason: '用户选中的日记正文' }]
             }, requestBody, headers, endpoint);
 
             const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);
@@ -919,9 +919,30 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
             }
         });
 
+        const journalSourceText = (() => {
+            let lastTime = 0;
+            return messagesToSummarize.map(message => {
+                let prefix = '';
+                const messageTime = message.timestamp;
+                const timeDiff = messageTime - lastTime;
+                const isSameDay = new Date(messageTime).toDateString() === new Date(lastTime).toDateString();
+                if (lastTime === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
+                    const date = new Date(messageTime);
+                    const timeText = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+                    prefix = `\n[系统时间: ${timeText}]\n`;
+                }
+                lastTime = messageTime;
+                return `${prefix}${message.content || ''}`;
+            }).join('\n');
+        })();
+        const identityProjectContent = currentChatType === 'private'
+            ? (window.OVORoleplayPromptProjects?.getIdentity?.(chat) || `角色名：${chat.realName || chat.remarkName || '角色'}\n用户称呼：${chat.myName || '用户'}\n角色设定：${chat.persona || ''}\n用户设定：${chat.myPersona || ''}`)
+            : '';
+
         let worldBooksContent = '';
         let summaryPrompt = '';
         let favoritedJournalsPrompt = '';
+        let journalStyleContent = '';
 
         // 新增：读取已收藏的日记 (通用逻辑)
         if (includeFavorited) {
@@ -970,23 +991,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
             summaryPrompt += `    <title>格式为“日期·核心事件”，例如“1月20日·讨论周末计划”</title>\n`;
             summaryPrompt += `    <content>总结正文。分条列出主要讨论点或事件。</content>\n`;
             summaryPrompt += `</journal>\n\n`;
-            summaryPrompt += `聊天记录如下：\n\n---\n${(() => {
-                let lastTime = 0;
-                return messagesToSummarize.map(m => {
-                    let prefix = '';
-                    const currentTime = m.timestamp;
-                    const timeDiff = currentTime - lastTime;
-                    const isSameDay = new Date(currentTime).toDateString() === new Date(lastTime).toDateString();
-                    
-                    if (lastTime === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
-                        const d = new Date(currentTime);
-                        const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                        prefix = `\n[系统时间: ${timeStr}]\n`;
-                    }
-                    lastTime = currentTime;
-                    return `${prefix}${m.content}`;
-                }).join('\n');
-            })()}\n---`;
+            summaryPrompt += `聊天记录如下：\n\n---\n${journalSourceText}\n---`;
 
         } else {
             // 私聊逻辑
@@ -1043,23 +1048,7 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
     <content>总结正文</content>
 </journal>
 
-聊天记录如下：\n\n---\n${(() => {
-                let lastTime = 0;
-                return messagesToSummarize.map(m => {
-                    let prefix = '';
-                    const currentTime = m.timestamp;
-                    const timeDiff = currentTime - lastTime;
-                    const isSameDay = new Date(currentTime).toDateString() === new Date(lastTime).toDateString();
-                    
-                    if (lastTime === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
-                        const d = new Date(currentTime);
-                        const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                        prefix = `\n[系统时间: ${timeStr}]\n`;
-                    }
-                    lastTime = currentTime;
-                    return `${prefix}${m.content}`;
-                }).join('\n');
-            })()}\n---`;
+聊天记录如下：\n\n---\n${journalSourceText}\n---`;
 
             } else {
                 // 默认风格 (流水账) 或 自定义风格
@@ -1077,37 +1066,20 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
                     summaryPrompt += `世界观设定:\n${worldBooksContent}\n\n`;
                 }
 
-                summaryPrompt += `你的角色设定:\n- 角色名: ${chat.realName}\n- 人设: ${chat.persona || "一个友好、乐于助人的伙伴。"}\n\n`;
-                summaryPrompt += `我的角色设定:\n- 我的称呼: ${chat.myName}\n- 我的人设: ${chat.myPersona || "无特定人设。"}\n\n`;
+                summaryPrompt += `角色与用户核心档案:\n${identityProjectContent}\n\n`;
                 summaryPrompt += "=====\n";
 
                 // 如果是自定义风格，注入额外要求
                 if (styleSettings.mode === 'custom') {
                     const customWorldBooks = (styleSettings.customWorldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id)).filter(wb => wb && !wb.disabled);
-                    const customStyleContent = customWorldBooks.map(wb => wb.content).join('\n\n');
+                    journalStyleContent = customWorldBooks.map(wb => wb.content).join('\n\n');
                     
-                    if (customStyleContent) {
-                        summaryPrompt += `\n**特别日记格式/风格要求**：\n请优先严格遵循以下风格指南或格式要求来撰写日记：\n${customStyleContent}\n\n`;
+                    if (journalStyleContent) {
+                        summaryPrompt += `\n**特别日记格式/风格要求**：\n请优先严格遵循以下风格指南或格式要求来撰写日记：\n${journalStyleContent}\n\n`;
                     }
                 }
 
-                summaryPrompt += `请基于以上所有背景信息，总结以下聊天记录。请严格使用以下 XML 标签格式输出你的结果，不要输出任何其他多余的解释：\n<journal>\n    <title>年月日·一个简洁的标题</title>\n    <content>完整的日记正文</content>\n</journal>\n\n聊天记录如下：\n\n---\n${(() => {
-                let lastTime = 0;
-                return messagesToSummarize.map(m => {
-                    let prefix = '';
-                    const currentTime = m.timestamp;
-                    const timeDiff = currentTime - lastTime;
-                    const isSameDay = new Date(currentTime).toDateString() === new Date(lastTime).toDateString();
-                    
-                    if (lastTime === 0 || timeDiff > 20 * 60 * 1000 || !isSameDay) {
-                        const d = new Date(currentTime);
-                        const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                        prefix = `\n[系统时间: ${timeStr}]\n`;
-                    }
-                    lastTime = currentTime;
-                    return `${prefix}${m.content}`;
-                }).join('\n');
-            })()}\n---`;
+                summaryPrompt += `请基于以上所有背景信息，总结以下聊天记录。请严格使用以下 XML 标签格式输出你的结果，不要输出任何其他多余的解释：\n<journal>\n    <title>年月日·一个简洁的标题</title>\n    <content>完整的日记正文</content>\n</journal>\n\n聊天记录如下：\n\n---\n${journalSourceText}\n---`;
             }
         }
 
@@ -1142,10 +1114,28 @@ async function generateJournal(start, end, includeFavorited = false, silent = fa
             runtimeTask: 'journal-generation',
             runtimeSource: 'journal',
             runtimeOperationId: journalOperationId,
-            runtimePromptSources: [{
-                type: 'task_instruction', title: '日记生成要求', content: summaryPrompt,
-                reason: '包含角色、用户、世界书、过往日记和本次消息范围'
-            }]
+            runtimePromptSources: [
+                identityProjectContent && summaryPrompt.includes(identityProjectContent) ? {
+                    type: 'structured_memory', registryId: 'identity.core', title: '角色与用户核心档案', content: identityProjectContent,
+                    reason: '私聊日记使用与主聊天相同的核心档案字段分组'
+                } : null,
+                worldBooksContent && summaryPrompt.includes(worldBooksContent) ? {
+                    type: 'worldbook', registryId: 'worldbook.active', title: '日记背景世界书', content: worldBooksContent,
+                    reason: '本次日记生成实际发送的世界观参考'
+                } : null,
+                favoritedJournalsPrompt && summaryPrompt.includes(favoritedJournalsPrompt) ? {
+                    type: 'journal_memory', registryId: 'memory.journal', title: '过往日记参考', content: favoritedJournalsPrompt,
+                    reason: '为保持连续性而实际发送的已收藏日记'
+                } : null,
+                journalStyleContent && summaryPrompt.includes(journalStyleContent) ? {
+                    type: 'task_instruction', registryId: 'task.instruction', title: '日记风格要求', content: journalStyleContent,
+                    reason: '本次选择的日记风格世界书'
+                } : null,
+                {
+                    type: 'user_input', registryId: 'journal.source', title: `待总结聊天（${messagesToSummarize.length} 条）`, content: journalSourceText,
+                    count: messagesToSummarize.length, reason: '本次日记的实际消息范围'
+                }
+            ].filter(Boolean)
         }, requestBody, headers, endpoint);
 
         const titleMatch = rawContent.match(/<title>([\s\S]*?)<\/title>/i);

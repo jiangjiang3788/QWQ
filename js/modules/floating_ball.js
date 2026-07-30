@@ -1,9 +1,9 @@
-// QuickDock · QWQ 5.8.0：只读请求观察；打开悬浮球不会暂停或取消模型请求。
+// QuickDock · QWQ 5.8.3：只读请求观察；打开悬浮球不会暂停或取消模型请求。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const PACKAGE_VERSION = '5.8.0';
+    const PACKAGE_VERSION = '5.8.3';
     const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyVisible: 8 };
     let rootEl = null;
     let panelEl = null;

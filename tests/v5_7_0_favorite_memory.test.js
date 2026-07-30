@@ -24,8 +24,10 @@ assert(!appRegistry.includes("id: 'favorites'"));
 assert(!chatAi.includes('<favorite_inventory>'));
 assert(!chatAi.includes("registryId: 'collection.relevant'"));
 assert(!sourceRegistry.includes("id: 'collection.relevant'"));
-assert(chatAi.includes('<favorite_ops>'));
-assert(chatAi.includes('不要填写正文或标题'));
+assert(chatAi.includes('[FAVORITE:消息ID:可选的私人寄语]'));
+assert(chatAi.includes('favoriteOpsRegex')); // legacy JSON compatibility remains
+assert(chatAi.includes('不要生成标签、标题或正文'));
+assert(chatAi.includes('私人情感动作'));
 
 // Fixed role-local memory table: no visible/required title and no AI memory_ops write.
 assert(memoryCore.includes("const FAVORITE_TABLE_ID = 'v5_message_favorites'"));
@@ -158,7 +160,7 @@ for (const file of [
   vm.runInContext(read('js/core/context_compiler.js'), compilerContext, { filename: 'context_compiler.js' });
   const recordOne = '标签: 爸爸、健康\n发送方: 小海葵\n内容: 爸爸明天去复查。';
   const recordTwo = '标签: 工作、项目\n发送方: 小海葵\n内容: 这是一条很长很长并且不应该被从中间裁断的第二条记录。';
-  const memory = `<structured_memory version="5.8.0">\n【收藏记忆】\n${recordOne}\n---\n${recordTwo}\n</structured_memory>`;
+  const memory = `<structured_memory version="5.8.3">\n【收藏记忆】\n${recordOne}\n---\n${recordTwo}\n</structured_memory>`;
   const requestBody = { messages: [
     { role: 'system', content: `<structured_archive_memory>\n${memory}\n</structured_archive_memory>` },
     { role: 'user', content: '爸爸要复查' }

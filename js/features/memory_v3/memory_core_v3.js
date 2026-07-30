@@ -2,7 +2,7 @@
     'use strict';
 
     const M = global.MemoryV5 = global.MemoryV5 || {};
-    const VERSION = '5.8.0';
+    const VERSION = '5.8.3';
     const STORE_VERSION = 3;
     const FAVORITE_TABLE_ID = 'v5_message_favorites';
 
@@ -131,7 +131,7 @@
                 neverInject: ['不进入上下文']
             },
             favoriteMaxPerRound: 5,
-            stage: 'V5.8.0：角色扮演提示词分层；核心档案按字段分类前置发送'
+            stage: 'V5.8.3：角色自主收藏恢复为私人情感动作；存储层不再按信息量或每轮配额裁决'
         };
     }
 

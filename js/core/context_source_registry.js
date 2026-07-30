@@ -1,9 +1,9 @@
-// QWQ V5.8.0 · AI context registry aligned with actual roleplay prompt projects
+// QWQ V5.8.3 · AI context registry aligned with unified roleplay prompt projects
 // 第一阶段只登记、对账和诊断，不改变现有 Prompt 的业务效果。
 (function (global) {
     'use strict';
 
-    const VERSION = 'context-registry.v5';
+    const VERSION = 'context-registry.v5.1';
     const definitions = new Map();
     let lastManifest = null;
 
@@ -296,7 +296,7 @@ ${String(message?.content || '')}`;
         const matchedSystemChars = merged.reduce((sum, item) => sum + item.end - item.start, 0);
         const residualSystemChars = Math.max(0, systemText.length - matchedSystemChars);
         const residualSystemText = unmatchedText(systemText, merged);
-        // V5.8.0：正常请求应由项目标签完全覆盖。只在确有非空异常文本时显示“未归类内容”，
+        // V5.8.3：正常请求应由项目标签完全覆盖。只在确有非空异常文本时显示“未归类内容”，
         // 不再把标签之间的换行或所有剩余内容包装成巨大的“核心系统规则”。
         if (residualSystemText.trim()) {
             const unclassified = get('system.unclassified');
@@ -457,28 +457,42 @@ ${String(message?.content || '')}`;
                 metadata: clone(source?.metadata || null)
             };
         });
-        const declaredChars = sourceEntries.filter(item => item.included).reduce((sum, item) => sum + item.matchedChars, 0);
-        const residualChars = Math.max(0, allMessageText.length - declaredChars);
-        const taskDef = get('task.instruction');
-        sourceEntries.unshift({
-            sourceId: 'task.instruction', registered: !!taskDef, title: taskDef?.title || '任务指令',
-            domain: taskDef?.domain || 'task', layer: taskDef?.layer || 'control', role: 'mixed',
-            priority: taskDef?.priority ?? 80, included: allMessageText.length > 0,
-            chars: residualChars, matchedChars: residualChars,
-            reason: '统一任务编译对未被细分来源覆盖的提示模板、标签和包装文字进行兜底登记',
-            traceType: 'task_residual', sourceRef: null, accounted: true,
-            content: allMessageText,
-            count: messages.length,
-            metadata: null,
-            items: messages.map((message, index) => ({
-                id: `task-message-${index + 1}`,
-                title: `${String(message.role || 'unknown').toUpperCase()} ${index + 1}`,
-                content: String(message.content || ''),
-                chars: String(message.content || '').length,
-                sent: true,
-                reason: '来自最终任务请求消息'
-            }))
+        const matchedRanges = [];
+        promptSources.forEach(source => {
+            const content = typeof source?.content === 'string' ? source.content : '';
+            if (!content) return;
+            let cursor = 0;
+            while (cursor < allMessageText.length) {
+                const index = allMessageText.indexOf(content, cursor);
+                if (index < 0) break;
+                matchedRanges.push({ start: index, end: index + content.length });
+                cursor = index + Math.max(1, content.length);
+            }
         });
+        const residualContent = unmatchedText(allMessageText, matchedRanges).trim();
+        const residualChars = residualContent.length;
+        if (residualContent) {
+            const taskDef = get('task.instruction');
+            sourceEntries.unshift({
+                sourceId: 'task.instruction', registered: !!taskDef, title: taskDef?.title || '任务指令',
+                domain: taskDef?.domain || 'task', layer: taskDef?.layer || 'control', role: 'mixed',
+                priority: taskDef?.priority ?? 80, included: true,
+                chars: residualChars, matchedChars: residualChars,
+                reason: '最终任务请求中未被身份、世界书、记忆、来源内容等项目覆盖的任务要求和格式包装',
+                traceType: 'task_residual', sourceRef: null, accounted: true,
+                content: residualContent,
+                count: 1,
+                metadata: null,
+                items: [{
+                    id: 'task-residual-1',
+                    title: '任务要求与格式',
+                    content: residualContent,
+                    chars: residualChars,
+                    sent: true,
+                    reason: '来自最终任务请求中的剩余实际文本'
+                }]
+            });
+        }
         const toolsContent = body.tools ? stringifyRequestPart(body.tools) : '';
         const parameterObject = {};
         Object.keys(body || {}).forEach(key => {
@@ -544,17 +558,18 @@ ${String(message?.content || '')}`;
     function getLastManifest() { return clone(lastManifest || global.__ovoLastContextManifest || null); }
 
     registerMany([
-        { id: 'prompt.session', domain: 'prompt', layer: 'session', title: '00 会话总规则', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 10, optional: false },
-        { id: 'worldbook.identity_before', domain: 'worldbook', layer: 'identity-before', title: '01 世界书·身份前', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 20, optional: true, navigation: { kind: 'worldbook' } },
-        { id: 'identity.core', domain: 'memory', layer: 'identity', title: '02 核心档案', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 30, optional: false, navigation: { kind: 'structured-memory' } },
-        { id: 'worldbook.identity_after', domain: 'worldbook', layer: 'identity-after', title: '03 世界书·身份后', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 40, optional: true, navigation: { kind: 'worldbook' } },
-        { id: 'memory.long_term', domain: 'memory', layer: 'long-term', title: '04 长期关系记忆', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 50, optional: true, navigation: { kind: 'structured-memory' } },
-        { id: 'worldbook.scene_after', domain: 'worldbook', layer: 'scene-after', title: '05 世界书·场景后置', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 60, optional: true, navigation: { kind: 'worldbook' } },
-        { id: 'memory.current_related', domain: 'memory', layer: 'current', title: '06 当前与相关记忆', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 70, optional: true, navigation: { kind: 'structured-memory' } },
-        { id: 'runtime.environment', domain: 'runtime', layer: 'environment', title: '07 当前环境', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 80, optional: true },
-        { id: 'prompt.interaction_rules', domain: 'prompt', layer: 'interaction', title: '08 互动规则', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 90, optional: false },
-        { id: 'output.background_write', domain: 'memory', layer: 'output', title: '10 后台写入', tasks: ['chat.reply'], role: 'system', priority: 101, optional: true },
-        { id: 'prompt.message_metadata', domain: 'prompt', layer: 'metadata', title: '11 消息说明', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 110, optional: false },
+        { id: 'prompt.session', domain: 'prompt', layer: 'session', title: '00 会话总规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 10, optional: false },
+        { id: 'worldbook.identity_before', domain: 'worldbook', layer: 'identity-before', title: '01 世界书·身份前', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 20, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'identity.core', domain: 'memory', layer: 'identity', title: '02 核心档案', tasks: ['chat.reply', 'chat.background', 'call.reply', 'journal.generate', 'theater.generate', 'theater.character.generate'], role: 'system', priority: 30, optional: false, navigation: { kind: 'structured-memory' } },
+        { id: 'worldbook.identity_after', domain: 'worldbook', layer: 'identity-after', title: '03 世界书·身份后', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 40, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'memory.long_term', domain: 'memory', layer: 'long-term', title: '04 长期关系记忆', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 50, optional: true, navigation: { kind: 'structured-memory' } },
+        { id: 'worldbook.scene_after', domain: 'worldbook', layer: 'scene-after', title: '05 世界书·场景后置', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 60, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'memory.current_related', domain: 'memory', layer: 'current', title: '06 当前与相关记忆', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 70, optional: true, navigation: { kind: 'structured-memory' } },
+        { id: 'runtime.environment', domain: 'runtime', layer: 'environment', title: '07 当前环境', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 80, optional: true },
+        { id: 'prompt.custom_rules', domain: 'prompt', layer: 'custom', title: '08 自定义规则', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 85, optional: true },
+        { id: 'prompt.interaction_rules', domain: 'prompt', layer: 'interaction', title: '09 互动规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 90, optional: false },
+        { id: 'output.background_write', domain: 'memory', layer: 'output', title: '11 后台写入', tasks: ['chat.reply'], role: 'system', priority: 101, optional: true },
+        { id: 'prompt.message_metadata', domain: 'prompt', layer: 'metadata', title: '12 消息说明', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 110, optional: false },
         { id: 'system.unclassified', domain: 'prompt', layer: 'diagnostic', title: '未归类内容（需要检查）', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 199, optional: true },
         { id: 'system.core_rules', domain: 'prompt', layer: 'system', title: '核心系统规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 10, optional: false },
         { id: 'character.profile', domain: 'character', layer: 'identity', title: '角色档案', tasks: ['chat.reply', 'chat.background', 'call.reply', 'journal.generate'], role: 'system', priority: 20, optional: false, navigation: { kind: 'character' } },
@@ -572,7 +587,7 @@ ${String(message?.content || '')}`;
         { id: 'chat.continuation', domain: 'chat', layer: 'control', title: '继续对话控制消息', tasks: ['chat.reply'], role: 'user', priority: 72, optional: true },
         { id: 'task.instruction', domain: 'task', layer: 'control', title: '任务指令', tasks: ['*'], role: 'user', priority: 80, optional: true },
         { id: 'cot.instructions', domain: 'prompt', layer: 'control', title: 'CoT与预填', tasks: ['chat.reply', 'chat.background'], role: 'mixed', priority: 85, optional: true },
-        { id: 'output.chat_protocol', domain: 'prompt', layer: 'output', title: '09 输出规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 90, optional: false },
+        { id: 'output.chat_protocol', domain: 'prompt', layer: 'output', title: '10 输出规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 90, optional: false },
         { id: 'output.memory_protocol', domain: 'memory', layer: 'output', title: '动态记忆协议', tasks: ['chat.reply'], role: 'system', priority: 91, optional: true },
         { id: 'task.input', domain: 'task', layer: 'input', title: '任务输入', tasks: ['*'], role: 'user', priority: 92, optional: false },
         { id: 'media.image_input', domain: 'media', layer: 'input', title: '图片输入', tasks: ['vision.image.describe', 'vision.avatar.recognize', 'vision.sticker.recognize'], role: 'user', priority: 93, optional: false },

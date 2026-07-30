@@ -1,4 +1,4 @@
-// --- 消息收藏模块 V5.8.0：收藏直接写入当前角色的“收藏记忆”表 ---
+// --- 消息收藏模块 V5.8.3：角色自主收藏保持为私人情感动作，结构化表只负责存储 ---
 (function (global) {
     'use strict';
 
@@ -136,6 +136,37 @@
     function mergeNotes(left, right) {
         const values = unique([text(left), text(right)]);
         return values.join('；');
+    }
+
+
+    function evaluateCharacterFavoriteCandidate(chat, message, input = {}) {
+        if (!chat || !message || message.role !== 'user') return { accepted: false, reason: '只能收藏当前私聊中的用户原消息' };
+        if (message.sentByCharControl || message.isSystem || message.systemGenerated) {
+            return { accepted: false, reason: '系统或角色代发消息不能进入角色自主收藏' };
+        }
+        const eligible = Array.isArray(input.eligibleMessageIds) ? new Set(input.eligibleMessageIds.map(text)) : null;
+        if (eligible && !eligible.has(text(message.id))) return { accepted: false, reason: '该消息不在当前可用的聊天上下文中' };
+
+        const note = text(input.note).slice(0, 120);
+        const draft = snapshotInput(chat, message, {
+            note,
+            tags: unique(input.tags).slice(0, 6),
+            collectors: ['角色']
+        });
+
+        const { M, table, rows } = favoriteTable(chat);
+        const messageIdField = field(table, 'favorite_message_id');
+        const collectorsField = field(table, 'favorite_collectors');
+        const messageKey = text(draft.messageKey || draft.messageId);
+        const sameMessage = rows.find(record => messageKey && text(M.model.getFieldValue(record, messageIdField)) === messageKey) || null;
+        if (sameMessage) {
+            const collectors = unique(M.model.getFieldValue(sameMessage, collectorsField));
+            if (collectors.includes('角色')) return { accepted: false, reason: '这条具体消息已经由角色收藏过' };
+        }
+
+        // 不按字数、信息量或正文相似度判断情感价值。
+        // 两句相同文字出现在不同时间，也可能对角色具有完全不同的意义。
+        return { accepted: true, draft, sameMessage };
     }
 
     function upsertFavoriteMemory(chat, input, options = {}) {
@@ -291,15 +322,25 @@
         global.triggerHapticFeedback?.('medium');
     }
 
-    // 角色静默收藏。模型只提供消息ID、标签和寄语，正文始终从当前聊天历史读取。
-    async function addCharacterFavorite(messageId, characterId, note, tags = []) {
+    // 角色静默收藏。模型表达收藏动作；程序只校验消息归属与同一消息重复，不评价情感是否“够重要”。
+    async function addCharacterFavorite(messageId, characterId, note, tags = [], options = {}) {
         const chat = (global.db?.characters || []).find(item => item.id === characterId);
-        if (!chat) return;
+        if (!chat) return { status: 'rejected', reason: '角色不存在' };
         const message = (chat.history || []).find(item => item.id === messageId);
-        if (!message || message.role !== 'user') return;
-        const draft = snapshotInput(chat, message, { note, tags: unique(tags).slice(0, 8), collectors: ['角色'] });
-        upsertFavoriteMemory(chat, { ...draft, tags: draft.tags.length ? draft.tags : deriveFavoriteTags(draft.content, note) });
-        await persistFavoriteChat(chat);
+        if (!message) return { status: 'rejected', reason: '原消息不存在' };
+        const evaluation = evaluateCharacterFavoriteCandidate(chat, message, {
+            note,
+            tags,
+            eligibleMessageIds: options.eligibleMessageIds,
+        });
+        if (!evaluation.accepted) return { status: 'rejected', reason: evaluation.reason };
+        const draft = evaluation.draft;
+        const result = upsertFavoriteMemory(chat, {
+            ...draft,
+            tags: draft.tags.length ? draft.tags : deriveFavoriteTags(draft.content, draft.note).slice(0, 6)
+        });
+        if (result.status === 'added' || result.status === 'updated') await persistFavoriteChat(chat);
+        return result;
     }
 
     function legacyCharacterId(favorite) {
@@ -400,6 +441,7 @@
         TABLE_ID,
         deriveTags: deriveFavoriteTags,
         upsert: upsertFavoriteMemory,
+        evaluateCharacterCandidate: evaluateCharacterFavoriteCandidate,
         migrate: migrateLegacyFavoritesToMemory,
         setup: setupFavoriteMemory,
         open: openFavoritesScreen

@@ -1,4 +1,4 @@
-// QWQ V5.8.0 · unified final context compiler for private chat requests
+// QWQ V5.8.3 · unified final context compiler for private chat requests
 (function (global) {
     'use strict';
 
@@ -180,7 +180,7 @@
             if (next !== source) changes.push({ sourceId: 'memory.structured', action: 'excluded', reason: 'Proment 已关闭结构化记忆' });
             return next;
         }
-        // V5.8.0 项目式记忆已由记忆引擎按完整记录完成选择与预算控制，
+        // V5.8.3 项目式记忆已由记忆引擎按完整记录完成选择与预算控制，
         // 编译器只兼容旧 structured_archive_memory，避免再次截断或打乱发送层级。
         if (projectTags.some(tag => new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'i').test(source))) return source;
         let result = { value: '', clipped: false, omitted: 0 };

@@ -7,12 +7,13 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const chatAi = read('js/modules/chat_ai.js');
 assert(!chatAi.includes('function buildFavoriteAwarenessPrompt(character)'));
 assert(!chatAi.includes('<favorite_inventory>'));
-assert(chatAi.includes('<favorite_ops>'));
+assert(chatAi.includes('[FAVORITE:消息ID:可选的私人寄语]'));
+assert(chatAi.includes('favoriteOpsRegex')); // legacy JSON compatibility remains
 assert(chatAi.includes("registryId: 'memory.structured'"));
 assert(chatAi.includes("metadata: { groupedBy: 'tableName' }"));
 
 const dock = read('js/modules/floating_ball.js');
-assert(dock.includes("const PACKAGE_VERSION = '5.8.0'"));
+assert(dock.includes("const PACKAGE_VERSION = '5.8.3'"));
 assert(dock.includes('function requestSourceSections(request, operation)'));
 assert(dock.includes('<details class="quick-dock-source-card'));
 assert(dock.includes('<details class="quick-dock-source-item'));
@@ -24,7 +25,7 @@ assert(!dock.includes('function renderFavoriteSource(section)'));
 assert(dock.includes('function renderStructuredMemorySource(section)'));
 
 const css = read('css/modules/quick_dock.css');
-assert(css.includes('QWQ 5.8.0'));
+assert(css.includes('QWQ 5.8.3'));
 assert(css.includes('.quick-dock-source-card>summary>em:after'));
 assert(css.includes('.quick-dock-source-item>summary'));
 assert(css.includes('.quick-dock-history-message>header'));

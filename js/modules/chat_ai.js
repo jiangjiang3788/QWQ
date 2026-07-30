@@ -12,6 +12,26 @@ function getChatReplyTaskKey(chatId, chatType) {
     return `${chatType || 'private'}:${chatId || ''}`;
 }
 
+
+// V5.8.3：角色收藏是私人情感动作，不是“本轮信息筛选”任务。
+// 当前实际发送给模型的上下文中，所有真实用户消息都可以成为收藏对象。
+function getAutonomousFavoriteCandidateIds(history) {
+    const ids = [];
+    const list = Array.isArray(history) ? history : [];
+    list.forEach(message => {
+        if (!message || message.isContextDisabled || message.isThinking || message.role !== 'user') return;
+        // 手机控制代发、系统占位和没有稳定消息 ID 的内容不是角色自主收藏对象。
+        if (message.sentByCharControl || message.isSystem || message.systemGenerated) return;
+        const id = String(message.id || '').trim();
+        if (/^msg_[^\s:<>]+$/.test(id)) ids.push(id);
+    });
+    return new Set(ids);
+}
+
+window.OVOAutonomousFavoritePolicy = Object.freeze({
+    getCandidateIds: getAutonomousFavoriteCandidateIds
+});
+
 function isTargetChatViewOpen(chatId, chatType) {
     return chatId === currentChatId
         && chatType === currentChatType
@@ -149,16 +169,18 @@ function formatPromptTimestamp(timestamp) {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} ${offset}`;
 }
 
-function buildPromptMessageTimePrefix(timestamp) {
-    // 使用明确的内部元数据标签，避免与角色正常聊天格式混淆。
+function buildPromptMessageTimePrefix(timestamp, messageId = '') {
+    // 使用内部元数据承载时间与可选消息定位，不再用醒目的 [id:...] 文本打断对话。
     // 最终回复仍会经过 stripPromptMetadataEcho() 二次清理。
-    return `<message_meta sent_at="${formatPromptTimestamp(timestamp)}" />\n`;
+    const safeId = /^msg_[^\s:<>]+$/.test(String(messageId || '').trim()) ? String(messageId).trim() : '';
+    const idAttr = safeId ? ` id="${safeId}"` : '';
+    return `<message_meta sent_at="${formatPromptTimestamp(timestamp)}"${idAttr} />\n`;
 }
 
 function appendMessageMetadataProtocol(systemPrompt) {
     const prompt = String(systemPrompt || '');
     if (prompt.includes('<message_metadata_protocol>')) return prompt;
-    return `${prompt}\n\n<message_metadata_protocol>\n历史消息开头可能包含 <message_meta sent_at="..." />，它只是系统提供的消息发生时间。你可以据此理解时间顺序和间隔，但绝对禁止在回复中复制、改写、解释或输出 message_meta、消息时间标签及其时间值。只输出角色真正要发送的内容。\n</message_metadata_protocol>`;
+    return `${prompt}\n\n<message_metadata_protocol>\n历史消息开头可能包含 <message_meta sent_at="..." id="..." />。sent_at 只表示消息发生时间；id 只用于角色在确实想收藏某条用户消息时定位原消息。它们都是不可见的内部元数据。绝对禁止在回复中复制、改写、解释或输出 message_meta 及其中的值。只输出角色真正要发送的内容。\n</message_metadata_protocol>`;
 }
 
 function stripPromptMetadataEcho(text) {
@@ -512,10 +534,11 @@ function buildProjectPrivateChatPromptSources(character, systemPrompt) {
         { tag: 'worldbook_scene_after', registryId: 'worldbook.scene_after', type: 'worldbook', title: '05 世界书·场景后置', position: 'after' },
         { tag: 'current_related_memory', registryId: 'memory.current_related', type: 'structured_memory', title: '06 当前与相关记忆' },
         { tag: 'current_environment', registryId: 'runtime.environment', type: 'system_rules', title: '07 当前环境' },
-        { tag: 'interaction_rules', registryId: 'prompt.interaction_rules', type: 'system_rules', title: '08 互动规则' },
-        { tag: 'output_formats', registryId: 'output.chat_protocol', type: 'output_rules', title: '09 输出规则' },
-        { tag: 'background_write', registryId: 'output.background_write', type: 'output_rules', title: '10 后台写入' },
-        { tag: 'message_metadata_protocol', registryId: 'prompt.message_metadata', type: 'system_rules', title: '11 消息说明' }
+        { tag: 'custom_rules', registryId: 'prompt.custom_rules', type: 'system_rules', title: '08 自定义规则' },
+        { tag: 'interaction_rules', registryId: 'prompt.interaction_rules', type: 'system_rules', title: '09 互动规则' },
+        { tag: 'output_formats', registryId: 'output.chat_protocol', type: 'output_rules', title: '10 输出规则' },
+        { tag: 'background_write', registryId: 'output.background_write', type: 'output_rules', title: '11 后台写入' },
+        { tag: 'message_metadata_protocol', registryId: 'prompt.message_metadata', type: 'system_rules', title: '12 消息说明' }
     ];
     return specs.map(spec => {
         const block = extractPromptTagBlock(prompt, spec.tag);
@@ -1079,6 +1102,15 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             return true;
         });
 
+        const autonomousFavoriteEnabled = chatType === 'private'
+            && !!chat.characterAutoFavoriteEnabled
+            && !isBackground
+            && !isSummary
+            && !isCharBlockedMonologue;
+        const autonomousFavoriteCandidateIds = autonomousFavoriteEnabled
+            ? getAutonomousFavoriteCandidateIds(historySlice)
+            : new Set();
+
         let weatherText = '';
         if (chatType === 'private' && window.WeatherService) {
             const charWeather = await window.WeatherService.getCharacterWeatherPrompt(chat);
@@ -1096,7 +1128,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             } catch (error) {
                 console.warn('[MemoryContext] failed to prepare layered long-term memory:', error);
             }
-            systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText, enableMemorySidecar: !isBackground && !isSummary });
+            systemPrompt = generatePrivateSystemPrompt(chat, { isPhoneControlRevokeAttempt, weatherText, isBackground, isSummary, isCharBlockedMonologue, enableMemorySidecar: !isBackground && !isSummary });
             // 最终 payload 防线：结构化档案启用且已绑定模板时，任何自定义模板或节点分支都不能静默丢失档案。
             systemPrompt = ensureStructuredArchivePromptInjection(chat, systemPrompt);
             systemPrompt = window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(systemPrompt) || systemPrompt;
@@ -1154,7 +1186,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                 const role = (msg.role === 'assistant' || msg.role === 'char') ? 'model' : 'user';
                 const currentMsgTime = Number(msg.timestamp) || 0;
                 const timeDiff = lastMsgTimeForAI > 0 && currentMsgTime > 0 ? currentMsgTime - lastMsgTimeForAI : 0;
-                let prefix = buildPromptMessageTimePrefix(currentMsgTime);
+                let prefix = buildPromptMessageTimePrefix(currentMsgTime, autonomousFavoriteCandidateIds.has(msg.id) ? msg.id : '');
                 if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000) {
                     prefix += `[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]
 `;
@@ -1234,10 +1266,6 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                         parts.unshift({text: prefix});
                     }
                 }
-                
-                if (msg.role === 'user' && chatType === 'private' && chat.characterAutoFavoriteEnabled && parts.length > 0 && parts[0].text) {
-                    parts[0].text = '[id:' + msg.id + ']\n' + parts[0].text;
-                }
 
                 return { role, parts };
             });
@@ -1295,7 +1323,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                let content;
                const currentMsgTime = Number(msg.timestamp) || 0;
                const timeDiff = lastMsgTimeForAI > 0 && currentMsgTime > 0 ? currentMsgTime - lastMsgTimeForAI : 0;
-               let prefix = buildPromptMessageTimePrefix(currentMsgTime);
+               let prefix = buildPromptMessageTimePrefix(currentMsgTime, autonomousFavoriteCandidateIds.has(msg.id) ? msg.id : '');
                if (db.apiSettings && db.apiSettings.timePerceptionEnabled && timeDiff > 30 * 60 * 1000) {
                    prefix += `[system: 距离上次互动已过去 ${formatTimeGap(timeDiff)}。话题可能已中断，请自然地开启新话题或对时间流逝做出反应。]
 `;
@@ -1307,9 +1335,6 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                    const replyText = replyTextMatch ? replyTextMatch[1] : msg.content;
                    
                    let textContent = `${prefix}[${chat.myName}引用“${msg.quote.content}”并回复：${replyText}]`;
-                   if (chatType === 'private' && chat.characterAutoFavoriteEnabled) {
-                       textContent = '[id:' + msg.id + ']\n' + textContent;
-                   }
                    content = [{type: 'text', text: textContent}];
 
                } else {
@@ -1375,13 +1400,6 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
                                    `（我刚刚写了一篇小剧场，标题是「${title}」。以下是我写的内容：\n${excerpt}）`
                                );
                            }
-                       }
-                   }
-                   if (msg.role === 'user' && chatType === 'private' && chat.characterAutoFavoriteEnabled) {
-                       if (typeof content === 'string') {
-                           content = '[id:' + msg.id + ']\n' + content;
-                       } else if (Array.isArray(content) && content[0] && content[0].text) {
-                           content[0].text = '[id:' + msg.id + ']\n' + content[0].text;
                        }
                    }
                    
@@ -1604,7 +1622,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
         });
         
         if (streamEnabled) {
-            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null);
+            await processStream(response, chat, provider, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null, isSummary);
         } else {
             let result;
             try {
@@ -1657,7 +1675,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             // ===================================
             
             
-            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null);
+            await handleAiReplyContent(fullResponse, chat, chatId, chatType, isBackground, isCharBlockedMonologue, memoryRoundToken, operationRecord?.id || null, isSummary);
         }
 
         if (operationRecord) {
@@ -1711,7 +1729,7 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
     }
 }
 
-async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null) {
+async function processStream(response, chat, apiType, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null, isSummary = false) {
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let fullResponse = "", accumulatedChunk = "";
     for (; ;) {
@@ -1778,7 +1796,7 @@ async function processStream(response, chat, apiType, targetChatId, targetChatTy
     }
 
     // ===================
-    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue, memoryRoundToken, parentOperationId);
+    await handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground, isCharBlockedMonologue, memoryRoundToken, parentOperationId, isSummary);
 }
 
 /** 返回该角色在手机掌控下可见的角色与群聊（未开启角色过滤则返回全部，开启则只返回指定的角色及所在群聊） */
@@ -1959,7 +1977,7 @@ function executePhoneControlCommands(text, controllingChar) {
     return { cleaned, executed };
 }
 
-async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null) {
+async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChatType, isBackground = false, isCharBlockedMonologue = false, memoryRoundToken = null, parentOperationId = null, isSummary = false) {
     const rawResponse = fullResponse;
     // 双保险：即使模型复述了内部时间元数据，也不能把它解析成独立聊天气泡。
     fullResponse = stripPromptMetadataEcho(fullResponse);
@@ -2029,12 +2047,12 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     .replace(/\s*```$/i, '');
                 const payload = JSON.parse(rawPayload);
                 const items = Array.isArray(payload?.items) ? payload.items : [];
-                items.slice(0, 3).forEach(item => {
+                items.forEach(item => {
                     const messageId = String(item?.messageId || '').trim();
                     if (!/^msg_[^\s:<>]+$/.test(messageId)) return;
                     const rawTags = Array.isArray(item?.tags) ? item.tags : String(item?.tags || '').split(/[,，、]/u);
-                    const tags = Array.from(new Set(rawTags.map(value => String(value || '').trim()).filter(Boolean))).slice(0, 8);
-                    favoriteCommands.push({ messageId, tags, note: String(item?.note || '').trim().slice(0, 80) });
+                    const tags = Array.from(new Set(rawTags.map(value => String(value || '').trim()).filter(Boolean))).slice(0, 6);
+                    favoriteCommands.push({ messageId, tags, note: String(item?.note || '').trim().slice(0, 60) });
                 });
             } catch (error) {
                 console.warn('[FavoriteMemory] 无法解析favorite_ops', error);
@@ -2049,10 +2067,19 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
             favoriteCommands.push({ messageId: legacyFavoriteMatch[1], tags: [], note: (legacyFavoriteMatch[2] || '').trim() });
         }
         fullResponse = fullResponse.replace(legacyFavoriteRegex, '').replace(/\n{3,}/g, '\n\n').trim();
-        if (targetChatType === 'private' && chat.characterAutoFavoriteEnabled && typeof addCharacterFavorite === 'function') {
-            favoriteCommands.slice(0, 3).forEach(function(cmd) {
-                addCharacterFavorite(cmd.messageId, targetChatId, cmd.note, cmd.tags);
-            });
+        if (targetChatType === 'private' && !isBackground && !isSummary && !isCharBlockedMonologue && chat.characterAutoFavoriteEnabled && typeof addCharacterFavorite === 'function') {
+            const eligibleIds = getAutonomousFavoriteCandidateIds(chat?.history || []);
+            const seen = new Set();
+            for (const command of favoriteCommands) {
+                if (!eligibleIds.has(command.messageId) || seen.has(command.messageId)) continue;
+                seen.add(command.messageId);
+                const result = await addCharacterFavorite(command.messageId, targetChatId, command.note, command.tags, {
+                    eligibleMessageIds: Array.from(eligibleIds)
+                });
+                if (result?.status === 'rejected') {
+                    console.info('[FavoriteMemory] 已忽略无法执行的收藏动作：', result.reason);
+                }
+            }
         }
 
         // 1.6 提取并执行头像系统指令，然后从展示内容中移除
@@ -2950,12 +2977,25 @@ function buildDynamicAgeNotice(ownerName, birthday, enabled, perspectiveLabel) {
         : `${perspectiveLabel}（${ownerName}）出生于${dateText}，当前${age}岁。`;
 }
 
-function buildSessionProjectContent(character, currentTime) {
-    const lines = [
-        '当前任务：在“404”聊天软件中持续扮演当前角色，与用户进行长期、连续、自然的私聊。',
-        `当前时间：${currentTime}。知晓时间顺序，但除非当前话题相关，不主动催促或评论时间。`
-    ];
-    if (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false) {
+function getActiveNodeBaseMode(activeNode) {
+    if (!activeNode) return 'online';
+    return activeNode.customConfig?.baseMode
+        || (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
+}
+
+function buildSessionProjectContent(character, currentTime, modeContext = {}) {
+    const activeNode = modeContext.activeNode || null;
+    const baseMode = modeContext.baseMode || 'online';
+    const lines = [];
+    if (activeNode) {
+        lines.push(`当前任务：在“404”中持续扮演当前角色，正在进行剧情节点「${activeNode.name || '未命名节点'}」。`);
+    } else {
+        lines.push('当前任务：在“404”聊天软件中持续扮演当前角色，与用户进行长期、连续、自然的私聊。');
+    }
+    lines.push(`当前时间：${currentTime}。知晓时间顺序，但除非当前话题相关，不主动催促或评论时间。`);
+    if (baseMode === 'offline') {
+        lines.push('当前模式：线下剧情演绎。用户输入可以代表现实场景中的话语、动作、神态或剧情推动。');
+    } else if (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false) {
         lines.push('当前模式：纯线上聊天。保持在线角色身份，不主动提出线下见面、转移联系方式或假装现实接触已经发生。');
     } else {
         lines.push('当前模式：允许依据现有设定理解线上与线下关系。');
@@ -3054,8 +3094,53 @@ function buildEnvironmentProjectContent(character, opts) {
     return blocks.join('\n\n');
 }
 
-function buildInteractionProjectContent(character) {
+function buildNodePastOnlineContext(character, activeNode) {
+    if (!activeNode?.readMemory || !Array.isArray(character.history)) return '';
+    let startIndex = -1;
+    for (let i = character.history.length - 1; i >= 0; i--) {
+        const message = character.history[i];
+        if (message.isNodeBoundary && message.nodeAction === 'start' && message.nodeId === character.activeNodeId) {
+            startIndex = i;
+            break;
+        }
+    }
+    if (startIndex < 0) return '';
+    let history = character.history.slice(0, startIndex);
+    history = getRequestHistorySlice(character, 'private', history);
+    if (typeof filterHistoryForAI === 'function') history = filterHistoryForAI(character, history);
+    history = history.filter(message => !message.isContextDisabled && !message.isThinking);
+    if (!history.length) return '';
+    const text = history.map(message => {
+        const content = message.parts?.length ? message.parts.map(part => part.text || '[图片]').join('') : (message.content || '');
+        const sender = message.role === 'user' ? (character.myName || '用户') : (character.realName || '角色');
+        return `${sender}: ${content}`;
+    }).join('\n');
+    return `【进入节点前的线上背景】\n以下内容只作为节点开始前的关系背景，不要求逐句复述：\n${text}`;
+}
+
+function buildNodeEnvironmentProjectContent(character, activeNode, opts) {
+    if (!activeNode) return buildEnvironmentProjectContent(character, opts);
     const blocks = [];
+    blocks.push(`【剧情节点】\n节点：${activeNode.name || '未命名节点'}\n${activeNode.prompt ? `节点指令：\n${activeNode.prompt}` : '按照当前节点设定自然推进。'}`);
+    if (activeNode.customConfig?.extendedRules) {
+        blocks.push(`【节点扩展规则】\n${activeNode.customConfig.extendedRules}`);
+    }
+    const past = buildNodePastOnlineContext(character, activeNode);
+    if (past) blocks.push(past);
+    const normalEnvironment = buildEnvironmentProjectContent(character, opts);
+    if (normalEnvironment) blocks.push(normalEnvironment);
+    return blocks.join('\n\n');
+}
+
+function buildInteractionProjectContent(character, options = {}) {
+    const blocks = [];
+    const baseMode = options.baseMode || 'online';
+    if (baseMode === 'offline') {
+        blocks.push('[system: xxx] 是系统提供的场景或上下文，只需理解和应用，不在剧情中解释其标签。');
+        blocks.push('当前为线下现实互动模式。综合理解用户的话语、动作、神态和剧情推动，并在同一现实场景中回应。');
+        blocks.push('以角色视角维持人物连续性和关系连续性，不跳出角色，不解释自己是模型。');
+        return blocks.join('\n\n');
+    }
     if (character.canBlockUser !== false) {
         blocks.push(`【角色拉黑能力】\n只有在角色确实极度愤怒、伤心或拒绝继续对话时，才可在回复末尾输出隐藏指令：[char-action:block-user|reason:简短理由]。不要把它当作普通互动手段。`);
     }
@@ -3068,25 +3153,53 @@ function buildInteractionProjectContent(character) {
     return blocks.filter(Boolean).join('\n\n');
 }
 
-function buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, worldBooksAfter) {
+function normalizeNodeCustomOutputFormat(value) {
+    if (Array.isArray(value)) {
+        return value.map(item => (typeof item === 'object' && item !== null ? item.format || '' : item))
+            .map(item => String(item || '').trim()).filter(Boolean).join('\n');
+    }
+    return String(value || '').trim();
+}
+
+function buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, worldBooksAfter, options = {}) {
     const blocks = [];
+    const baseMode = options.baseMode || 'online';
+    const activeNode = options.activeNode || null;
     if (character.statusPanel?.enabled && character.statusPanel.promptSuffix) blocks.push(character.statusPanel.promptSuffix);
-    blocks.push(`【基础输出格式】\n${getOnlineOutputFormats(character, worldBooksBefore, [worldBooksMiddle, worldBooksAfter].filter(Boolean).join('\n'))}`);
-    const minReply = character.replyCountMin || 3;
-    const maxReply = character.replyCountMax || 8;
-    blocks.push(character.replyCountEnabled
-        ? `【回复节奏】每次回复严格保持在${minReply}-${maxReply}条消息内；数量要自然变化，除非角色状态确实需要，不要总是触碰上限。`
-        : '【回复节奏】通常一次回复3-8条短消息，数量保持自然变化。');
-    blocks.push('特殊消息格式只在当前情境自然需要时使用，不要机械轮换、频繁重复或为了使用格式而使用。');
+    if (baseMode === 'offline') {
+        blocks.push(`【基础输出格式】\n${getOfflineOutputFormats(character)}`);
+        blocks.push('【篇幅与结构】默认在一条剧情消息内输出完整场景；节点没有另行规定时，控制在约800—1000字。');
+    } else {
+        let onlineFormats = getOnlineOutputFormats(character, worldBooksBefore, [worldBooksMiddle, worldBooksAfter].filter(Boolean).join('\n'));
+        if (activeNode?.customConfig?.injectedFormats) onlineFormats += getInjectedFormatsPrompt(character, activeNode.customConfig.injectedFormats);
+        blocks.push(`【基础输出格式】\n${onlineFormats}`);
+        const minReply = character.replyCountMin || 3;
+        const maxReply = character.replyCountMax || 8;
+        blocks.push(character.replyCountEnabled
+            ? `【回复节奏】每次回复严格保持在${minReply}-${maxReply}条消息内；数量要自然变化，除非角色状态确实需要，不要总是触碰上限。`
+            : '【回复节奏】通常一次回复3-8条短消息，数量保持自然变化。');
+        blocks.push('特殊消息格式只在当前情境自然需要时使用，不要机械轮换、频繁重复或为了使用格式而使用。');
+    }
+    const customFormat = normalizeNodeCustomOutputFormat(activeNode?.customConfig?.customOutputFormat);
+    if (customFormat) {
+        blocks.push(`【节点自定义输出格式】\n${customFormat}\n使用可被前端解析的中括号格式，例如：[动作/角色名：内容]。`);
+    }
     blocks.push('避免照抄历史消息的句式和词汇；保持角色连续性，但当前回复要自然、新鲜。');
-    blocks.push('不要主动终止聊天，除非用户明确提出。');
+    blocks.push('不要主动终止聊天或剧情，除非用户明确提出。');
     return blocks.join('\n\n');
 }
 
-function buildBackgroundWriteProjectContent(character, opts) {
+function buildBackgroundWriteProjectContent(character, opts, options = {}) {
     const blocks = [];
-    if (character.characterAutoFavoriteEnabled) {
-        blocks.push(`【收藏记忆写入】\n你可以把当前私聊中重要的用户原消息写入本角色自己的“收藏记忆”表。收藏不需要标题，后续只按标签召回。\n在正常回复末尾追加一次：<favorite_ops>{"items":[{"messageId":"msg_123","tags":["童年","梦想"],"note":"反映他的核心愿望"}]}</favorite_ops>。\n只收藏当前聊天中的用户消息；每轮最多3条；每条2—8个简短标签；寄语可留空且不超过80字；不要填写正文或标题；不要在可见对话中提及收藏。没有要收藏的消息时不要输出favorite_ops。`);
+    if (options.allowFavorite !== false && character.characterAutoFavoriteEnabled) {
+        blocks.push(`【角色的私人收藏能力】
+收藏不是记忆整理、信息提取、重要性打分，也不是每轮需要检查的后台任务。它和聊天里自然地点一下“收藏”一样，是你作为当前角色的私人情感动作。
+
+当当前上下文中的某条用户原消息让你真实地产生“我想把这句话留下来，以后还想看到”的冲动时，你可以静默收藏它。它可以是重要事实，也可以只是一句很短的日常话、玩笑、情话、回答或某个当时格外触动你的细节。是否收藏只取决于角色在具体关系与语境中的感受，不按字数、信息量、长期价值或实用性判断。
+
+不要巡视聊天记录、不要为了整理资料而批量收藏、不要为了使用功能而收藏；没有自然的收藏冲动时，什么都不做。收藏和结构化记忆互不替代：同一条消息既可能成为事实记忆，也可能因为原话本身对你有意义而被收藏。
+
+当你实际决定收藏时，在正常回复末尾附加：[FAVORITE:消息ID:可选的私人寄语]。消息ID来自用户消息的 message_meta id。寄语可以为空，也可以写一句你自己的感受；不要生成标签、标题或正文，不要在可见对话中提及收藏行为。一次真实情境中若自然想收藏不止一条，可以分别附加多个标记；没有收藏时不要输出任何标记。`);
     }
     if (opts?.enableMemorySidecar && window.MemoryTableSidecar) {
         const memoryProtocol = window.MemoryTableSidecar.buildSystemPrompt(character);
@@ -3095,8 +3208,65 @@ function buildBackgroundWriteProjectContent(character, opts) {
     return blocks.join('\n\n');
 }
 
+function getCustomPromptTemplate(character) {
+    if (character.customPromptPreset && db.magicRoom?.presets) {
+        const preset = db.magicRoom.presets.find(item => item.name === character.customPromptPreset);
+        if (preset?.template) return String(preset.template);
+    }
+    if (db.magicRoom?.customPromptEnabled && db.magicRoom.customPromptTemplate) return String(db.magicRoom.customPromptTemplate);
+    return '';
+}
+
+function buildCustomRulesProjectContent(template, character, linkedChar, currentTime) {
+    let text = String(template || '').trim();
+    if (!text) return '';
+
+    // V5.8.3：自定义 Prompt 只占据“自定义规则”插槽。身份、世界书、记忆、环境和输出格式由固定项目发送，避免位置失控和重复注入。
+    text = text
+        .replace(/<char_settings\b[^>]*>[\s\S]*?<\/char_settings>/gi, '')
+        .replace(/<user_settings\b[^>]*>[\s\S]*?<\/user_settings>/gi, '')
+        .replace(/<memoir\b[^>]*>[\s\S]*?<\/memoir>/gi, '')
+        .replace(/<logic_rules\b[^>]*>([\s\S]*?)<\/logic_rules>/gi, '$1')
+        .replace(/<output_formats\b[^>]*>([\s\S]*?)<\/output_formats>/gi, '$1')
+        .replace(/\{\{世界书_前\}\}|\{\{世界书_中\}\}|\{\{世界书_后\}\}/g, '')
+        .replace(/\{\{角色人设\}\}|\{\{用户人设\}\}|\{\{共同回忆\}\}/g, '')
+        .replace(/\{\{在线逻辑规则\}\}|\{\{输出格式\}\}|\{\{天气信息\}\}/g, '')
+        .replace(/\{\{当前时间\}\}/g, currentTime || '')
+        .replace(/\{\{角色名\}\}/g, character.realName || '')
+        .replace(/\{\{用户称呼\}\}/g, character.myName || '')
+        .replace(/\{\{角色状态\}\}/g, character.status || '在线')
+        // 兼容旧版完整模板：固定会话、身份、世界书、记忆和输出项目已经由统一骨架发送，只保留用户另行添加的规则。
+        .replace(/^\s*你正在一个名为[“"]404[”"]的线上聊天软件中扮演一个角色。请严格遵守以下规则[:：]?\s*$/gmi, '')
+        .replace(/^\s*核心规则[:：]\s*$/gmi, '')
+        .replace(/^\s*A\.\s*当前时间[:：].*不要主动提及或评论时间.*$/gmi, '')
+        .replace(/^\s*\[System Notice\]\s*你的出生日期是\[出生日期\].*$/gmi, '')
+        .replace(/^\s*\[System Notice\]\s*你当前所在的当地时间是[:：].*$/gmi, '')
+        .replace(/^\s*B\.\s*纯线上互动[:：].*始终保持在线角色的身份。\s*$/gmi, '')
+        .replace(/^\s*(?:角色和对话规则|角色设定|用户设定)[:：]\s*$/gmi, '')
+        .replace(/^\s*16\.\s*你的输出格式必须严格遵循以下格式[:：]?\s*$/gmi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    text = replacePromptAliases(text, character, linkedChar);
+    return text ? `【自定义规则】\n${text}` : '';
+}
+
+function buildNodeStyleWorldBookContent(activeNode) {
+    if (!activeNode || getActiveNodeBaseMode(activeNode) !== 'offline') return '';
+    const ids = activeNode.customConfig?.styleWorldBookIds;
+    if (!Array.isArray(ids) || !ids.length) return '';
+    const content = ids.map(id => db.worldBooks?.find(item => item.id === id))
+        .filter(item => item && !item.disabled)
+        .map(item => item.content)
+        .filter(Boolean)
+        .join('\n\n');
+    return content ? `【节点文风参考】\n请参考以下文风设定进行描写：\n${content}` : '';
+}
+
 function serializePrivatePromptProjects(projects, character, linkedChar) {
-    const prompt = (Array.isArray(projects) ? projects : []).map(project => wrapPromptProject(project.tag, project.content, project.attributes || '')).filter(Boolean).join('\n\n');
+    const prompt = (Array.isArray(projects) ? projects : [])
+        .map(project => wrapPromptProject(project.tag, project.content, project.attributes || ''))
+        .filter(Boolean)
+        .join('\n\n');
     return replacePromptAliases(prompt, character, linkedChar);
 }
 
@@ -3104,387 +3274,71 @@ function generatePrivateSystemPrompt(character, opts) {
     opts = opts || {};
     window.OVORetiredFeaturePolicy?.applyToCharacter?.(character);
     const linkedChar = (character.source === 'forum' && character.linkedCharId && db.characters)
-        ? db.characters.find(c => c.id === character.linkedCharId) : null;
-    const effectiveChar = linkedChar || character;
+        ? db.characters.find(item => item.id === character.linkedCharId) : null;
+    const activeNode = (character.activeNodeId && Array.isArray(character.nodes))
+        ? character.nodes.find(item => item.id === character.activeNodeId) || null : null;
+    const baseMode = getActiveNodeBaseMode(activeNode);
+    const customTemplate = getCustomPromptTemplate(character);
 
-    let { before: worldBooksBefore, middle: worldBooksMiddle, after: worldBooksAfter } = getActiveWorldBooksContents(character);
-    
+    const { before: worldBooksBefore, middle: worldBooksMiddle, after: worldBooksAfter } = getActiveWorldBooksContents(character);
     const now = new Date();
     let currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (character.enableDynamicTimezone && character.charTimezone) {
-        const tzTime = getLocalTimeInTimezone(character.charTimezone);
-        if (tzTime) currentTime = tzTime;
+        const timezoneTime = getLocalTimeInTimezone(character.charTimezone);
+        if (timezoneTime) currentTime = timezoneTime;
     }
 
-    // 检查角色是否有专属的自定义提示词，或者全局是否开启了自定义提示词
-    let useCustomPrompt = false;
-    let template = '';
-    if (character.customPromptPreset && db.magicRoom && db.magicRoom.presets) {
-        const preset = db.magicRoom.presets.find(p => p.name === character.customPromptPreset);
-        if (preset) {
-            useCustomPrompt = true;
-            template = preset.template;
-        }
-    }
-    
-    if (!useCustomPrompt && db.magicRoom && db.magicRoom.customPromptEnabled && db.magicRoom.customPromptTemplate) {
-        useCustomPrompt = true;
-        template = db.magicRoom.customPromptTemplate;
-    }
-
-    // 处理用户自定义的底层系统提示词模板
-    if (useCustomPrompt && template) {
-        
-        // 构建共同回忆字符串。即使用户自定义模板遗漏占位符，也会在末尾安全补入。
-        const hadMemoryPlaceholder = /\{\{共同回忆\}\}/.test(template);
-        let commonMemories = buildCombinedLongTermMemoryContext(character);
-        
-        // 构建群聊记忆互通字符串
-        if (character.syncGroupMemory) {
-            let groupsWithCharacter = db.groups.filter(group => 
-                group.members && group.members.some(member => member.originalCharId === character.id)
-            );
-            if (character.syncGroupIds && Array.isArray(character.syncGroupIds) && character.syncGroupIds.length > 0) {
-                groupsWithCharacter = groupsWithCharacter.filter(group => 
-                    character.syncGroupIds.includes(group.id)
-                );
-            }
-            if (groupsWithCharacter.length > 0) {
-                let groupMemoryContext = '';
-                groupsWithCharacter.forEach(group => {
-                    let groupFavoritedJournals = (group.memoryJournals || []).filter(j => j.isFavorited);
-                    const summaryCount = character.groupMemorySummaryCount || 0;
-                    if (summaryCount > 0 && groupFavoritedJournals.length > summaryCount) {
-                        groupFavoritedJournals = groupFavoritedJournals.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, summaryCount);
-                    }
-                    const groupFavoritedJournalsText = groupFavoritedJournals.map(j => `标题：${j.title}\n内容：${j.content}`).join('\n\n---\n\n');
-                    const maxGroupHistory = character.groupMemoryHistoryCount || 20;
-                    let recentGroupHistory = group.history.slice(-maxGroupHistory);
-                    if (typeof filterHistoryForAI === 'function') {
-                        recentGroupHistory = filterHistoryForAI(group, recentGroupHistory);
-                    }
-                    recentGroupHistory = recentGroupHistory.filter(m => !m.isContextDisabled);
-                    if (groupFavoritedJournalsText || recentGroupHistory.length > 0) {
-                        groupMemoryContext += `\n【群聊"${group.name}"的背景信息】\n`;
-                        if (groupFavoritedJournalsText) groupMemoryContext += `群聊总结：\n${groupFavoritedJournalsText}\n`;
-                        if (recentGroupHistory.length > 0) {
-                            const historyText = recentGroupHistory.map(m => {
-                                let content = m.content;
-                                if (m.parts && m.parts.length > 0) content = m.parts.map(p => p.text || '[图片]').join('');
-                                const senderName = m.senderId ? (group.members.find(mem => mem.id === m.senderId)?.groupNickname || '未知') : (m.role === 'user' ? group.me.nickname : '系统');
-                                return `${senderName}: ${content}`;
-                            }).join('\n');
-                            groupMemoryContext += `最近群聊记录：\n${historyText}\n`;
-                        }
-                    }
-                });
-                if (groupMemoryContext) {
-                    commonMemories += `\n【群聊记忆互通】\n以下是你所在群聊的相关背景信息，这些信息可以帮助你更好地理解我们之间的对话上下文：${groupMemoryContext}`;
-                }
-            }
-        }
-
-        // 构建在线逻辑规则
-        let onlineLogicRules = getOnlineLogicRules(character, 4);
-
-        // 构建输出格式
-        let outputFormats = getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter);
-
-        // 替换变量
-        template = template.replace(/\{\{当前时间\}\}/g, currentTime);
-        template = template.replace(/\{\{世界书_前\}\}/g, worldBooksBefore || '');
-        template = template.replace(/\{\{世界书_中\}\}/g, worldBooksMiddle || '');
-        template = template.replace(/\{\{世界书_后\}\}/g, worldBooksAfter || '');
-        template = template.replace(/\{\{角色名\}\}/g, character.realName || '');
-        template = template.replace(/\{\{用户称呼\}\}/g, character.myName || '');
-        template = template.replace(/\{\{角色状态\}\}/g, character.status || '在线');
-        template = template.replace(/\{\{角色人设\}\}/g, getEffectivePersona(character) || '');
-        template = template.replace(/\{\{用户人设\}\}/g, character.myPersona || '');
-        template = template.replace(/\{\{共同回忆\}\}/g, commonMemories || '');
-        template = template.replace(/\{\{在线逻辑规则\}\}/g, onlineLogicRules || '');
-        template = template.replace(/\{\{输出格式\}\}/g, outputFormats || '');
-        template = template.replace(/\{\{天气信息\}\}/g, opts.weatherText || '');
-
-        // 自定义 Prompt 常会被用户删改；遗漏 {{共同回忆}} 时不能静默丢失档案/结构化记忆。
-        if (commonMemories && !hadMemoryPlaceholder) {
-            const probe = commonMemories.slice(0, Math.min(120, commonMemories.length));
-            if (!probe || !template.includes(probe)) {
-                template += `\n\n<memoir>\n${commonMemories}\n</memoir>`;
-            }
-        }
-
-        if (opts.weatherText && !template.includes('<environment>')) {
-             template += opts.weatherText;
-        }
-        // 补充必要的结尾和选项
-        if (character.replyCountEnabled) {
-            const minReply = character.replyCountMin || 3;
-            const maxReply = character.replyCountMax || 8;
-            template += `\n<Chatting Guidelines>\n17. **对话节奏**: 你需要模拟真人的聊天习惯，你可以一次性生成多条短消息。每次回复消息条数**必须**严格限定在**${minReply}-${maxReply}条以内**，**关键规则**：请保持回复消息数量的**随机性和多样性**。**除非**你的设定偏向活跃或情绪波动大或是特殊情况下，否则**不要**触碰 ${maxReply} 条的上限。\n`;
-        } else {
-            template += `\n<Chatting Guidelines>\n17. **对话节奏**: 你需要模拟真人的聊天习惯，你可以一次性生成多条短消息。每次回复3-8条消息之内，**关键规则**：请保持回复消息数量的**随机性和多样性**。\n`;
-        }
-        template += `18. **特殊消息格式的使用原则**：(1)请把语音、撤回、转账、更新状态、引用、定位等特殊格式视为增强互动的“调味剂”，遵循**自然、主动、多样化触发逻辑。同种格式不要重复频繁发送，不同格式不要用户不提就一直不发**。\n(2)注意在本回合消息列里，特殊消息插入位置的随机性，每轮必须和上一回合插入位置不同。\n`;
-        template += `19. 🌟**防复读对话**🌟：在本轮回复中，你**必须**区别于过往聊天记录而去变换句式和词汇，**绝对不要**重复或模仿历史记录中的文本结构，保持自然、随机和多样性。\n`;
-        template += `</Chatting Guidelines>\n`;
-        template += `20. 不要主动终止聊天进程，除非我明确提出。保持你的人设，自然地进行对话。`;
-
-        if (character.characterAutoFavoriteEnabled) {
-            template += `\n\n【消息收藏功能】\n你可以把当前私聊中重要的用户原消息写入本角色自己的“收藏记忆”表。收藏不需要标题，后续只会按标签在相关对话中发送。\n\n**使用方法**：在正常回复末尾追加一次：<favorite_ops>{"items":[{"messageId":"msg_123","tags":["童年","梦想"],"note":"反映他的核心愿望"}]}</favorite_ops>。每条用户消息在上下文中以 [id:消息ID] 标注，请使用该ID。\n\n**规则**：只收藏当前聊天中的用户消息；每轮最多3条；每条提供2—8个简短标签；寄语可留空且不超过80字；不要填写正文或标题；不要在可见对话中提及收藏行为。没有要收藏的消息时不要输出favorite_ops。`;
-        }
-
-        if (opts && opts.historyText) {
-            template += '\n' + opts.historyText;
-        }
-
-        if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
-            template += window.MemoryTableSidecar.buildSystemPrompt(character);
-        }
-        template = replacePromptAliases(template, character, linkedChar);
-        return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(template) || template;
-    }
-
-    // 节点系统：拦截并返回专属提示词
-    let activeNode = null;
-    let isOfflineNode = false;
-    if (character.activeNodeId && character.nodes) {
-        activeNode = character.nodes.find(n => n.id === character.activeNodeId);
-        if (activeNode) {
-            let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
-                           (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
-            if (baseMode === 'offline') {
-                isOfflineNode = true;
-            }
-        }
-    }
-    
-
-
-    if (activeNode) {
-        let nodePrompt = `当前为剧情节点「${activeNode.name}」，你正在扮演一个角色。请严格遵守以下规则：\n`;
-        nodePrompt += `核心规则：\n`;
-        nodePrompt += `A. 当前时间：现在是 ${currentTime}。\n\n`;
-        
-        nodePrompt += `角色和对话规则：\n`;
-        if (worldBooksBefore) nodePrompt += `${worldBooksBefore}\n`;
-        if (worldBooksMiddle) nodePrompt += `${worldBooksMiddle}\n`;
-        
-        nodePrompt += `<char_settings>\n`;
-        nodePrompt += `1. 你的角色名是：${character.realName}。我的称呼是：${character.myName}。\n`;
-        if (linkedChar) {
-            nodePrompt += `2. 你的角色设定是：${getEffectivePersona(linkedChar)}\n`;
-        } else {
-            nodePrompt += `2. 你的角色设定是：${getEffectivePersona(character)}\n`;
-        }
-        if (worldBooksAfter) nodePrompt += `${worldBooksAfter}\n`;
-        nodePrompt += `</char_settings>\n\n`;
-        
-        nodePrompt += `<user_settings>\n`;
-        if (character.myPersona) {
-            nodePrompt += `3. 关于我的人设：${character.myPersona}\n`;
-        }
-        if (character.myEnableDynamicAge && character.myBirthday) {
-            const today = new Date();
-            const birthDate = new Date(character.myBirthday);
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                age--;
-            }
-            if (m === 0 && today.getDate() === birthDate.getDate()) {
-                nodePrompt += `[System Notice] ✨重要✨ 与你对话的用户（称呼：${character.myName}）出生于${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，今天正是他/她的${age}岁生日！请在对话中自然地表现出你对这一点的知晓和关心。\n`;
-            } else {
-                nodePrompt += `[System Notice] 与你对话的用户（称呼：${character.myName}）出生于${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，现在的年龄是${age}岁。\n`;
-            }
-        }
-        if (character.myEnableDynamicTimezone && character.myTimezone) {
-            const timeStr = getLocalTimeInTimezone(character.myTimezone);
-            if (timeStr) {
-                nodePrompt += `[System Notice] 与你对话的用户（称呼：${character.myName}）当前所在的当地时间是：${timeStr} (${character.myTimezone})。\n`;
-            }
-        }
-        nodePrompt += `</user_settings>\n\n`;
-        
-        nodePrompt += `<node_directive>\n${activeNode.prompt}\n</node_directive>\n\n`;
-        
-        if (activeNode.readMemory) {
-            nodePrompt += `<memoir>\n`;
-            const combinedNodeMemory = buildCombinedLongTermMemoryContext(character);
-            if (combinedNodeMemory) nodePrompt += `${combinedNodeMemory}\n`;
-
-                let startIndex = -1;
-                for (let i = character.history.length - 1; i >= 0; i--) {
-                    const m = character.history[i];
-                    if (m.isNodeBoundary && m.nodeAction === 'start' && m.nodeId === character.activeNodeId) {
-                        startIndex = i;
-                        break;
-                    }
-                }
-                if (startIndex !== -1) {
-                    let pastOnlineMsgs = character.history.slice(0, startIndex);
-                    if (typeof filterHistoryForAI === 'function') {
-                        pastOnlineMsgs = filterHistoryForAI(character, pastOnlineMsgs);
-                    }
-                    pastOnlineMsgs = pastOnlineMsgs.filter(m => !m.isContextDisabled && !m.isThinking);
-                    
-                    const maxMemory = character.maxMemory || 20;
-                    pastOnlineMsgs = pastOnlineMsgs.slice(-maxMemory);
-                    
-                    if (pastOnlineMsgs.length > 0) {
-                        const pastOnlineText = pastOnlineMsgs.map(m => {
-                            let content = m.content;
-                            if (m.parts && m.parts.length > 0) content = m.parts.map(p => p.text || '[图片]').join('');
-                            const senderName = m.role === 'user' ? character.myName : character.realName;
-                            return `${senderName}: ${content}`;
-                        }).join('\n');
-                        
-                        nodePrompt += `<past_online_chats>\n【过往线上聊天记录】\n以下是进入当前节点前，我们之间的线上聊天记录，作为背景参考：\n${pastOnlineText}\n</past_online_chats>\n\n`;
-                    }
-                }
-
-                // 群聊记忆互通功能
-                if (character.syncGroupMemory) {
-                    let groupsWithCharacter = db.groups.filter(group => 
-                        group.members && group.members.some(member => member.originalCharId === character.id)
-                    );
-                    if (character.syncGroupIds && Array.isArray(character.syncGroupIds) && character.syncGroupIds.length > 0) {
-                        groupsWithCharacter = groupsWithCharacter.filter(group => 
-                            character.syncGroupIds.includes(group.id)
-                        );
-                    }
-                    if (groupsWithCharacter.length > 0) {
-                        let groupMemoryContext = '';
-                        groupsWithCharacter.forEach(group => {
-                            let groupFavoritedJournals = (group.memoryJournals || []).filter(j => j.isFavorited);
-                            const summaryCount = character.groupMemorySummaryCount || 0;
-                            if (summaryCount > 0 && groupFavoritedJournals.length > summaryCount) {
-                                groupFavoritedJournals = groupFavoritedJournals.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, summaryCount);
-                            }
-                            const groupFavoritedJournalsText = groupFavoritedJournals.map(j => `标题：${j.title}\n内容：${j.content}`).join('\n\n---\n\n');
-                            const maxGroupHistory = character.groupMemoryHistoryCount || 20;
-                            let recentGroupHistory = group.history.slice(-maxGroupHistory);
-                            if (typeof filterHistoryForAI === 'function') {
-                                recentGroupHistory = filterHistoryForAI(group, recentGroupHistory);
-                            }
-                            recentGroupHistory = recentGroupHistory.filter(m => !m.isContextDisabled);
-                            if (groupFavoritedJournalsText || recentGroupHistory.length > 0) {
-                                groupMemoryContext += `\n【群聊"${group.name}"的背景信息】\n`;
-                                if (groupFavoritedJournalsText) groupMemoryContext += `群聊总结：\n${groupFavoritedJournalsText}\n`;
-                                if (recentGroupHistory.length > 0) {
-                                    const historyText = recentGroupHistory.map(m => {
-                                        let content = m.content;
-                                        if (m.parts && m.parts.length > 0) content = m.parts.map(p => p.text || '[图片]').join('');
-                                        const senderName = m.senderId ? (group.members.find(mem => mem.id === m.senderId)?.groupNickname || '未知') : (m.role === 'user' ? group.me.nickname : '系统');
-                                        return `${senderName}: ${content}`;
-                                    }).join('\n');
-                                    groupMemoryContext += `最近群聊记录：\n${historyText}\n`;
-                                }
-                            }
-                        });
-                        if (groupMemoryContext) {
-                            nodePrompt += `<group_memories>\n【群聊记忆互通】\n以下是你所在群聊的相关背景信息，这些信息可以帮助你更好地理解我们之间的对话上下文：${groupMemoryContext}\n</group_memories>\n`;
-                        }
-                    }
-                }
-            nodePrompt += `</memoir>\n\n`;
-        }
-        
-        let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
-                       (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
-
-        nodePrompt += `<logic_rules>\n`;
-        if (baseMode === 'offline') {
-            nodePrompt += `4. [system: xxx]：这是一条系统指令，用于设定场景或提供上下文，此条信息不应在对话中被直接提及，你只需理解其内容并应用到后续对话中。\n`;
-            nodePrompt += `5. 当前为线下现实互动模式。用户的输入代表其在现实中的动作、神态、话语或推动剧情的指令。请综合理解用户的输入，并进行现实中的互动回应。\n`;
-            nodePrompt += `6. 你的回复必须是长文本剧情，在一条剧情消息内输出，字数若无特殊要求则在800-1000字之内。\n`;
-            nodePrompt += `7. 严禁使用任何网络聊天格式（如发送语音、表情包、转账等）。\n`;
-        } else {
-            nodePrompt += `4. [system: xxx]：这是一条系统指令，用于设定场景或提供上下文，此条信息不应在对话中被直接提及，你只需理解其内容并应用到后续对话中。\n`;
-            nodePrompt += `5. 你的所有回复都必须直接是聊天内容，绝对不允许包含任何如[心理活动]、(动作)、*环境描写*等多余的、在括号或星号里的叙述性文本。\n`;
-            nodePrompt += getOnlineLogicRules(character, 6);
-        }
-        nodePrompt += `</logic_rules>\n\n`;
-
-        if (activeNode.customConfig && activeNode.customConfig.extendedRules) {
-            nodePrompt += `<extended_rules>\n${activeNode.customConfig.extendedRules}\n</extended_rules>\n\n`;
-        }
-
-        if (baseMode === 'offline' && activeNode.customConfig && activeNode.customConfig.styleWorldBookIds && activeNode.customConfig.styleWorldBookIds.length > 0) {
-            const styleWbContents = activeNode.customConfig.styleWorldBookIds
-                .map(id => db.worldBooks.find(wb => wb.id === id))
-                .filter(wb => wb && !wb.disabled)
-                .map(wb => wb.content)
-                .join('\n\n');
-            if (styleWbContents) {
-                nodePrompt += `<writing_style>\n【文风参考】\n请参考以下文风设定进行描写：\n${styleWbContents}\n</writing_style>\n\n`;
-            }
-        }
-
-        if (character.statusPanel && character.statusPanel.enabled && character.statusPanel.promptSuffix) {
-            nodePrompt += `15. 额外输出要求：${character.statusPanel.promptSuffix}\n`;
-        }
-
-        nodePrompt += `<output_formats>\n`;
-        nodePrompt += `8. 你的基础输出格式必须严格遵循以下格式：\n`;
-        
-        if (baseMode === 'offline') {
-            nodePrompt += getOfflineOutputFormats(character) + '\n';
-        } else {
-            nodePrompt += getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter) + '\n';
-            if (activeNode.customConfig && activeNode.customConfig.injectedFormats) {
-                nodePrompt += getInjectedFormatsPrompt(character, activeNode.customConfig.injectedFormats);
-            }
-        }
-
-        if (activeNode.customConfig && activeNode.customConfig.customOutputFormat) {
-            let formats = activeNode.customConfig.customOutputFormat;
-            if (Array.isArray(formats)) {
-                formats = formats.map(f => {
-                    if (typeof f === 'object' && f !== null) return f.format || '';
-                    return f;
-                }).filter(f => f.trim() !== '').join('\n');
-            }
-            if (formats) {
-                nodePrompt += `\n【自定义输出格式】\n${formats}\n`;
-                nodePrompt += `(注：对于上述自定义输出格式，请务必使用类似 [动作/角色名：内容] 的中括号包裹形式，否则系统前端将无法正确解析和渲染)\n`;
-            }
-        }
-        nodePrompt += `</output_formats>
-
-`;
-        nodePrompt = replacePromptAliases(nodePrompt, character, linkedChar);
-        
-        if (opts && opts.historyText) {
-            nodePrompt += '\n' + opts.historyText;
-        }
-
-        if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
-            nodePrompt += window.MemoryTableSidecar.buildSystemPrompt(character);
-        }
-        return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(nodePrompt) || nodePrompt;
-    }
-
-    // V5.8.0：默认私聊按角色扮演语义层级组装，而不是把功能残差堆进“核心系统规则”。
-    // 核心档案仍存储在记忆表中，但发送时作为前置身份锚点；世界书三个位置是真实插入点。
     const memoryProjects = getStructuredArchiveMemoryProjects(character);
-    const groupMemory = buildGroupMemoryProjectContent(character);
-    const longTermMemory = [memoryProjects.longTerm, groupMemory].filter(Boolean).join('\n\n');
+    const memoryEnabledForMode = !activeNode || activeNode.readMemory !== false;
+    const groupMemory = memoryEnabledForMode ? buildGroupMemoryProjectContent(character) : '';
+    const longTermMemory = memoryEnabledForMode ? [memoryProjects.longTerm, groupMemory].filter(Boolean).join('\n\n') : '';
+    const currentRelatedMemory = memoryEnabledForMode ? memoryProjects.currentRelated : '';
+    const nodeStyleWorldBook = buildNodeStyleWorldBookContent(activeNode);
+    const sceneAfter = [worldBooksAfter, nodeStyleWorldBook].filter(Boolean).join('\n\n');
+
     const promptProjects = [
-        { tag: 'session_rules', content: buildSessionProjectContent(character, currentTime) },
+        { tag: 'session_rules', content: buildSessionProjectContent(character, currentTime, { activeNode, baseMode }) },
         { tag: 'worldbook_identity_before', content: worldBooksBefore },
         { tag: 'identity_core', content: buildCoreIdentityProjectContent(character, linkedChar, memoryProjects) },
         { tag: 'worldbook_identity_after', content: worldBooksMiddle },
         { tag: 'long_term_memory', content: longTermMemory },
-        { tag: 'worldbook_scene_after', content: worldBooksAfter },
-        { tag: 'current_related_memory', content: memoryProjects.currentRelated },
-        { tag: 'current_environment', content: buildEnvironmentProjectContent(character, opts) },
-        { tag: 'interaction_rules', content: buildInteractionProjectContent(character) },
-        { tag: 'output_formats', content: buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, worldBooksAfter) },
-        { tag: 'background_write', content: buildBackgroundWriteProjectContent(character, opts) }
+        { tag: 'worldbook_scene_after', content: sceneAfter },
+        { tag: 'current_related_memory', content: currentRelatedMemory },
+        { tag: 'current_environment', content: activeNode
+            ? buildNodeEnvironmentProjectContent(character, activeNode, opts)
+            : buildEnvironmentProjectContent(character, opts) },
+        { tag: 'custom_rules', content: buildCustomRulesProjectContent(customTemplate, character, linkedChar, currentTime) },
+        { tag: 'interaction_rules', content: buildInteractionProjectContent(character, { activeNode, baseMode }) },
+        { tag: 'output_formats', content: buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, sceneAfter, { activeNode, baseMode }) },
+        { tag: 'background_write', content: buildBackgroundWriteProjectContent(character, opts, { allowFavorite: baseMode !== 'offline' && !opts.isBackground && !opts.isSummary && !opts.isCharBlockedMonologue }) }
     ];
     const prompt = serializePrivatePromptProjects(promptProjects, character, linkedChar);
     return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(prompt) || prompt;
 }
+
+// 独立模型任务只需要读取同一份角色扮演资料，不重复实现核心档案与别名规则。
+window.OVORoleplayPromptProjects = Object.freeze({
+    getIdentity(character) {
+        if (!character) return '';
+        const linked = (character.source === 'forum' && character.linkedCharId && Array.isArray(db?.characters))
+            ? db.characters.find(item => item.id === character.linkedCharId) : null;
+        return replacePromptAliases(buildCoreIdentityProjectContent(character, linked, getStructuredArchiveMemoryProjects(character)), character, linked);
+    },
+    getMemory(character) {
+        return getStructuredArchiveMemoryProjects(character);
+    },
+    getWorldBooks(character) {
+        return getActiveWorldBooksContents(character);
+    },
+    replaceAliases(text, character) {
+        const linked = (character?.source === 'forum' && character?.linkedCharId && Array.isArray(db?.characters))
+            ? db.characters.find(item => item.id === character.linkedCharId) : null;
+        return replacePromptAliases(text, character, linked);
+    },
+    wrap(tag, content) {
+        return wrapPromptProject(tag, content);
+    }
+});
 
 // 根据文本估算 Token（汉字约 1.2，其他约 0.4，与 estimateChatTokens 一致）
 function estimateTokenFromText(text) {
@@ -3505,21 +3359,8 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
     const chat = (chatType === 'private') ? db.characters.find(c => c.id === chatId) : db.groups.find(g => g.id === chatId);
     if (!chat) return null;
 
-    let useCustomPrompt = false;
-    if (chatType === 'private' && chat.customPromptPreset && db.magicRoom && db.magicRoom.presets) {
-        const preset = db.magicRoom.presets.find(p => p.name === chat.customPromptPreset);
-        if (preset) useCustomPrompt = true;
-    }
-    
-    // 如果开启了自定义底层提示词或者是群聊，走旧逻辑（整体 systemPrompt 拆分）
-    if (chatType !== 'private' || (db.magicRoom && db.magicRoom.customPromptEnabled) || useCustomPrompt) {
-        return _getChatTokenBreakdownGroup(chat, chatType);
-    }
-
-    // V5.8.0 默认私聊：Token 分布直接读取与最终请求一致的项目标签，避免继续显示旧“角色人设/用户人设/核心规则”拆分。
-    if (chat.activeNodeId && Array.isArray(chat.nodes) && chat.nodes.some(node => node.id === chat.activeNodeId)) {
-        return _getChatTokenBreakdownGroup(chat, chatType);
-    }
+    // V5.8.3：默认私聊、自定义规则和剧情节点都使用同一项目骨架；只有群聊继续走旧兼容统计。
+    if (chatType !== 'private') return _getChatTokenBreakdownGroup(chat, chatType);
     const character = chat;
     let fullSystemPrompt = typeof generatePrivateSystemPrompt === 'function'
         ? generatePrivateSystemPrompt(character, { weatherText: '', enableMemorySidecar: true })
@@ -3533,11 +3374,12 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
         ['long_term_memory', 'longTermMemory', '04 长期关系记忆', '中期总结、稳定长期记忆和长期群聊补充。'],
         ['worldbook_scene_after', 'worldBookSceneAfter', '05 世界书·场景后置', '靠近当前语境的场景、节点与高影响设定。'],
         ['current_related_memory', 'currentRelatedMemory', '06 当前与相关记忆', '当前状态、相关收藏、待办及其他本轮命中的记忆。'],
-        ['current_environment', 'currentEnvironment', '07 当前环境', '天气、主题变化和本轮临时关系环境。'],
-        ['interaction_rules', 'interactionRules', '08 互动规则', '模型理解消息与维持角色行为的规则。'],
-        ['output_formats', 'outputRules', '09 输出规则', '消息格式、回复节奏、状态面板和防复读要求。'],
-        ['background_write', 'backgroundWrite', '10 后台写入', '收藏记忆与动态记忆的隐藏写入协议。'],
-        ['message_metadata_protocol', 'messageMetadata', '11 消息说明', '历史消息时间标签等内部元数据说明。']
+        ['current_environment', 'currentEnvironment', '07 当前环境', '天气、主题变化、剧情节点和本轮临时关系环境。'],
+        ['custom_rules', 'customRules', '08 自定义规则', '自定义 Prompt 中保留的附加要求；身份、世界书、记忆和输出位置不由它改写。'],
+        ['interaction_rules', 'interactionRules', '09 互动规则', '模型理解消息与维持角色行为的规则。'],
+        ['output_formats', 'outputRules', '10 输出规则', '消息格式、回复节奏、状态面板和防复读要求。'],
+        ['background_write', 'backgroundWrite', '11 后台写入', '收藏记忆与动态记忆的隐藏写入协议。'],
+        ['message_metadata_protocol', 'messageMetadata', '12 消息说明', '历史消息时间标签等内部元数据说明。']
     ];
     const details = projectSpecs.map(([tag, key, name, desc]) => {
         const block = extractPromptTagBlock(fullSystemPrompt, tag);
@@ -3612,61 +3454,22 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
     }
     if (url.endsWith('/')) url = url.slice(0, -1);
 
-    // 1. 构建 System Prompt
+    // 1. 构建通话项目：沿用身份、世界书与记忆的真实层级，仅替换通话规则和输出格式。
     const now = new Date();
     let currentTime = `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日 ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     if (chat.enableDynamicTimezone && chat.charTimezone) {
-        const tzTime = getLocalTimeInTimezone(chat.charTimezone);
-        if (tzTime) currentTime = tzTime;
+        const timezoneTime = getLocalTimeInTimezone(chat.charTimezone);
+        if (timezoneTime) currentTime = timezoneTime;
     }
-    
-    // 获取世界书（包含全局）
+    const linkedChar = (chat.source === 'forum' && chat.linkedCharId && Array.isArray(db.characters))
+        ? db.characters.find(item => item.id === chat.linkedCharId) : null;
     const { before: worldBooksBefore, middle: worldBooksMiddle, after: worldBooksAfter } = getActiveWorldBooksContents(chat);
 
-    let systemPrompt = `你正在一个名为“404”的线上聊天软件中扮演一个角色，正在与${chat.myName}进行${callType === 'video' ? '视频' : '语音'}通话。请严格遵守以下规则：\n`;
-    systemPrompt += `核心规则：\n`;
-    systemPrompt += `A. 当前时间：现在是 ${currentTime}。你应知晓当前时间，但除非对话内容明确相关，否则不要主动提及或评论时间（例如，不要催促我睡觉）。\n`;
-    if (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false) {
-        systemPrompt += `B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角色和我之间没有任何线下关系。严禁提出任何关于线下见面、现实世界互动或转为其他非本平台联系方式的建议。你必须始终保持在线角色的身份。\n\n`;
-    } else {
-        systemPrompt += `\n`;
-    }
-
-    
-    systemPrompt += `角色和对话规则：\n`;
-    if (worldBooksBefore) {
-        systemPrompt += `${worldBooksBefore}\n`;
-    }
-    if (worldBooksMiddle) {
-        systemPrompt += `${worldBooksMiddle}\n`;
-    }
-    systemPrompt += `<char_settings>\n`;
-    systemPrompt += `1. 你的角色名是：${chat.realName}。我的称呼是：${chat.myName}。你的当前状态是：${chat.status}。\n`;
-    systemPrompt += `2. 你的角色设定是：${getEffectivePersona(chat)}\n`;
-    if ((chat.source === 'forum' || chat.source === 'peek') && (chat.supplementPersonaEnabled || chat.supplementPersonaAiEnabled)) {
-        systemPrompt += `3. 在对话中可根据与用户的互动逐步丰富、补充你的人设（用户可在设置中查看并编辑「已补齐的人设」）。\n`;
-    }
-    if (worldBooksAfter) {
-        systemPrompt += `${worldBooksAfter}\n`;
-    }
-    systemPrompt += `</char_settings>\n\n`;
-    systemPrompt += `<user_settings>\n`
-    if (chat.myPersona) {
-        systemPrompt += `3. 关于我的人设：${chat.myPersona}\n`;
-    }
-    systemPrompt += `</user_settings>\n`
-    
+    let weatherText = '';
     if (window.WeatherService) {
         const charWeather = await window.WeatherService.getCharacterWeatherPrompt(chat);
         const userWeather = await window.WeatherService.getUserWeatherPrompt(chat);
-        if (charWeather || userWeather) {
-            systemPrompt += `\n<environment>\n${charWeather ? charWeather + '\n' : ''}${userWeather ? userWeather + '\n' : ''}</environment>\n`;
-        }
-    }
-
-    // 检查是否启用“角色活人运转” (默认关闭)
-    if (db.cotSettings && db.cotSettings.humanRunEnabled) {
-        systemPrompt += HUMAN_RUN_PROMPT + '\n';
+        weatherText = [charWeather, userWeather].filter(Boolean).join('\n');
     }
 
     try {
@@ -3674,68 +3477,66 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
     } catch (error) {
         console.warn('[MemoryContext] failed to prepare call memory:', error);
     }
-    systemPrompt += `<memoir>\n`;
-    const combinedCallMemory = buildCombinedLongTermMemoryContext(chat);
-    if (combinedCallMemory) systemPrompt += `${combinedCallMemory}\n`;
-    systemPrompt += `</memoir>\n\n`;
+    const memoryProjects = getStructuredArchiveMemoryProjects(chat);
+    const groupMemory = buildGroupMemoryProjectContent(chat);
+    const longTermMemory = [memoryProjects.longTerm, groupMemory].filter(Boolean).join('\n\n');
 
-    // --- 注入最近聊天记录 ---
-    const maxMemory = chat.maxMemory || 20;
-    let recentHistory = chat.history.slice(-maxMemory);
-    
-    // 使用通用过滤函数
-    if (typeof filterHistoryForAI === 'function') {
-        recentHistory = filterHistoryForAI(chat, recentHistory);
-    }
-    // 再次过滤掉不应进入上下文的消息
-    recentHistory = recentHistory.filter(m => !m.isContextDisabled);
+    let recentHistory = getRequestHistorySlice(chat, 'private', chat.history || []);
+    if (typeof filterHistoryForAI === 'function') recentHistory = filterHistoryForAI(chat, recentHistory);
+    recentHistory = recentHistory.filter(message => !message.isContextDisabled && !message.isThinking);
+    const recentHistoryText = recentHistory.map(message => {
+        const content = message.parts?.length ? message.parts.map(part => part.text || '[图片]').join('') : (message.content || '');
+        const sender = message.role === 'user' ? (chat.myName || '用户') : (chat.realName || '角色');
+        return `${sender}: ${content}`;
+    }).join('\n');
 
-    if (recentHistory.length > 0) {
-        const historyText = recentHistory.map(m => {
-            // 简单清理内容中的特殊标签，避免干扰
-            let content = m.content;
-            // 如果是多模态消息(parts)，提取文本
-            if (m.parts && m.parts.length > 0) {
-                content = m.parts.map(p => p.text || '[图片]').join('');
-            }
-            return content;
-        }).join('\n');
-
-        systemPrompt += `<recent_chat_context>\n`;
-        systemPrompt += `这是通话前的文字聊天记录（仅供参考背景，请勿重复回复，基于此背景进行自然的实时通话）：\n`;
-        systemPrompt += `${historyText}\n`;
-        systemPrompt += `</recent_chat_context>\n\n`;
-    }
-
-    systemPrompt += `【重要规则】\n`;
-    systemPrompt += `1. 这是实时通话，请保持口语化，模拟真人的说话习惯，语气自然。\n`;  
-    systemPrompt += `${callType === 'video' ? '你需要同时描述画面/环境音和你的语音内容。' : '你需要描述环境音和你的语音内容。'}\n`;
-    systemPrompt += `2. 描述画面/环境音时，请使用描述性语言，第三人称视角，客观平然。`;
-
-    // === 真实摄像头模式提示词注入 ===
     const realCameraActive = typeof VideoCallModule !== 'undefined' && VideoCallModule.state.realCameraActive;
-    if (realCameraActive) {
-        systemPrompt += `\n【真实摄像头模式】\n`;
-        systemPrompt += `${chat.myName}已开启真实摄像头，你可以通过附带的图片看到${chat.myName}的真实画面。请根据你看到的画面内容自然地融入对话中（比如评论对方的穿着、表情、动作、环境等），但不要每次都刻意提及，保持自然。如果图片模糊或看不清，也不必强行描述。\n`;
-    }
+    const _vcNaiEnabled = chat.vcNovelAiEnabled && db.novelAiSettings?.enabled && db.novelAiSettings.token && callType === 'video';
+    const _vcGptDrawEnabled = chat.vcGptDrawEnabled && db.gptImageSettings?.enabled && db.gptImageSettings.url && db.gptImageSettings.key && callType === 'video';
 
-    // === 视频通话生图模式 ===
-    const _vcNaiEnabled = chat.vcNovelAiEnabled && db.novelAiSettings && db.novelAiSettings.enabled && db.novelAiSettings.token && callType === 'video';
-    const _vcGptDrawEnabled = chat.vcGptDrawEnabled && db.gptImageSettings && db.gptImageSettings.enabled && db.gptImageSettings.url && db.gptImageSettings.key && callType === 'video';
-    if (_vcNaiEnabled || _vcGptDrawEnabled) {
-        systemPrompt += `\n【视频通话生图模式】\n`;
-        systemPrompt += `你正在视频通话中，每次回复时你必须额外输出一条 [${chat.realName}的画面生图：{{english, danbooru, tags}}] 来描述当前视频画面中你的样子。\n`;
-        systemPrompt += `tag 规则：根据角色性别用 1boy 或 1girl，必须包含角色外貌特征（发色、瞳色、发型等）、当前服装、表情、动作/姿势、背景/场景。不要加质量词。不超过 25 个 tag。用英文逗号分隔。\n`;
-        systemPrompt += `示例：[${chat.realName}的画面生图：{{1girl, long black hair, blue eyes, white t-shirt, smiling, waving hand, bedroom, sitting on bed, webcam view, looking at viewer}}]\n`;
-        systemPrompt += `每次回复都必须包含恰好一条画面生图指令，放在回复最前面。\n\n`;
-    }
+    const callSession = [
+        `当前任务：与用户进行实时${callType === 'video' ? '视频' : '语音'}通话，并持续扮演当前角色。`,
+        `当前时间：${currentTime}。除非当前话题相关，不主动催促或评论时间。`,
+        (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false)
+            ? '这是线上通话。保持在线角色身份，不把通话描述成已经发生的现实见面。'
+            : '依据现有设定自然理解线上与线下关系。'
+    ].join('\n');
 
-    systemPrompt += `【输出格式】\n`;
-    systemPrompt += `请严格按照以下格式输出（可以发送多条）：\n`;
+    const callEnvironment = [
+        weatherText ? `【当前天气】\n${weatherText}` : '',
+        recentHistoryText ? `【通话前的文字聊天】\n仅作为关系与话题背景，不逐句复述：\n${recentHistoryText}` : '',
+        realCameraActive ? `【真实摄像头】\n${chat.myName || '用户'}已开启摄像头。可以自然使用实际画面信息，但不要每句话都刻意描述；看不清时不要编造。` : ''
+    ].filter(Boolean).join('\n\n');
+
+    const callRules = [
+        '这是实时通话。保持口语化、自然停顿感和真人说话习惯。',
+        callType === 'video'
+            ? '同时理解画面、环境音和双方语音；画面与环境描述保持客观，不替用户虚构动作。'
+            : '理解环境音和双方语音；环境描述保持客观。',
+        db.cotSettings?.humanRunEnabled ? HUMAN_RUN_PROMPT : ''
+    ].filter(Boolean).join('\n\n');
+
+    const callOutputLines = ['请严格使用通话可解析格式，可以连续发送多条：'];
     if (_vcNaiEnabled || _vcGptDrawEnabled) {
-        systemPrompt += `[${chat.realName}的画面生图：{{english, danbooru, tags}}]（每次必须恰好输出一条）\n`;
+        callOutputLines.push(`[${chat.realName}的画面生图：{{english, danbooru, tags}}]（视频通话每次恰好一条，放在最前面；不超过25个英文标签）`);
     }
-    systemPrompt += `${callType === 'video' ? `[${chat.realName}的画面/环境音：描述画面动作或环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]` : `[${chat.realName}的环境音：描述环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]`}\n`;
+    callOutputLines.push(callType === 'video'
+        ? `[${chat.realName}的画面/环境音：描述画面动作或环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]`
+        : `[${chat.realName}的环境音：描述环境声音]\n[${chat.realName}的声音：${chat.realName}说话的内容]`);
+
+    const systemPrompt = serializePrivatePromptProjects([
+        { tag: 'session_rules', content: callSession },
+        { tag: 'worldbook_identity_before', content: worldBooksBefore },
+        { tag: 'identity_core', content: buildCoreIdentityProjectContent(chat, linkedChar, memoryProjects) },
+        { tag: 'worldbook_identity_after', content: worldBooksMiddle },
+        { tag: 'long_term_memory', content: longTermMemory },
+        { tag: 'worldbook_scene_after', content: worldBooksAfter },
+        { tag: 'current_related_memory', content: memoryProjects.currentRelated },
+        { tag: 'current_environment', content: callEnvironment },
+        { tag: 'interaction_rules', content: callRules },
+        { tag: 'output_formats', content: callOutputLines.join('\n') }
+    ], chat, linkedChar);
+    const callProjectSources = buildProjectPrivateChatPromptSources(chat, systemPrompt);
 
     // 2. 构建消息历史
     // 将 callContext 转换为 API 格式
@@ -3877,7 +3678,18 @@ async function getCallReply(chat, callType, callContext, onStreamUpdate) {
             endpoint, headers, body: requestBody, timeoutMs: streamEnabled ? 300000 : 180000,
             operationType: 'call.reply', operationStage: '正在生成通话回复',
             promptSources: [
-                { type: 'task_instruction', registryId: 'call.source', title: '通话系统与会话上下文', content: messages.map(item => typeof item.content === 'string' ? item.content : '').filter(Boolean).join('\n'), reason: '本次通话回复使用的角色规则、通话记录和控制消息' }
+                ...callProjectSources,
+                {
+                    type: 'task_instruction', registryId: 'call.source', title: '实时通话消息',
+                    content: messages.slice(1).map(item => {
+                        const text = typeof item.content === 'string'
+                            ? item.content
+                            : (Array.isArray(item.content) ? item.content.map(part => part?.text || (part?.image_url ? '[摄像头图片]' : '')).join('\n') : '');
+                        return `${String(item.role || '').toUpperCase()}：${text}`;
+                    }).filter(Boolean).join('\n\n'),
+                    count: Math.max(0, messages.length - 1),
+                    reason: '本次实时通话中的用户、角色与控制消息'
+                }
             ]
         });
 

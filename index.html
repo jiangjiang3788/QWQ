@@ -33,7 +33,7 @@
 <link href="css/core/ui_tokens.css" rel="stylesheet"/>
 <link href="css/components/settings_components.css" rel="stylesheet"/>
 <link href="css/layout.css" rel="stylesheet"/>
-<link href="css/modules/quick_dock.css?v=571" rel="stylesheet"/>
+<link href="css/modules/quick_dock.css?v=582" rel="stylesheet"/>
 <!-- CSS Split: Core Features -->
 <link href="css/chat.css" rel="stylesheet"/>
 <link href="css/settings.css" rel="stylesheet"/>
@@ -3170,7 +3170,7 @@
 </div>
 <div class="kkt-item" style="padding-top: 0;">
 <p class="kkt-item-hint" style="font-size: 12px; color: #999; margin: 0;">
-                                        开启后，该角色可自主收藏认为重要的用户消息，并直接写入「记忆」→「收藏记忆」表</p>
+                                        开启后，角色可以像真实聊天中一样，凭自己的感受静默收藏当前上下文里的用户消息；这不是记忆整理或每轮任务</p>
 </div>
 </div>
 <!-- 角色单人思维链设置 -->
@@ -5205,11 +5205,11 @@
 <button class="btn btn-small btn-secondary" id="magic-room-reset-prompt-btn" style="padding: 4px 8px;" type="button">恢复默认</button>
 </div>
 </div>
-<p style="font-size: 11px; color: #888; margin: 0 0 8px 0; line-height: 1.4;">
-                                    支持的变量：<br/>
-<code style="color:var(--primary-color);">{{当前时间}}</code> <code style="color:var(--primary-color);">{{世界书_前}}</code> <code style="color:var(--primary-color);">{{世界书_中}}</code> <code style="color:var(--primary-color);">{{世界书_后}}</code> <code style="color:var(--primary-color);">{{角色名}}</code> <code style="color:var(--primary-color);">{{用户称呼}}</code> <code style="color:var(--primary-color);">{{角色状态}}</code> <code style="color:var(--primary-color);">{{角色人设}}</code> <code style="color:var(--primary-color);">{{用户人设}}</code> <code style="color:var(--primary-color);">{{共同回忆}}</code> <code style="color:var(--primary-color);">{{在线逻辑规则}}</code> <code style="color:var(--primary-color);">{{输出格式}}</code>
+<p style="font-size: 11px; color: #888; margin: 0 0 8px 0; line-height: 1.5;">
+                                    这里只填写附加规则。核心档案、世界书、记忆、当前环境和输出格式会按固定项目顺序发送，不需要在模板里重复。<br/>
+                                    可用变量：<code style="color:var(--primary-color);">{{当前时间}}</code> <code style="color:var(--primary-color);">{{角色名}}</code> <code style="color:var(--primary-color);">{{用户称呼}}</code> <code style="color:var(--primary-color);">{{角色状态}}</code> <code style="color:var(--primary-color);">{{char}}</code> <code style="color:var(--primary-color);">{{user}}</code>。旧模板中的世界书、人设、共同回忆等结构占位符会由固定项目接管并自动去重。
 </p>
-<textarea id="magic-room-custom-prompt" rows="15" style="width: 100%; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 12px; font-family: monospace; box-sizing: border-box; background: #fafafa;"></textarea>
+<textarea id="magic-room-custom-prompt" placeholder="例如：{{char}}在情绪激动时仍然避免伤害{{user}}；不要使用某些口头禅。" rows="15" style="width: 100%; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; resize: vertical; font-size: 12px; font-family: monospace; box-sizing: border-box; background: #fafafa;"></textarea>
 </div>
 <div style="display: flex; gap: 10px; margin-top: 15px;">
 <button class="btn btn-secondary" id="magic-room-import-btn" style="flex: 1;" type="button">导入模板</button>
@@ -5891,10 +5891,10 @@
 -->
 <!-- [1. 基础层] -->
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
-<script src="js/db.js?v=571"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+<script src="js/db.js?v=581"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <script src="js/core/deprecated_feature_policy.js?v=540"></script> <!-- V5.4 已停用业务的统一关闭与防泄漏 -->
-<script src="js/core/context_source_registry.js?v=570"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
-<script src="js/core/context_compiler.js?v=570"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
+<script src="js/core/context_source_registry.js?v=582"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
+<script src="js/core/context_compiler.js?v=582"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
 <script src="js/core/api_service_registry.js"></script> <!-- 统一 API 角色、端点与向量请求 -->
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
@@ -5913,11 +5913,11 @@
 <script src="js/modules/operation_runtime.js?v=570"></script>
 <script src="js/modules/ai_request_runtime.js"></script>
 <script src="js/core/ai_request_gateway.js?v=544"></script> <!-- V5.4.2 所有AI任务统一请求入口 -->
-    <script src="js/modules/chat_ai.js?v=571"></script>
+    <script src="js/modules/chat_ai.js?v=582"></script>
 <script src="js/modules/chat_features.js"></script>
 <script src="js/modules/avatar_recognition.js"></script>
 <script src="js/modules/chat_ops.js"></script>
-<script src="js/chat.js?v=571"></script> <!-- 聊天核心入口 -->
+<script src="js/chat.js?v=581"></script> <!-- 聊天核心入口 -->
 <script src="js/persona_profile.js"></script> <!-- 用户档案与角色资料卡 -->
 <!-- Settings feature controllers (V2.9-R5) -->
 <script src="js/features/settings/magic_room.js"></script>
@@ -5941,11 +5941,11 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/features/memory_v3/memory_core_v3.js?v=572"></script>
-<script src="js/features/memory_v3/memory_rounds_v3.js?v=572"></script>
-<script src="js/features/memory_v3/memory_engine_v3.js?v=572"></script>
-<script src="js/features/memory_v3/memory_ui_v3.js?v=572"></script>
-<script src="js/features/memory_v3/memory_compat_v3.js?v=572"></script>
+<script src="js/features/memory_v3/memory_core_v3.js?v=582"></script>
+<script src="js/features/memory_v3/memory_rounds_v3.js?v=582"></script>
+<script src="js/features/memory_v3/memory_engine_v3.js?v=582"></script>
+<script src="js/features/memory_v3/memory_ui_v3.js?v=582"></script>
+<script src="js/features/memory_v3/memory_compat_v3.js?v=582"></script>
 <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->
 <script src="js/modules/backup_service.js"></script> <!-- 当前版完整备份服务：先校验、后事务恢复 -->
@@ -5953,7 +5953,7 @@
 <script src="js/modules/more_menu.js?v=570"></script> <!-- 更多菜单与状态栏管理 -->
 <script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
 <script src="js/modules/message_content.js"></script> <!-- 统一消息内容解析 -->
-<script src="js/modules/favorites.js?v=572"></script> <!-- 消息收藏 -->
+<script src="js/modules/favorites.js?v=582"></script> <!-- 消息收藏 -->
 <script src="js/modules/search.js"></script> <!-- 聊天记录搜索模块 -->
 <script src="js/modules/battery_interaction.js"></script> <!-- 电量交互模块 -->
 <!-- 角色相册管理模块 -->
@@ -5966,7 +5966,7 @@
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
 <script src="js/modules/quick_dock_action_bar.js?v=564"></script> <!-- 悬浮球顶部主操作 -->
-<script src="js/modules/floating_ball.js?v=571"></script> <!-- 悬浮球快捷工具 -->
+<script src="js/modules/floating_ball.js?v=582"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
 <script src="js/main.js?v=570"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>

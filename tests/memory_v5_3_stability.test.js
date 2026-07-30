@@ -26,7 +26,7 @@ for (const file of [
 }
 
 const M = sandbox.MemoryV5;
-assert.equal(M.VERSION, '5.8.0');
+assert.equal(M.VERSION, '5.8.3');
 assert.equal(M.STORE_VERSION, 3, '原地升级不得改变STORE_VERSION');
 assert.equal(M.model.defaultSettings().tablePageSize, 100);
 assert.equal(M.model.normalizeStore({ settings: { tablePageSize: 9999 }, tables: [], records: {} }).settings.tablePageSize, 500);
@@ -71,6 +71,6 @@ assert(uiSource.includes('已恢复导入前状态'), '应包含导入保存失�
 assert(uiSource.includes('导入前备份'), '覆盖全部前应自动备份');
 assert(cssSource.includes('.mv5-sticky-actions'), '横向表格应固定操作列');
 assert(cssSource.includes('--mv5-visual-height'), '弹窗应使用可视视口高度');
-assert(/memory_ui_v3\.js\?v=(?:530|540|541|570|571|572)/.test(htmlSource), '应保留V5.3或更高记忆模块缓存版本');
+assert(/memory_ui_v3\.js\?v=(?:530|540|541|570|571|572|582)/.test(htmlSource), '应保留V5.3或更高记忆模块缓存版本');
 
 console.log('Memory V5.3 stability tests passed');

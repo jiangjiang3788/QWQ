@@ -86,7 +86,7 @@ const dock = fs.readFileSync(path.join(root, 'js/modules/floating_ball.js'), 'ut
 assert(dock.includes('request?.contextManifest'));
 assert(dock.includes('function renderRequestBody(request)'));
 assert(dock.includes('消息数组'));
-assert(dock.includes("const PACKAGE_VERSION = '5.8.0'"));
+assert(dock.includes("const PACKAGE_VERSION = '5.8.3'"));
 assert(!dock.includes('完整 Prompt 与真实清单请在 Proment 查看'));
 assert(!dock.includes('downloadText(filename'));
 assert(!dock.includes('reportFilename(prefix'));

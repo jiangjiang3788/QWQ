@@ -19,13 +19,13 @@ assert(!chatAi.includes('dedupeFavoriteInventory'));
 assert(!chatAi.includes('<favorite_inventory>'));
 
 const dock = read('js/modules/floating_ball.js');
-assert(dock.includes("const PACKAGE_VERSION = '5.8.0'"));
+assert(dock.includes("const PACKAGE_VERSION = '5.8.3'"));
 assert(dock.includes('function renderGroupedSourceItems(groups)'));
 assert(dock.includes('function renderStructuredMemorySource(section)'));
 assert(dock.includes('quick-dock-source-flat-list'));
 assert(dock.includes('历史不设上限（发送全部可用消息）'));
 const css = read('css/modules/quick_dock.css');
-assert(css.includes('QWQ 5.8.0'));
+assert(css.includes('QWQ 5.8.3'));
 assert(css.includes('overflow:hidden!important'));
 assert(css.includes('overflow-y:auto'));
 assert(css.includes('max-height:none!important'));

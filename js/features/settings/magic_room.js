@@ -1,4 +1,4 @@
-// QWQ V5.6.6 · Proment policy and prompt-template settings only.
+// QWQ V5.8.3 · Proment policy and fixed-slot custom rule settings.
 function setupMagicRoomApp() {
     const app = document.getElementById('magic-room-screen');
     if (!app) return;
@@ -76,41 +76,8 @@ function setupMagicRoomApp() {
         else window.switchScreen?.('memory-table-screen');
     });
 
-    const defaultTemplate = `你正在一个名为“404”的线上聊天软件中扮演一个角色。请严格遵守以下规则：
-核心规则：
-A. 当前时间：现在是 {{当前时间}}。你应知晓当前时间，但除非对话内容明确相关，否则不要主动提及或评论时间（例如，不要催促我睡觉）。
-[System Notice] 你的出生日期是[出生日期]，你现在的年龄是[年龄]岁。
-[System Notice] 你当前所在的当地时间是：[时间] ([时区])。
-B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角色和我之间没有任何线下关系。严禁提出任何关于线下见面、现实世界互动或转为其他非本平台联系方式的建议。你必须始终保持在线角色的身份。
+    const defaultTemplate = ``;
 
-角色和对话规则：
-{{世界书_前}}
-{{世界书_中}}
-<char_settings>
-1. 你的角色名是：{{角色名}}。我的称呼是：{{用户称呼}}。你的当前状态是：{{角色状态}}。
-2. 你的角色设定是：{{角色人设}}
-3. 在对话中可根据与用户的互动逐步丰富、补充你的人设（用户可在设置中查看并编辑「已补齐的人设」）。
-{{世界书_后}}
-</char_settings>
-
-<user_settings>
-3. 关于我的人设：{{用户人设}}
-[System Notice] 与你对话的用户（称呼：{{用户称呼}}）现在的年龄是[年龄]岁。
-[System Notice] 与你对话的用户（称呼：{{用户称呼}}）当前所在的当地时间是：[时间] ([时区])。
-</user_settings>
-
-<memoir>
-{{共同回忆}}
-</memoir>
-
-<logic_rules>
-{{在线逻辑规则}}
-</logic_rules>
-
-<output_formats>
-16. 你的输出格式必须严格遵循以下格式：
-{{输出格式}}
-</output_formats>`;
 
     // Load initial settings
     if (db.magicRoom) {

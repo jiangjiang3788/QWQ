@@ -13,7 +13,7 @@ assert(!chatAi.includes("registryId: 'collection.relevant'"));
 assert(!chatAi.includes('<favorite_inventory>'));
 
 const dock = read('js/modules/floating_ball.js');
-assert(dock.includes("const PACKAGE_VERSION = '5.8.0'"));
+assert(dock.includes("const PACKAGE_VERSION = '5.8.3'"));
 assert(dock.includes('这里按最终请求里的消息条目计数，不按“对话轮次”计数'));
 assert(dock.includes('消息数组'));
 assert(dock.includes('system instruction'));
@@ -32,7 +32,7 @@ assert(actionBar.includes('<summary>Git</summary>'));
 assert(!actionBar.includes('quick-dock-top-actions'));
 
 const css = read('css/modules/quick_dock.css');
-assert(css.includes('QWQ 5.8.0'));
+assert(css.includes('QWQ 5.8.3'));
 assert(css.includes('.quick-dock-history-facts'));
 assert(css.includes('.quick-dock-memory-write-status'));
 assert(css.includes('width:min(100%,1280px)'));

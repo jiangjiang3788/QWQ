@@ -53,7 +53,7 @@ for (const file of [
 }
 
 const M = sandbox.MemoryV5;
-assert.equal(M.VERSION, '5.8.0');
+assert.equal(M.VERSION, '5.8.3');
 assert.equal(M.STORE_VERSION, 3, '升级必须继续使用原STORE_VERSION，避免清空已有表格');
 const chat = { id: 'char_1', history: [
   { id: 'a0', role: 'assistant', content: '上一轮回复' },
@@ -72,7 +72,7 @@ assert.equal(M.rounds.roundPayload(chat).length, 2);
 assert(M.rounds.roundText(chat).includes('昨晚没睡好'));
 assert(M.rounds.roundText(chat).includes('充电线'));
 const prompt = M.engine.buildSystemPrompt(chat);
-assert(prompt.includes('<memory_v5_protocol version="5.8.0">'));
+assert(prompt.includes('<memory_v5_protocol version="5.8.3">'));
 assert(prompt.includes('昨晚没睡好'));
 assert(prompt.includes('v5_current_state'));
 assert(prompt.includes('v5_recent_events'));

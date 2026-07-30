@@ -351,7 +351,7 @@ body.quick-dock-body-open{overflow:hidden!important}
   .quick-dock-history-message>header{align-items:flex-start;flex-direction:column;gap:2px}
 }
 
-/* QWQ 5.8.0 · 同类二级分组 + 单一页面滚动容器，避免长内容覆盖后续标题 */
+/* QWQ 5.8.3 · 同类二级分组 + 单一页面滚动容器，避免长内容覆盖后续标题 */
 .quick-dock-panel.quick-dock-panel--app-fullscreen{
   display:flex!important;
   flex-direction:column!important;
