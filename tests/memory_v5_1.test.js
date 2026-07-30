@@ -8,6 +8,11 @@ const notices = [];
 const stateElement = {
   textContent: '',
   style: { display: 'none' },
+  attrs: {},
+  dataset: {},
+  setAttribute(key, value) { this.attrs[key] = String(value); },
+  onclick: null,
+  onkeydown: null,
   classList: {
     values: new Set(['hidden']),
     add(value) { this.values.add(value); },
@@ -48,7 +53,7 @@ for (const file of [
 }
 
 const M = sandbox.MemoryV5;
-assert.equal(M.VERSION, '5.5.0');
+assert.equal(M.VERSION, '5.8.0');
 assert.equal(M.STORE_VERSION, 3, '升级必须继续使用原STORE_VERSION，避免清空已有表格');
 const chat = { id: 'char_1', history: [
   { id: 'a0', role: 'assistant', content: '上一轮回复' },
@@ -57,7 +62,7 @@ const chat = { id: 'char_1', history: [
 ]};
 sandbox.db.characters.push(chat);
 const store = M.model.ensureStore(chat);
-assert.equal(store.tables.length, 9);
+assert.equal(store.tables.length, 10);
 assert.equal(store.settings.roundNoticeEnabled, true);
 assert.equal(store.tables.filter(t => t.behavior.writePolicy === 'auto' && t.behavior.allowAiWrite).length, 5);
 assert.equal(store.tables.find(t => t.id === 'v5_current_state').behavior.retentionDays, 0);
@@ -67,7 +72,7 @@ assert.equal(M.rounds.roundPayload(chat).length, 2);
 assert(M.rounds.roundText(chat).includes('昨晚没睡好'));
 assert(M.rounds.roundText(chat).includes('充电线'));
 const prompt = M.engine.buildSystemPrompt(chat);
-assert(prompt.includes('<memory_v5_protocol version="5.5.0">'));
+assert(prompt.includes('<memory_v5_protocol version="5.8.0">'));
 assert(prompt.includes('昨晚没睡好'));
 assert(prompt.includes('v5_current_state'));
 assert(prompt.includes('v5_recent_events'));
@@ -120,7 +125,7 @@ const stateRecord = store.records.v5_current_state[0];
 const oldTime = stateRecord.time;
 report = M.engine.applyOperations(chat, [{
   tableId: 'v5_current_state', action: 'upsert', recordId: stateRecord.id, source: '用户明确',
-  values: { 标签: ['需关注', '疲惫'], 内容: '睡眠不足，精力偏低' }
+  values: { 精神状态: '睡眠不足，精力偏低' }
 }], { origin: 'ai', roundId: 'round_same' });
 assert.equal(report.changed.length, 0);
 assert.equal(report.checked.length, 1);
@@ -224,7 +229,7 @@ assert(!parsed.cleaned.includes('operations'));
   chat.history.push({ id: 'u3', role: 'user', content: '最近睡眠怎么样' });
   const daily = store.tables.find(t => t.id === 'v5_daily_observation');
   const candidates = M.engine.candidateRecords(chat, daily, store);
-  assert(candidates.length <= 3);
+  assert(candidates.length >= 1);
 
   // 空操作有无更新提示。
   notices.length = 0;

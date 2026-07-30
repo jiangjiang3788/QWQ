@@ -33,7 +33,7 @@
 <link href="css/core/ui_tokens.css" rel="stylesheet"/>
 <link href="css/components/settings_components.css" rel="stylesheet"/>
 <link href="css/layout.css" rel="stylesheet"/>
-<link href="css/modules/quick_dock.css?v=566" rel="stylesheet"/>
+<link href="css/modules/quick_dock.css?v=571" rel="stylesheet"/>
 <!-- CSS Split: Core Features -->
 <link href="css/chat.css" rel="stylesheet"/>
 <link href="css/settings.css" rel="stylesheet"/>
@@ -47,14 +47,12 @@
 <link href="css/modules/journal.css" rel="stylesheet"/>
 <link href="css/modules/memory_v3.css?v=561" rel="stylesheet"/>
 <link href="css/modules/app_workspace.css" rel="stylesheet"/>
-<link href="css/modules/reminder.css" rel="stylesheet"/>
 <link href="css/modules/steps.css" rel="stylesheet"/>
 <link href="css/modules/more.css" rel="stylesheet"/>
 <link href="css/modules/monitor.css" rel="stylesheet"/>
 <link href="css/modules/tutorial.css" rel="stylesheet"/>
 <link href="css/modules/cot_settings.css" rel="stylesheet"/>
 <link href="css/modules/archive.css" rel="stylesheet"/>
-<link href="css/modules/favorites.css" rel="stylesheet"/>
 <link href="css/modules/appearance_settings.css" rel="stylesheet"/>
 <link href="css/modules/app_launcher.css" rel="stylesheet"/>
 <link href="css/modules/avatar_recognition.css" rel="stylesheet"/>
@@ -322,14 +320,6 @@
 </div>
 <span class="expansion-item-name">发送定位</span>
 </div>
-<div class="expansion-item" id="abort-reply-btn">
-<div class="expansion-item-icon">
-<svg fill="currentColor" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-<path d="M6 6h12v12H6z"></path>
-</svg>
-</div>
-<span class="expansion-item-name">暂停调用</span>
-</div>
 <div class="expansion-item" id="camera-capture-btn">
 <div class="expansion-item-icon">
 <svg fill="currentColor" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -338,14 +328,7 @@
 </div>
 <span class="expansion-item-name">直接拍照</span>
 </div>
-<div class="expansion-item" id="reminder-btn">
-<div class="expansion-item-icon">
-<svg fill="currentColor" viewbox="0 0 24 24">
-<path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"></path>
-</svg>
-</div>
-<span class="expansion-item-name">提醒</span>
-</div>
+
 <div class="expansion-item" id="msg-version-btn">
 <div class="expansion-item-icon">
 <svg fill="currentColor" viewbox="0 0 24 24">
@@ -402,87 +385,8 @@
 <button class="btn btn-primary" id="generate-capture-btn" style="width: auto; padding: 8px 16px;">生成截图</button>
 </div>
 </div> <!-- 这里是 chat-room-screen 的结束标签 -->
-<!-- 提醒事项屏幕 -->
-<div class="screen" id="reminder-screen">
-<header class="app-header">
-<button class="back-btn" data-target="chat-room-screen">‹</button>
-<div class="title-container">
-<h1 class="title">提醒事项</h1>
-</div>
-<div class="placeholder"></div>
-</header>
-<main class="content reminder-content-wrapper">
-<!-- 1. 紧凑型滑动日历 -->
-<div class="compact-calendar">
-<div class="calendar-header-mini">
-<button class="cal-nav-btn" id="reminder-cal-prev">
-<svg viewbox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"></path></svg>
-</button>
-<div class="month-title-wrapper" style="position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-<span class="month-title" id="reminder-month-title"></span>
-<input id="reminder-month-picker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; margin: 0; border: none;" type="month"/>
-</div>
-<button class="cal-nav-btn" id="reminder-cal-next">
-<svg viewbox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg>
-</button>
-</div>
-<div class="calendar-strip" id="reminder-calendar-days"></div>
-</div>
-<!-- 2. 角色/用户 分类切换 -->
-<div class="reminder-tabs" id="reminder-tabs">
-<div class="reminder-tab-indicator" id="reminder-tab-indicator"></div>
-<div class="reminder-tab active" data-tab="char">角色提醒</div>
-<div class="reminder-tab" data-tab="user">我的提醒</div>
-</div>
-<!-- 3. 卡片瀑布流列表 -->
-<div class="reminder-list-area" id="reminder-list-area">
-<div class="reminder-empty">今天暂无提醒事项</div>
-</div>
-<!-- 4. 渐变悬浮新建按钮 -->
-<button class="reminder-fab" id="reminder-add-btn">
-<svg fill="currentColor" viewbox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg>
-</button>
-</main>
-</div>
-<!-- 新建提醒模态框 -->
-<div class="modal-overlay" id="reminder-form-modal">
-<div class="reminder-form-sheet">
-<h3 id="reminder-form-title">新建提醒</h3>
-<div class="reminder-form-group">
-<label>内容</label>
-<input id="reminder-input-title" maxlength="100" placeholder="提醒内容..." type="text"/>
-</div>
-<div class="reminder-form-group">
-<label>日期</label>
-<input id="reminder-input-date" type="date"/>
-</div>
-<div class="reminder-form-group">
-<label>时间</label>
-<input id="reminder-input-time" type="time"/>
-</div>
-<div class="reminder-form-group">
-<label>类型</label>
-<div class="reminder-type-selector">
-<div class="reminder-type-option active" data-type="toUser">提醒我</div>
-<div class="reminder-type-option" data-type="toSelf">TA的待办</div>
-<div class="reminder-type-option" data-type="remindChar">提醒TA</div>
-</div>
-</div>
-<div class="reminder-form-group">
-<label>重复</label>
-<select id="reminder-input-repeat">
-<option value="none">不重复</option>
-<option value="daily">每天</option>
-<option value="weekly">每周</option>
-<option value="monthly">每月</option>
-</select>
-</div>
-<div class="reminder-form-actions">
-<button class="reminder-btn-cancel" id="reminder-form-cancel">取消</button>
-<button class="reminder-btn-save" id="reminder-form-save">保存</button>
-</div>
-</div>
-</div>
+
+
 <!-- 头像识别结果弹窗（用户头像库） -->
 <div class="ar-modal-overlay" id="avatar-recognition-modal">
 <div class="ar-modal">
@@ -936,10 +840,11 @@
 <div class="form-group">
 <label>注入位置</label>
 <div class="form-group radio-group">
-<label><input checked="" name="world-book-position" type="radio" value="before"/> 前</label>
-<label><input name="world-book-position" type="radio" value="middle"/> 中</label>
-<label><input name="world-book-position" type="radio" value="after"/> 后</label>
+<label><input checked="" name="world-book-position" type="radio" value="before"/> 身份前</label>
+<label><input name="world-book-position" type="radio" value="middle"/> 身份后</label>
+<label><input name="world-book-position" type="radio" value="after"/> 场景后置</label>
 </div>
+<p style="font-size:12px;color:#999;margin:6px 0 0;line-height:1.5;">身份前：核心档案之前；身份后：核心档案之后、长期记忆之前；场景后置：长期记忆之后、当前相关记忆之前。</p>
 </div>
 <div class="form-group">
 <label style="display: flex; align-items: center; justify-content: space-between;">
@@ -3265,25 +3170,7 @@
 </div>
 <div class="kkt-item" style="padding-top: 0;">
 <p class="kkt-item-hint" style="font-size: 12px; color: #999; margin: 0;">
-                                        开启后，该角色可自主收藏认为重要的用户消息，可在「收藏」→「角色收藏」中查看</p>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">角色知晓我的收藏</div>
-<div class="kkt-item-control">
-<label class="kkt-switch">
-<input id="setting-char-aware-user-favorites" type="checkbox"/>
-<span class="kkt-slider"></span>
-</label>
-</div>
-</div>
-<div id="setting-aware-favorite-scope-container" style="display: none; padding: 12px 15px; margin: 0 15px 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #f0f0f0;">
-<div class="radio-group-pills" style="margin-bottom: 8px;">
-<input checked="" id="setting-aware-favorite-scope-current" name="setting-aware-favorite-scope" type="radio" value="current"/>
-<label for="setting-aware-favorite-scope-current" style="font-size: 13px; padding: 6px 16px;">仅当前角色</label>
-<input id="setting-aware-favorite-scope-all" name="setting-aware-favorite-scope" type="radio" value="all"/>
-<label for="setting-aware-favorite-scope-all" style="font-size: 13px; padding: 6px 16px;">所有角色的收藏</label>
-</div>
-<p style="font-size: 12px; color: #999; margin: 0; line-height: 1.4;">开启后角色能看到你收藏的内容，借此了解你的喜好</p>
+                                        开启后，该角色可自主收藏认为重要的用户消息，并直接写入「记忆」→「收藏记忆」表</p>
 </div>
 </div>
 <!-- 角色单人思维链设置 -->
@@ -3368,18 +3255,6 @@
 </div>
 <!-- 角色相册设置 -->
 <!-- 商城互动设置 -->
-<!-- 提醒事项设置 -->
-<div class="kkt-group" style="margin-top:15px;">
-<div class="kkt-item">
-<div class="kkt-item-label">允许角色管理提醒事项</div>
-<div class="kkt-item-control">
-<label class="kkt-switch">
-<input id="setting-char-reminder-enabled" type="checkbox"/>
-<span class="kkt-slider"></span>
-</label>
-</div>
-</div>
-</div>
 <!-- 小剧场设置 -->
 <div class="kkt-group" style="margin-top:15px;">
 <div class="kkt-item">
@@ -3928,15 +3803,6 @@
 <div class="kkt-item-control">
 <label class="kkt-switch">
 <input id="setting-show-status-update-msg" type="checkbox"/>
-<span class="kkt-slider"></span>
-</label>
-</div>
-</div>
-<div class="kkt-item">
-<div class="kkt-item-label">聊天内显示提醒事项消息</div>
-<div class="kkt-item-control">
-<label class="kkt-switch">
-<input checked="" id="setting-show-reminder-msg" type="checkbox"/>
 <span class="kkt-slider"></span>
 </label>
 </div>
@@ -5160,65 +5026,6 @@
 </div>
 </main>
 </div>
-<!-- 收藏列表界面 -->
-<div class="screen" id="favorites-screen">
-<header class="app-header">
-<button class="back-btn" data-target="home-screen">‹</button>
-<div class="title-container">
-<h1 class="title">收藏</h1>
-</div>
-<div class="placeholder favorites-header-actions">
-<button aria-label="多选删除" class="icon-btn favorites-delete-btn" id="favorites-delete-btn" title="多选删除" type="button">
-<svg fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24" width="22"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" x2="10" y1="11" y2="17"></line><line x1="14" x2="14" y1="11" y2="17"></line></svg>
-</button>
-</div>
-</header>
-<div class="favorites-tabs">
-<button class="favorites-tab active" data-filter="user" type="button">我的收藏</button>
-<button class="favorites-tab" data-filter="character" type="button">角色收藏</button>
-</div>
-<main class="content favorites-content">
-<div class="favorites-list-container" id="favorites-list-container">
-<!-- 按角色/群聊分组的收藏卡片由 JS 渲染 -->
-</div>
-<div class="favorites-empty-placeholder" id="favorites-empty-placeholder" style="display: none;">
-<div class="favorites-empty-icon">☆</div>
-<p id="favorites-empty-text">还没有收藏任何消息</p>
-<p class="favorites-empty-hint" id="favorites-empty-hint">在聊天中长按消息，选择「收藏」或「多选收藏」即可添加</p>
-</div>
-</main>
-<!-- 收藏多选操作栏 -->
-<div class="favorites-multi-select-bar" id="favorites-multi-select-bar" style="display: none;">
-<span id="favorites-select-count">已选 0 项</span>
-<div class="favorites-multi-select-actions">
-<button class="btn btn-neutral btn-small" id="favorites-select-all-btn" type="button">全选</button>
-<button class="btn btn-danger btn-small" id="favorites-batch-delete-btn" type="button">删除已选</button>
-<button class="btn btn-neutral btn-small" id="favorites-multi-select-cancel-btn" type="button">取消</button>
-</div>
-</div>
-</div>
-<!-- 收藏详情（查看内容 + 收藏寄语） -->
-<div class="screen" id="favorites-detail-screen">
-<header class="app-header">
-<button class="back-btn" data-target="favorites-screen">‹</button>
-<div class="title-container">
-<h1 class="title" id="favorite-detail-title">收藏详情</h1>
-</div>
-<div class="action-btn-group favorites-detail-actions">
-<button class="btn btn-secondary btn-small" id="favorite-detail-locate-btn">定位原消息</button>
-<button class="btn btn-primary btn-small" id="favorite-detail-save-note-btn">保存寄语</button>
-<button class="btn btn-danger btn-small" id="favorite-detail-delete-btn" title="取消收藏">删除</button>
-</div>
-</header>
-<main class="content favorites-detail-content">
-<p class="favorite-detail-meta" id="favorite-detail-meta"></p>
-<div class="favorite-detail-body" id="favorite-detail-content"></div>
-<div class="favorite-detail-note-section">
-<label class="favorite-detail-note-label">收藏寄语</label>
-<textarea class="favorite-detail-note-input" id="favorite-detail-note" placeholder="写一句想记住的话…" rows="3"></textarea>
-</div>
-</main>
-</div>
 <!-- Voice ID Selection Modal -->
 <div class="modal-overlay" id="voice-id-modal">
 <div class="modal-window" style="max-height: 80vh; overflow: hidden; display: flex; flex-direction: column;">
@@ -6084,17 +5891,17 @@
 -->
 <!-- [1. 基础层] -->
 <script src="js/utils.js"></script> <!-- 工具函数：图片压缩、Toast提示、随机数等 -->
-<script src="js/db.js"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
+<script src="js/db.js?v=571"></script> <!-- 数据层：Dexie数据库配置、全局变量定义、数据存取 -->
 <script src="js/core/deprecated_feature_policy.js?v=540"></script> <!-- V5.4 已停用业务的统一关闭与防泄漏 -->
-<script src="js/core/context_source_registry.js?v=566"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
-<script src="js/core/context_compiler.js?v=566"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
+<script src="js/core/context_source_registry.js?v=570"></script> <!-- V5.4.2 AI 上下文来源统一注册 -->
+<script src="js/core/context_compiler.js?v=570"></script> <!-- V5.4.1 主私聊最终上下文编译 -->
 <script src="js/core/api_service_registry.js"></script> <!-- 统一 API 角色、端点与向量请求 -->
 <!-- [2. 核心交互层] -->
 <script src="js/core/feature_flags.js"></script>
 <script src="js/core/ui_components.js"></script>
 <script src="js/core/startup_runtime.js"></script>
 <script src="js/core/navigation_runtime.js"></script>
-<script src="js/app_registry.js"></script>
+<script src="js/app_registry.js?v=570"></script>
 <script src="js/features/apps/settings_hub.js"></script>
 <script src="js/features/apps/api_workspace.js"></script>
 <script src="js/ui.js"></script> <!-- UI交互：界面切换、主屏幕逻辑、右键菜单 -->
@@ -6103,18 +5910,18 @@
 <script src="js/modules/character_create.js"></script>
 <script src="js/modules/chat_render.js"></script>
 <script src="js/modules/ai_capability_catalog.js"></script>
-<script src="js/modules/operation_runtime.js?v=566"></script>
+<script src="js/modules/operation_runtime.js?v=570"></script>
 <script src="js/modules/ai_request_runtime.js"></script>
 <script src="js/core/ai_request_gateway.js?v=544"></script> <!-- V5.4.2 所有AI任务统一请求入口 -->
-    <script src="js/modules/chat_ai.js?v=566"></script>
+    <script src="js/modules/chat_ai.js?v=571"></script>
 <script src="js/modules/chat_features.js"></script>
 <script src="js/modules/avatar_recognition.js"></script>
 <script src="js/modules/chat_ops.js"></script>
-<script src="js/chat.js"></script> <!-- 聊天核心入口 -->
+<script src="js/chat.js?v=571"></script> <!-- 聊天核心入口 -->
 <script src="js/persona_profile.js"></script> <!-- 用户档案与角色资料卡 -->
 <!-- Settings feature controllers (V2.9-R5) -->
 <script src="js/features/settings/magic_room.js"></script>
-<script src="js/features/settings/proment_governance.js?v=544"></script>
+<script src="js/features/settings/proment_governance.js?v=572"></script>
 <script src="js/features/settings/api_controller.js"></script>
 <script src="js/features/settings/presets.js"></script>
 <script src="js/features/settings/customization.js"></script>
@@ -6123,7 +5930,7 @@
 <script src="js/features/settings/character/media_controller.js"></script>
 <script src="js/features/settings/character/extensions_controller.js"></script>
 <script src="js/features/settings/character/behavior_controller.js"></script>
-<script src="js/features/settings/character/chat_controller.js"></script>
+<script src="js/features/settings/character/chat_controller.js?v=572"></script>
 <script src="js/settings.js"></script> <!-- 角色设置兼容入口与跨域辅助函数 -->
 <script src="js/features/settings/preset_manager.js"></script>
 <script src="js/features/settings/facade.js"></script>
@@ -6134,20 +5941,19 @@
 <script src="js/modules/theater.js"></script> <!-- 小剧场功能 -->
 <script src="js/modules/worldbook.js"></script> <!-- 世界书设定集 -->
 <script src="js/modules/journal.js"></script> <!-- 回忆日记生成 -->
-<script src="js/features/memory_v3/memory_core_v3.js?v=550"></script>
-<script src="js/features/memory_v3/memory_rounds_v3.js?v=550"></script>
-<script src="js/features/memory_v3/memory_engine_v3.js?v=550"></script>
-<script src="js/features/memory_v3/memory_ui_v3.js?v=561"></script>
-<script src="js/features/memory_v3/memory_compat_v3.js?v=550"></script>
-<script src="js/modules/reminder.js"></script> <!-- 提醒事项 -->
+<script src="js/features/memory_v3/memory_core_v3.js?v=572"></script>
+<script src="js/features/memory_v3/memory_rounds_v3.js?v=572"></script>
+<script src="js/features/memory_v3/memory_engine_v3.js?v=572"></script>
+<script src="js/features/memory_v3/memory_ui_v3.js?v=572"></script>
+<script src="js/features/memory_v3/memory_compat_v3.js?v=572"></script>
 <script src="js/modules/storage.js"></script> <!-- 存储空间分析图表 -->
 <!-- 桌面小组件设置 -->
 <script src="js/modules/backup_service.js"></script> <!-- 当前版完整备份服务：先校验、后事务恢复 -->
 <script src="js/modules/tutorial.js"></script> <!-- 教程与 GitHub 备份 -->
-<script src="js/modules/more_menu.js"></script> <!-- 更多菜单与状态栏管理 -->
+<script src="js/modules/more_menu.js?v=570"></script> <!-- 更多菜单与状态栏管理 -->
 <script src="js/modules/regex_filter.js"></script> <!-- 正则过滤模块 -->
 <script src="js/modules/message_content.js"></script> <!-- 统一消息内容解析 -->
-<script src="js/modules/favorites.js"></script> <!-- 消息收藏 -->
+<script src="js/modules/favorites.js?v=572"></script> <!-- 消息收藏 -->
 <script src="js/modules/search.js"></script> <!-- 聊天记录搜索模块 -->
 <script src="js/modules/battery_interaction.js"></script> <!-- 电量交互模块 -->
 <!-- 角色相册管理模块 -->
@@ -6160,8 +5966,8 @@
 <script src="js/modules/msg_version.js"></script> <!-- 消息版本管理 -->
 <script src="js/modules/keep_alive.js"></script> <!-- 后台保活 -->
 <script src="js/modules/quick_dock_action_bar.js?v=564"></script> <!-- 悬浮球顶部主操作 -->
-<script src="js/modules/floating_ball.js?v=566"></script> <!-- 悬浮球快捷工具 -->
+<script src="js/modules/floating_ball.js?v=571"></script> <!-- 悬浮球快捷工具 -->
 <!-- [4. 程序入口] -->
-<script src="js/main.js"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
+<script src="js/main.js?v=570"></script> <!-- 主入口：初始化(init)、全局事件监听 -->
 </body>
 </html>

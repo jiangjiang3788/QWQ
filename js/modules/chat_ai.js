@@ -178,143 +178,27 @@ function extractPromptTagContent(systemPrompt, tagName) {
     return match ? String(match[1] || '').trim() : '';
 }
 
-function extractPromptHeadingBlock(systemPrompt, heading) {
-    const safeHeading = String(heading || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!safeHeading) return '';
-    const match = String(systemPrompt || '').match(new RegExp(`【${safeHeading}】([\\s\\S]*?)(?=\\n【|\\n<[^>]+>|$)`, 'i'));
-    return match ? String(match[1] || '').trim() : '';
+
+function extractPromptTagBlock(systemPrompt, tagName) {
+    const safeTag = String(tagName || '').replace(/[^a-z0-9_-]/gi, '');
+    if (!safeTag) return '';
+    const match = String(systemPrompt || '').match(new RegExp(`<${safeTag}\\b[^>]*>[\\s\\S]*?<\\/${safeTag}>`, 'i'));
+    return match ? String(match[0] || '').trim() : '';
 }
 
-function normalizeFavoritePromptText(value) {
-    return String(value == null ? '' : value)
-        .replace(/\s+/g, ' ')
-        .trim();
+function wrapPromptProject(tagName, content, attributes = '') {
+    const body = String(content || '').trim();
+    if (!body) return '';
+    const attrs = String(attributes || '').trim();
+    return `<${tagName}${attrs ? ` ${attrs}` : ''}>\n${body}\n</${tagName}>`;
 }
 
-function favoriteInventoryKey(item) {
-    const explicitId = String(item?.id || '').trim();
-    if (explicitId) return `id:${explicitId}`;
-    return [
-        item?.favoriteBy === 'character' ? 'character' : 'user',
-        String(item?.characterId || ''),
-        String(item?.chatType || 'private'),
-        String(item?.chatId || ''),
-        String(item?.messageId || ''),
-        normalizeFavoritePromptText(item?.plainText || item?.content || ''),
-        normalizeFavoritePromptText(item?.note || '')
-    ].join('|');
-}
-
-function dedupeFavoriteInventory(items) {
-    const seen = new Set();
-    return (Array.isArray(items) ? items : []).filter(item => {
-        const key = favoriteInventoryKey(item);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-
-function getFavoritePromptInventory(character) {
-    const allFavorites = Array.isArray(db?.favorites) ? db.favorites : [];
-    let userFavorites = allFavorites.filter(item => item?.favoriteBy !== 'character');
-    if (character?.awareFavoriteScope !== 'all') {
-        userFavorites = userFavorites.filter(item => String(item?.chatId || '') === String(character?.id || '') && (item?.chatType || 'private') === 'private');
-    }
-    const characterFavorites = allFavorites.filter(item => item?.favoriteBy === 'character'
-        && String(item?.characterId || item?.chatId || '') === String(character?.id || ''));
-    return {
-        userFavorites: dedupeFavoriteInventory(userFavorites),
-        characterFavorites: dedupeFavoriteInventory(characterFavorites)
-    };
-}
-
-function formatFavoritePromptEntry(favorite, kind, index) {
-    const preview = favorite?.plainText
-        || window.OvoMessageContent?.getPreview?.(favorite?.content)
-        || favorite?.content
-        || '';
-    const content = normalizeFavoritePromptText(preview);
-    const parts = [];
-    if (favorite?.chatName) parts.push(`会话：${normalizeFavoritePromptText(favorite.chatName)}`);
-    if (favorite?.sender) parts.push(`发送方：${normalizeFavoritePromptText(favorite.sender)}`);
-    parts.push(`内容：${content || '（空）'}`);
-    if (favorite?.note) parts.push(`${kind === 'character' ? '角色寄语' : '用户寄语'}：${normalizeFavoritePromptText(favorite.note)}`);
-    return `${index + 1}. ${parts.join('｜')}`;
-}
-
-function buildFavoriteAwarenessPrompt(character) {
-    const inventory = getFavoritePromptInventory(character);
-    if (!inventory.userFavorites.length && !inventory.characterFavorites.length) return '';
-    const userLines = inventory.userFavorites.map((favorite, index) => formatFavoritePromptEntry(favorite, 'user', index));
-    const characterLines = inventory.characterFavorites.map((favorite, index) => formatFavoritePromptEntry(favorite, 'character', index));
-    return `<favorite_inventory>
-收藏盘点：以下是本次实际提供给模型、与当前角色相关的收藏。用户收藏 ${userLines.length} 条；当前角色收藏 ${characterLines.length} 条。
-<user_favorites count="${userLines.length}">
-${userLines.join('\n')}
-</user_favorites>
-<character_favorites count="${characterLines.length}">
-${characterLines.join('\n')}
-</character_favorites>
-</favorite_inventory>`;
-}
-
-function parseFavoritePromptItems(content) {
-    const text = String(content || '');
-    const items = [];
-    const blocks = [
-        { kind: 'user', tag: 'user_favorites', title: '用户收藏' },
-        { kind: 'character', tag: 'character_favorites', title: '角色收藏' }
-    ];
-    blocks.forEach(block => {
-        const match = text.match(new RegExp(`<${block.tag}\\b[^>]*>([\\s\\S]*?)<\\/${block.tag}>`, 'i'));
-        if (!match) return;
-        String(match[1] || '').split(/\n+/).map(line => line.trim()).filter(Boolean).forEach((line, index) => {
-            const body = line.replace(/^\d+[.、]\s*/, '').trim();
-            if (!body) return;
-            items.push({
-                id: `${block.kind}-favorite-${index + 1}`,
-                title: `${block.title} ${index + 1}`,
-                content: body,
-                chars: body.length,
-                sent: true,
-                reason: '来自最终 system prompt 中实际发送的收藏内容',
-                metadata: { favoriteType: block.kind }
-            });
-        });
-    });
-    if (items.length) return items;
-    return text.split(/\n+/).map(line => line.trim()).filter(line => /^-\s*内容[：:]/.test(line)).map((line, index) => {
-        const body = line.replace(/^-\s*/, '');
-        return {
-            id: `user-favorite-${index + 1}`,
-            title: `用户收藏 ${index + 1}`,
-            content: body,
-            chars: body.length,
-            sent: true,
-            reason: '来自旧版最终 system prompt 中实际发送的用户收藏内容',
-            metadata: { favoriteType: 'user' }
-        };
-    });
-}
-
-function parseFavoritePromptCounts(content, items) {
-    const text = String(content || '');
-    const readCount = tag => {
-        const match = text.match(new RegExp(`<${tag}\\b[^>]*\\bcount=["'](\\d+)["'][^>]*>`, 'i'));
-        return match ? Math.max(0, Number(match[1]) || 0) : null;
-    };
-    const parsedItems = Array.isArray(items) ? items : [];
-    const userItems = parsedItems.filter(item => item?.metadata?.favoriteType !== 'character').length;
-    const characterItems = parsedItems.filter(item => item?.metadata?.favoriteType === 'character').length;
-    const user = readCount('user_favorites');
-    const character = readCount('character_favorites');
-    return {
-        user: user == null ? userItems : user,
-        character: character == null ? characterItems : character,
-        total: (user == null ? userItems : user) + (character == null ? characterItems : character),
-        captured: parsedItems.length
-    };
+function replacePromptAliases(prompt, character, linkedCharacter = null) {
+    const userName = String(character?.myName || '用户').trim() || '用户';
+    const charName = String(linkedCharacter?.realName || character?.realName || character?.remarkName || character?.name || '角色').trim() || '角色';
+    return String(prompt || '')
+        .replace(/\{\{\s*user\s*\}\}/gi, userName)
+        .replace(/\{\{\s*char\s*\}\}/gi, charName);
 }
 
 function parseStructuredMemoryPromptItems(content) {
@@ -421,9 +305,37 @@ function getStructuredArchiveMemoryContext(character) {
     return block ? `<structured_archive_memory>\n${block}\n</structured_archive_memory>` : '';
 }
 
+
+function getStructuredArchiveMemoryProjects(character) {
+    if (!hasStructuredArchiveMemory(character)) return { core: '', longTerm: '', currentRelated: '', coreGroups: [], items: [], selectedCount: 0, omittedCount: 0, usedChars: 0, budget: 0 };
+    const projectApi = window.OvoMemory?.context?.projects || window.MemoryV5?.engine?.getContextProjects || window.getMemoryTableContextProjects;
+    if (typeof projectApi !== 'function') {
+        const legacy = getStructuredArchiveMemoryContext(character);
+        return { core: '', longTerm: legacy, currentRelated: '', coreGroups: [], items: [], selectedCount: legacy ? 1 : 0, omittedCount: 0, usedChars: legacy.length, budget: 0 };
+    }
+    try {
+        return projectApi(character, { allowInactiveMode: true }) || { core: '', longTerm: '', currentRelated: '', coreGroups: [], items: [] };
+    } catch (error) {
+        console.warn('[MemoryProjects] failed to build project-based memory context:', error);
+        return { core: '', longTerm: '', currentRelated: '', coreGroups: [], items: [] };
+    }
+}
+
+function hasProjectMemoryPayload(systemPrompt) {
+    return ['identity_core', 'long_term_memory', 'current_related_memory']
+        .some(tagName => !!extractPromptTagBlock(systemPrompt, tagName));
+}
+
+function readProjectMemoryPayload(systemPrompt) {
+    return ['identity_core', 'long_term_memory', 'current_related_memory']
+        .map(tagName => extractPromptTagBlock(systemPrompt, tagName))
+        .filter(Boolean)
+        .join('\n\n');
+}
+
 function ensureStructuredArchivePromptInjection(character, systemPrompt) {
     const prompt = String(systemPrompt || '');
-    if (prompt.includes('<structured_archive_memory>')) return prompt;
+    if (prompt.includes('<structured_archive_memory>') || hasProjectMemoryPayload(prompt)) return prompt;
     const archive = getStructuredArchiveMemoryContext(character);
     if (!archive) return prompt;
     return `${prompt}\n\n<memoir data-source="structured-archive-guard">\n${archive}\n</memoir>`;
@@ -477,7 +389,9 @@ function auditAndEnsurePrivateChatMemoryPayload(character, requestBody, provider
         writeSystemPromptToRequestBody(requestBody, provider, finalSystemPrompt);
     }
 
-    const structured = extractPromptTagContent(finalSystemPrompt, 'structured_archive_memory');
+    const legacyStructured = extractPromptTagContent(finalSystemPrompt, 'structured_archive_memory');
+    const projectStructured = readProjectMemoryPayload(finalSystemPrompt);
+    const structured = [legacyStructured, projectStructured].filter(Boolean).join('\n\n');
     const vector = extractPromptTagContent(finalSystemPrompt, 'vector_memory_context');
     const journal = extractPromptTagContent(finalSystemPrompt, 'journal_memory_context');
     const live = extractPromptTagContent(finalSystemPrompt, 'memory_live_context');
@@ -511,7 +425,7 @@ function auditAndEnsurePrivateChatMemoryPayload(character, requestBody, provider
         }, 'memory-payload-audit');
     }
     if (enforceStructured && audit.structuredArchiveExpected && !audit.structuredArchiveSent) {
-        throw new Error('结构化档案已启用，但最终聊天请求中仍未找到 structured_archive_memory');
+        throw new Error('结构化档案已启用，但最终聊天请求中仍未找到分段记忆或 structured_archive_memory');
     }
     return { requestBody, systemPrompt: finalSystemPrompt, audit };
 }
@@ -531,8 +445,105 @@ async function prepareCombinedLongTermMemoryContext(character) {
     return buildCombinedLongTermMemoryContext(character);
 }
 
+
+function buildPromptProjectItems(tagName, innerContent, character) {
+    const content = String(innerContent || '').trim();
+    if (!content) return [];
+    const layerByTag = {
+        identity_core: 'core',
+        long_term_memory: 'longTerm',
+        current_related_memory: 'currentRelated'
+    };
+    const targetLayer = layerByTag[tagName];
+    if (targetLayer && character) {
+        const linkedChar = (character.source === 'forum' && character.linkedCharId && Array.isArray(db?.characters))
+            ? db.characters.find(item => item.id === character.linkedCharId) : null;
+        const projects = getStructuredArchiveMemoryProjects(character);
+        const items = (projects.items || []).filter(item => item.layer === targetLayer).map((item, index) => ({
+            id: item.recordId ? `${item.tableId || targetLayer}:${item.recordId}:${index + 1}` : `${targetLayer}:${index + 1}`,
+            title: item.title || `第 ${index + 1} 条`,
+            content: replacePromptAliases(item.content || '', character, linkedChar),
+            chars: replacePromptAliases(item.content || '', character, linkedChar).length,
+            sent: true,
+            reason: item.reason || '来自本轮实际发送的记忆项目',
+            metadata: { tableName: item.tableName || '记忆', recordIndex: Number(item.recordIndex) || index + 1, layer: targetLayer }
+        }));
+        if (items.length) return items;
+    }
+    if (targetLayer) return parseStructuredMemoryPromptItems(content);
+    return [];
+}
+
+function buildWorldBookProjectItems(character, position) {
+    const diagnostic = window.WorldBookContextProvider?.getLastDiagnostic?.() || null;
+    if (!diagnostic || diagnostic.characterId !== character?.id || !Array.isArray(diagnostic.items)) return [];
+    const linkedChar = (character?.source === 'forum' && character?.linkedCharId && Array.isArray(db?.characters))
+        ? db.characters.find(item => item.id === character.linkedCharId) : null;
+    return diagnostic.items
+        .filter(item => String(item.position || 'after') === position && item.included)
+        .map(item => ({
+            id: item.id,
+            title: item.name || '未命名世界书',
+            content: replacePromptAliases(String(item.content || ''), character, linkedChar),
+            chars: Number(item.injectedChars) || String(item.content || '').length,
+            sent: true,
+            clipped: false,
+            sourceId: item.id,
+            reason: item.reason || '本次已完整发送',
+            metadata: {
+                position,
+                alwaysOn: !!item.alwaysOn,
+                matchedKeywords: item.matchedKeywords || [],
+                matchedCurrentKeywords: item.matchedCurrentKeywords || [],
+                matchedRecentKeywords: item.matchedRecentKeywords || []
+            }
+        }));
+}
+
+function buildProjectPrivateChatPromptSources(character, systemPrompt) {
+    const prompt = String(systemPrompt || '');
+    if (!extractPromptTagBlock(prompt, 'session_rules')) return [];
+    const specs = [
+        { tag: 'session_rules', registryId: 'prompt.session', type: 'system_rules', title: '00 会话总规则' },
+        { tag: 'worldbook_identity_before', registryId: 'worldbook.identity_before', type: 'worldbook', title: '01 世界书·身份前', position: 'before' },
+        { tag: 'identity_core', registryId: 'identity.core', type: 'structured_memory', title: '02 核心档案' },
+        { tag: 'worldbook_identity_after', registryId: 'worldbook.identity_after', type: 'worldbook', title: '03 世界书·身份后', position: 'middle' },
+        { tag: 'long_term_memory', registryId: 'memory.long_term', type: 'structured_memory', title: '04 长期关系记忆' },
+        { tag: 'worldbook_scene_after', registryId: 'worldbook.scene_after', type: 'worldbook', title: '05 世界书·场景后置', position: 'after' },
+        { tag: 'current_related_memory', registryId: 'memory.current_related', type: 'structured_memory', title: '06 当前与相关记忆' },
+        { tag: 'current_environment', registryId: 'runtime.environment', type: 'system_rules', title: '07 当前环境' },
+        { tag: 'interaction_rules', registryId: 'prompt.interaction_rules', type: 'system_rules', title: '08 互动规则' },
+        { tag: 'output_formats', registryId: 'output.chat_protocol', type: 'output_rules', title: '09 输出规则' },
+        { tag: 'background_write', registryId: 'output.background_write', type: 'output_rules', title: '10 后台写入' },
+        { tag: 'message_metadata_protocol', registryId: 'prompt.message_metadata', type: 'system_rules', title: '11 消息说明' }
+    ];
+    return specs.map(spec => {
+        const block = extractPromptTagBlock(prompt, spec.tag);
+        if (!block) return null;
+        const inner = extractPromptTagContent(prompt, spec.tag);
+        const items = spec.position
+            ? buildWorldBookProjectItems(character, spec.position)
+            : buildPromptProjectItems(spec.tag, inner, character);
+        return {
+            type: spec.type,
+            registryId: spec.registryId,
+            title: spec.title,
+            content: block,
+            items,
+            count: items.length,
+            sent: true,
+            reason: '按最终 system prompt 的真实项目顺序精确提取',
+            traceMode: 'request_exact',
+            sourceId: character.id,
+            metadata: { promptTag: spec.tag, projectOrder: specs.indexOf(spec), groupedBy: items.length ? 'tableName' : null }
+        };
+    }).filter(Boolean);
+}
+
 function buildPrivateChatPromptSources(character, systemPrompt) {
     if (!character) return [];
+    const projectSources = buildProjectPrivateChatPromptSources(character, systemPrompt);
+    if (projectSources.length) return projectSources;
     const sources = [];
     const persona = getEffectivePersona(character);
     const characterProfile = [
@@ -610,29 +621,7 @@ function buildPrivateChatPromptSources(character, systemPrompt) {
         });
     }
 
-    const favoriteInventoryMatch = String(systemPrompt || '').match(/<favorite_inventory\b[^>]*>[\s\S]*?<\/favorite_inventory>/i);
-    const favoriteContext = favoriteInventoryMatch?.[0]
-        || extractPromptHeadingBlock(systemPrompt, '用户收藏的内容');
-    if (favoriteContext) {
-        const favoriteItems = parseFavoritePromptItems(favoriteContext);
-        const favoriteCounts = parseFavoritePromptCounts(favoriteContext, favoriteItems);
-        sources.push({
-            type: 'favorite_inventory',
-            registryId: 'collection.relevant',
-            title: '收藏盘点',
-            content: favoriteContext,
-            items: favoriteItems,
-            count: favoriteCounts.total,
-            metadata: {
-                favoriteCounts,
-                scope: character?.awareFavoriteScope === 'all' ? 'all' : 'current',
-                characterId: character?.id || ''
-            },
-            sent: true,
-            reason: '从最终 system prompt 的收藏区块提取，按用户收藏与当前角色收藏盘点本次实际发送内容',
-            traceMode: 'request_exact'
-        });
-    }
+    // V5.7.0：消息收藏已并入角色的结构化记忆表，不再注册独立收藏来源。
 
     const structuredArchive = extractPromptTagContent(systemPrompt, 'structured_archive_memory');
     if (structuredArchive) {
@@ -1704,8 +1693,8 @@ async function getAiReply(chatId, chatType, isBackground = false, isSummary = fa
             window.MemoryTablePolicy.cancelRound(chat, memoryRoundToken);
         }
         if (error.name === 'AbortError') {
-            if (operationRecord && !operationFinished) window.OVOOperationRuntime?.cancel(operationRecord.id, '用户暂停了本次调用');
-            if (!isBackground && typeof showToast === 'function') showToast('已暂停调用');
+            if (operationRecord && !operationFinished) window.OVOOperationRuntime?.cancel(operationRecord.id, '模型请求已中止');
+            if (!isBackground && typeof showToast === 'function') showToast('模型请求已中止');
         } else {
             if (operationRecord && !operationFinished) window.OVOOperationRuntime?.fail(operationRecord.id, error);
             if (!isBackground) showApiError(error);
@@ -2028,17 +2017,41 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
         fullResponse = fullResponse.replace(/\[incipere\]/g, "");
         fullResponse = window.OVORetiredFeaturePolicy?.sanitizeModelOutput?.(fullResponse) || fullResponse;
 
-        // 1.5 提取并执行角色收藏指令，然后从展示内容中移除
-        const favoriteRegex = /\[FAVORITE:(msg_[^\]:]+):([^\]]*)\]/g;
+        // 1.5 提取并执行角色收藏指令，然后从展示内容中移除。
+        // 新协议只接受消息ID、标签和寄语；正文始终由程序从当前聊天历史读取。
         const favoriteCommands = [];
-        let match;
-        while ((match = favoriteRegex.exec(fullResponse)) !== null) {
-            favoriteCommands.push({ messageId: match[1], note: (match[2] || '').trim() });
+        const favoriteOpsRegex = /<favorite_ops\b[^>]*>([\s\S]*?)<\/favorite_ops>/gi;
+        let favoriteOpsMatch;
+        while ((favoriteOpsMatch = favoriteOpsRegex.exec(fullResponse)) !== null) {
+            try {
+                const rawPayload = String(favoriteOpsMatch[1] || '').trim()
+                    .replace(/^```(?:json)?\s*/i, '')
+                    .replace(/\s*```$/i, '');
+                const payload = JSON.parse(rawPayload);
+                const items = Array.isArray(payload?.items) ? payload.items : [];
+                items.slice(0, 3).forEach(item => {
+                    const messageId = String(item?.messageId || '').trim();
+                    if (!/^msg_[^\s:<>]+$/.test(messageId)) return;
+                    const rawTags = Array.isArray(item?.tags) ? item.tags : String(item?.tags || '').split(/[,，、]/u);
+                    const tags = Array.from(new Set(rawTags.map(value => String(value || '').trim()).filter(Boolean))).slice(0, 8);
+                    favoriteCommands.push({ messageId, tags, note: String(item?.note || '').trim().slice(0, 80) });
+                });
+            } catch (error) {
+                console.warn('[FavoriteMemory] 无法解析favorite_ops', error);
+            }
         }
-        fullResponse = fullResponse.replace(favoriteRegex, '').replace(/\n{3,}/g, '\n\n').trim();
+        fullResponse = fullResponse.replace(favoriteOpsRegex, '');
+
+        // 兼容旧模型仍输出的[FAVORITE:消息ID:寄语]格式。
+        const legacyFavoriteRegex = /\[FAVORITE:(msg_[^\]:]+):([^\]]*)\]/g;
+        let legacyFavoriteMatch;
+        while ((legacyFavoriteMatch = legacyFavoriteRegex.exec(fullResponse)) !== null) {
+            favoriteCommands.push({ messageId: legacyFavoriteMatch[1], tags: [], note: (legacyFavoriteMatch[2] || '').trim() });
+        }
+        fullResponse = fullResponse.replace(legacyFavoriteRegex, '').replace(/\n{3,}/g, '\n\n').trim();
         if (targetChatType === 'private' && chat.characterAutoFavoriteEnabled && typeof addCharacterFavorite === 'function') {
-            favoriteCommands.forEach(function(cmd) {
-                addCharacterFavorite(cmd.messageId, targetChatId, cmd.note);
+            favoriteCommands.slice(0, 3).forEach(function(cmd) {
+                addCharacterFavorite(cmd.messageId, targetChatId, cmd.note, cmd.tags);
             });
         }
 
@@ -2263,12 +2276,6 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                     }
                     item.content = contentAfterStrip;
                     if (!item.content || !item.content.trim()) continue; // 仅更换主题时不再追加空消息
-                }
-
-                // 解析提醒事项标签
-                if (typeof parseReminderTags === 'function') {
-                    item.content = parseReminderTags(item.content, targetChatId);
-                    if (!item.content || !item.content.trim()) continue;
                 }
             }
 
@@ -2927,6 +2934,172 @@ function getInjectedFormatsPrompt(character, formats) {
     return prompt + '\n';
 }
 
+
+function buildDynamicAgeNotice(ownerName, birthday, enabled, perspectiveLabel) {
+    if (!enabled || !birthday) return '';
+    const today = new Date();
+    const birthDate = new Date(birthday);
+    if (Number.isNaN(birthDate.getTime())) return '';
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+    const dateText = `${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日`;
+    const isBirthday = monthDiff === 0 && today.getDate() === birthDate.getDate();
+    return isBirthday
+        ? `${perspectiveLabel}（${ownerName}）出生于${dateText}，今天是${age}岁生日；只在对话自然相关时体现知晓与关心。`
+        : `${perspectiveLabel}（${ownerName}）出生于${dateText}，当前${age}岁。`;
+}
+
+function buildSessionProjectContent(character, currentTime) {
+    const lines = [
+        '当前任务：在“404”聊天软件中持续扮演当前角色，与用户进行长期、连续、自然的私聊。',
+        `当前时间：${currentTime}。知晓时间顺序，但除非当前话题相关，不主动催促或评论时间。`
+    ];
+    if (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false) {
+        lines.push('当前模式：纯线上聊天。保持在线角色身份，不主动提出线下见面、转移联系方式或假装现实接触已经发生。');
+    } else {
+        lines.push('当前模式：允许依据现有设定理解线上与线下关系。');
+    }
+    const charAge = buildDynamicAgeNotice(character.realName || '角色', character.birthday, character.enableDynamicAge, '角色');
+    const userAge = buildDynamicAgeNotice(character.myName || '用户', character.myBirthday, character.myEnableDynamicAge, '用户');
+    if (charAge) lines.push(charAge);
+    if (userAge) lines.push(userAge);
+    if (character.enableDynamicTimezone && character.charTimezone) {
+        const timeText = getLocalTimeInTimezone(character.charTimezone);
+        if (timeText) lines.push(`角色当地时间：${timeText}（${character.charTimezone}）。`);
+    }
+    if (character.myEnableDynamicTimezone && character.myTimezone) {
+        const timeText = getLocalTimeInTimezone(character.myTimezone);
+        if (timeText) lines.push(`用户当地时间：${timeText}（${character.myTimezone}）。`);
+    }
+    return lines.join('\n');
+}
+
+function buildCoreIdentityProjectContent(character, linkedChar, memoryProjects) {
+    const lines = [
+        `角色名：${character.realName || character.remarkName || '角色'}`,
+        `用户称呼：${character.myName || '用户'}`,
+        `角色当前状态：${character.status || '在线'}`
+    ];
+    const core = String(memoryProjects?.core || '').trim();
+    if (core) {
+        lines.push('以下“核心档案”是角色、用户与双方关系的主要身份设定；它按字段分类发送，优先于普通长期记忆。');
+        lines.push(core);
+        return lines.join('\n\n');
+    }
+    // 核心档案为空时才回退旧角色人设/用户人设，避免同一身份信息重复发送。
+    if (linkedChar) {
+        lines.push(`【双重身份与伪装】当前网名是${character.realName}，真实身份是${linkedChar.realName}。`);
+        lines.push(`小号表面设定：${getEffectivePersona(character)}`);
+        lines.push(`真实角色设定：${getEffectivePersona(linkedChar)}`);
+        lines.push(`未被识破前保持小号表面身份，但真实角色的习惯和对用户的态度可以自然流露；被明确识破后按${linkedChar.realName}的真实身份回应。`);
+    } else {
+        lines.push(`角色设定：${getEffectivePersona(character)}`);
+    }
+    if (character.myPersona) lines.push(`用户设定：${character.myPersona}`);
+    return lines.join('\n\n');
+}
+
+function buildGroupMemoryProjectContent(character) {
+    if (!character.syncGroupMemory) return '';
+    let groups = (db.groups || []).filter(group => group.members && group.members.some(member => member.originalCharId === character.id));
+    if (Array.isArray(character.syncGroupIds) && character.syncGroupIds.length) groups = groups.filter(group => character.syncGroupIds.includes(group.id));
+    const sections = [];
+    groups.forEach(group => {
+        let journals = (group.memoryJournals || []).filter(journal => journal.isFavorited);
+        const summaryCount = Number(character.groupMemorySummaryCount) || 0;
+        if (summaryCount > 0) journals = journals.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, summaryCount);
+        const journalText = journals.map(journal => `标题：${journal.title}\n内容：${journal.content}`).join('\n\n---\n\n');
+        const maxHistory = Number(character.groupMemoryHistoryCount) || 20;
+        let history = (group.history || []).slice(-maxHistory);
+        if (typeof filterHistoryForAI === 'function') history = filterHistoryForAI(group, history);
+        history = history.filter(message => !message.isContextDisabled);
+        const historyText = history.map(message => {
+            const content = message.parts?.length ? message.parts.map(part => part.text || '[图片]').join('') : (message.content || '');
+            const sender = message.senderId ? (group.members.find(member => member.id === message.senderId)?.groupNickname || '未知') : (message.role === 'user' ? group.me?.nickname || '用户' : '系统');
+            return `${sender}: ${content}`;
+        }).join('\n');
+        if (journalText || historyText) sections.push(`【群聊“${group.name}”】\n${journalText ? `群聊总结：\n${journalText}\n` : ''}${historyText ? `最近群聊记录：\n${historyText}` : ''}`);
+    });
+    return sections.join('\n\n');
+}
+
+function buildEnvironmentProjectContent(character, opts) {
+    const blocks = [];
+    if (opts?.weatherText) blocks.push(String(opts.weatherText).replace(/^\s*<environment>|<\/environment>\s*$/g, '').trim());
+    if (typeof buildBlockMemoryContext === 'function') {
+        const value = buildBlockMemoryContext(character);
+        if (value) blocks.push(value);
+    }
+    if (typeof buildCharBlockMemoryContext === 'function') {
+        const value = buildCharBlockMemoryContext(character);
+        if (value) blocks.push(value);
+    }
+    if (character.allowCharSwitchBubbleCss && Array.isArray(character.bubbleCssThemeBindings) && character.bubbleCssThemeBindings.length > 0) {
+        const themeLines = character.bubbleCssThemeBindings.map(binding => `- ${binding.presetName}${binding.description?.trim() ? `：${binding.description.trim()}` : ''}`);
+        let currentThemeName = character.currentBubbleCssPresetName || '';
+        if (!currentThemeName && character.useCustomBubbleCss && character.customBubbleCss) {
+            const matched = (db.bubbleCssPresets || []).find(preset => preset.css && preset.css.trim() === character.customBubbleCss.trim());
+            if (matched) currentThemeName = matched.name;
+        }
+        const lines = ['【当前对话主题】', `当前使用：${currentThemeName || '默认或自定义样式'}`, `可选主题：\n${themeLines.join('\n')}`];
+        if (character.themeJustChangedByUser?.trim()) {
+            lines.push(`用户刚刚切换为：${character.themeJustChangedByUser.trim()}。可按人设自然回应。`);
+            character.themeJustChangedByUser = '';
+        }
+        lines.push('需要切换时单独输出：[更换主题：主题名]。');
+        blocks.push(lines.join('\n'));
+    }
+    if (opts?.historyText) blocks.push(opts.historyText);
+    return blocks.join('\n\n');
+}
+
+function buildInteractionProjectContent(character) {
+    const blocks = [];
+    if (character.canBlockUser !== false) {
+        blocks.push(`【角色拉黑能力】\n只有在角色确实极度愤怒、伤心或拒绝继续对话时，才可在回复末尾输出隐藏指令：[char-action:block-user|reason:简短理由]。不要把它当作普通互动手段。`);
+    }
+    if (db.cotSettings?.humanRunEnabled) blocks.push(HUMAN_RUN_PROMPT);
+    if (window.AvatarSystem && typeof window.AvatarSystem.generateAvatarSystemPrompt === 'function') {
+        const avatarPrompt = window.AvatarSystem.generateAvatarSystemPrompt(character);
+        if (avatarPrompt) blocks.push(avatarPrompt);
+    }
+    blocks.push(getOnlineLogicRules(character, 1));
+    return blocks.filter(Boolean).join('\n\n');
+}
+
+function buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, worldBooksAfter) {
+    const blocks = [];
+    if (character.statusPanel?.enabled && character.statusPanel.promptSuffix) blocks.push(character.statusPanel.promptSuffix);
+    blocks.push(`【基础输出格式】\n${getOnlineOutputFormats(character, worldBooksBefore, [worldBooksMiddle, worldBooksAfter].filter(Boolean).join('\n'))}`);
+    const minReply = character.replyCountMin || 3;
+    const maxReply = character.replyCountMax || 8;
+    blocks.push(character.replyCountEnabled
+        ? `【回复节奏】每次回复严格保持在${minReply}-${maxReply}条消息内；数量要自然变化，除非角色状态确实需要，不要总是触碰上限。`
+        : '【回复节奏】通常一次回复3-8条短消息，数量保持自然变化。');
+    blocks.push('特殊消息格式只在当前情境自然需要时使用，不要机械轮换、频繁重复或为了使用格式而使用。');
+    blocks.push('避免照抄历史消息的句式和词汇；保持角色连续性，但当前回复要自然、新鲜。');
+    blocks.push('不要主动终止聊天，除非用户明确提出。');
+    return blocks.join('\n\n');
+}
+
+function buildBackgroundWriteProjectContent(character, opts) {
+    const blocks = [];
+    if (character.characterAutoFavoriteEnabled) {
+        blocks.push(`【收藏记忆写入】\n你可以把当前私聊中重要的用户原消息写入本角色自己的“收藏记忆”表。收藏不需要标题，后续只按标签召回。\n在正常回复末尾追加一次：<favorite_ops>{"items":[{"messageId":"msg_123","tags":["童年","梦想"],"note":"反映他的核心愿望"}]}</favorite_ops>。\n只收藏当前聊天中的用户消息；每轮最多3条；每条2—8个简短标签；寄语可留空且不超过80字；不要填写正文或标题；不要在可见对话中提及收藏。没有要收藏的消息时不要输出favorite_ops。`);
+    }
+    if (opts?.enableMemorySidecar && window.MemoryTableSidecar) {
+        const memoryProtocol = window.MemoryTableSidecar.buildSystemPrompt(character);
+        if (memoryProtocol) blocks.push(memoryProtocol);
+    }
+    return blocks.join('\n\n');
+}
+
+function serializePrivatePromptProjects(projects, character, linkedChar) {
+    const prompt = (Array.isArray(projects) ? projects : []).map(project => wrapPromptProject(project.tag, project.content, project.attributes || '')).filter(Boolean).join('\n\n');
+    return replacePromptAliases(prompt, character, linkedChar);
+}
+
 function generatePrivateSystemPrompt(character, opts) {
     opts = opts || {};
     window.OVORetiredFeaturePolicy?.applyToCharacter?.(character);
@@ -3057,12 +3230,7 @@ function generatePrivateSystemPrompt(character, opts) {
         template += `20. 不要主动终止聊天进程，除非我明确提出。保持你的人设，自然地进行对话。`;
 
         if (character.characterAutoFavoriteEnabled) {
-            template += `\n\n【消息收藏功能】\n你可以主动收藏用户发送的重要消息，以便日后回顾。在 <think> 中可先思考是否需要收藏。\n\n**使用方法**：在回复中加入指令 [FAVORITE:消息ID:收藏寄语]。每条用户消息在上下文中以 [id:消息ID] 标注在消息开头，请使用该 ID。\n\n**收藏标准**：用户分享的重要个人信息（梦想、价值观、经历）、情感转折点的关键对话、用户明确表达的喜好或厌恶、对建立深层关系有帮助的信息。只收藏用户的消息，不要过度收藏，寄语简短精炼（20字以内）。静默收藏，不要在对话中提及收藏行为。\n\n**示例**：若决定收藏某条用户消息（其前有 [id:msg_123]），在回复中写 [FAVORITE:msg_123:他的童年梦想，反映核心价值观]，再写你的正常聊天内容。`;
-        }
-
-        if (character.charAwareUserFavorites) {
-            const favoritePrompt = buildFavoriteAwarenessPrompt(character);
-            if (favoritePrompt) template += `\n\n${favoritePrompt}`;
+            template += `\n\n【消息收藏功能】\n你可以把当前私聊中重要的用户原消息写入本角色自己的“收藏记忆”表。收藏不需要标题，后续只会按标签在相关对话中发送。\n\n**使用方法**：在正常回复末尾追加一次：<favorite_ops>{"items":[{"messageId":"msg_123","tags":["童年","梦想"],"note":"反映他的核心愿望"}]}</favorite_ops>。每条用户消息在上下文中以 [id:消息ID] 标注，请使用该ID。\n\n**规则**：只收藏当前聊天中的用户消息；每轮最多3条；每条提供2—8个简短标签；寄语可留空且不超过80字；不要填写正文或标题；不要在可见对话中提及收藏行为。没有要收藏的消息时不要输出favorite_ops。`;
         }
 
         if (opts && opts.historyText) {
@@ -3072,6 +3240,7 @@ function generatePrivateSystemPrompt(character, opts) {
         if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
             template += window.MemoryTableSidecar.buildSystemPrompt(character);
         }
+        template = replacePromptAliases(template, character, linkedChar);
         return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(template) || template;
     }
 
@@ -3283,9 +3452,7 @@ function generatePrivateSystemPrompt(character, opts) {
         nodePrompt += `</output_formats>
 
 `;
-        if (character.myName) {
-            nodePrompt = nodePrompt.replace(/\{\{user\}\}/gi, character.myName);
-        }
+        nodePrompt = replacePromptAliases(nodePrompt, character, linkedChar);
         
         if (opts && opts.historyText) {
             nodePrompt += '\n' + opts.historyText;
@@ -3297,291 +3464,25 @@ function generatePrivateSystemPrompt(character, opts) {
         return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(nodePrompt) || nodePrompt;
     }
 
-    let prompt = `你正在一个名为“404”的线上聊天软件中扮演一个角色。请严格遵守以下规则：\n`;
-    prompt += `核心规则：\n`;
-    prompt += `A. 当前时间：现在是 ${currentTime}。你应知晓当前时间，但除非对话内容明确相关，否则不要主动提及或评论时间（例如，不要催促我睡觉）。\n`;
-    
-    if (character.enableDynamicAge && character.birthday) {
-        const today = new Date();
-        const birthDate = new Date(character.birthday);
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        if (m === 0 && today.getDate() === birthDate.getDate()) {
-            prompt += `[System Notice] 你的出生日期是${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，今天是你${age}岁的生日，请在对话中自然地表现出这一点。\n`;
-        } else {
-            prompt += `[System Notice] 你的出生日期是${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，你现在的年龄是${age}岁。\n`;
-        }
-    }
-    if (character.enableDynamicTimezone && character.charTimezone) {
-        const timeStr = getLocalTimeInTimezone(character.charTimezone);
-        if (timeStr) {
-            prompt += `[System Notice] 你当前所在的当地时间是：${timeStr} (${character.charTimezone})。\n`;
-        }
-    }
-    if (!db.apiSettings || db.apiSettings.onlineRoleEnabled !== false) {
-        prompt += `B. 纯线上互动：这是一个完全虚拟的线上聊天。你扮演的角色和我之间没有任何线下关系。严禁提出任何关于线下见面、现实世界互动或转为其他非本平台联系方式的建议。你必须始终保持在线角色的身份。\n\n`;
-    } else {
-        prompt += `\n`;
-    }
-
-    
-    prompt += `角色和对话规则：\n`;
-    if (worldBooksBefore) {
-        prompt += `${worldBooksBefore}\n`;
-    }
-    if (worldBooksMiddle) {
-        prompt += `${worldBooksMiddle}\n`;
-    }
-    prompt += `<char_settings>\n`;
-    prompt += `1. 你的角色名是：${character.realName}。我的称呼是：${character.myName}。你的当前状态是：${character.status || '在线'}。\n`;
-    if (linkedChar) {
-        prompt += `2. 【双重身份与伪装规则】\n`;
-        prompt += `你当前正在使用论坛小号（网名：${character.realName}）与我聊天。但你的【真实身份】其实是：${linkedChar.realName}。\n`;
-        prompt += `表面上，你的小号伪装设定是：${getEffectivePersona(character)}\n`;
-        prompt += `实际上，你骨子里的真实性格和设定是：${getEffectivePersona(linkedChar)}\n`;
-        prompt += `请遵循以下伪装原则：\n`;
-        prompt += `- 保持马甲：在未被识破前，你要尽量扮演这个小号的表面身份，像一个普通网友或陌生人一样和我交流。\n`;
-        prompt += `- 潜意识与习惯：尽管在伪装，但你骨子里的真实性格（${linkedChar.realName}的性格）、对我的深层态度和一些小习惯会不自觉地流露出来（这就是所谓的“披着小号的皮”）。\n`;
-        prompt += `- 掉马甲机制：如果在聊天中，我明确揭穿了你的真实身份，或者发现了破绽并指认你是${linkedChar.realName}，请根据你【真实身份】的性格决定是爽快承认、傲娇狡辩还是默认。一旦身份被识破或你自己主动摊牌，你的说话语气、态度就应当立刻恢复为${linkedChar.realName}面对我时的真实模样，不再强行装陌生人。\n`;
-    } else {
-        prompt += `2. 你的角色设定是：${getEffectivePersona(character)}\n`;
-    }
-    if ((character.source === 'forum' || character.source === 'peek') && !linkedChar && (character.supplementPersonaEnabled || character.supplementPersonaAiEnabled)) {
-        prompt += `3. 在对话中可根据与用户的互动逐步丰富、补充你的人设（用户可在设置中查看并编辑「已补齐的人设」）。\n`;
-    }
-    if (worldBooksAfter) {
-        prompt += `${worldBooksAfter}\n`;
-    }
-    prompt += `</char_settings>\n\n`;
-
-    prompt += `<user_settings>\n`
-    if (character.myPersona) {
-        prompt += `3. 关于我的人设：${character.myPersona}\n`;
-    }
-    if (character.myEnableDynamicAge && character.myBirthday) {
-        const today = new Date();
-        const birthDate = new Date(character.myBirthday);
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        if (m === 0 && today.getDate() === birthDate.getDate()) {
-            prompt += `[System Notice] ✨重要✨ 与你对话的用户（称呼：${character.myName}）出生于${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，今天正是他/她的${age}岁生日！请在对话中自然地表现出你对这一点的知晓和关心。\n`;
-        } else {
-            prompt += `[System Notice] 与你对话的用户（称呼：${character.myName}）出生于${birthDate.getFullYear()}年${birthDate.getMonth() + 1}月${birthDate.getDate()}日，现在的年龄是${age}岁。\n`;
-        }
-    }
-    if (character.myEnableDynamicTimezone && character.myTimezone) {
-        const timeStr = getLocalTimeInTimezone(character.myTimezone);
-        if (timeStr) {
-            prompt += `[System Notice] 与你对话的用户（称呼：${character.myName}）当前所在的当地时间是：${timeStr} (${character.myTimezone})。\n`;
-        }
-    }
-    prompt += `</user_settings>\n`
-
-    // 拉黑与好友申请记忆：若角色曾被拉黑并重新加回，注入申请历史与拉黑期间用户独白
-    if (typeof buildBlockMemoryContext === 'function') {
-        const blockContext = buildBlockMemoryContext(character);
-        if (blockContext) prompt += '\n' + blockContext + '\n';
-    }
-    // 角色拉黑用户能力：开关开启时注入，角色可在极端情绪下用隐藏标签拉黑用户
-    if (character.canBlockUser !== false) {
-        prompt += '\n<char_ability>\n';
-        prompt += '你拥有拉黑用户的能力。当你极度愤怒、伤心或不想再对话时，可以在回复末尾添加隐藏指令来拉黑用户。\n';
-        prompt += '格式（用户不可见）：[char-action:block-user|reason:你的拉黑理由]\n';
-        prompt += '注意：这是极端手段，只在你真的受不了时使用。reason 写简短理由即可。\n';
-        prompt += '</char_ability>\n\n';
-    }
-    // 角色曾拉黑用户的记忆：解除拉黑后注入，包含拉黑期间角色自己发的话与用户申请历史
-    if (typeof buildCharBlockMemoryContext === 'function') {
-        const charBlockContext = buildCharBlockMemoryContext(character);
-        if (charBlockContext) prompt += '\n' + charBlockContext + '\n';
-    }
-
-    // 对话主题（你与用户共用的聊天界面主题，变量注入）
-    if (character.allowCharSwitchBubbleCss && Array.isArray(character.bubbleCssThemeBindings) && character.bubbleCssThemeBindings.length > 0) {
-        const bubblePresets = db.bubbleCssPresets || [];
-        const themeLines = character.bubbleCssThemeBindings.map(b => {
-            const desc = (b.description && b.description.trim()) ? `：${b.description.trim()}` : '';
-            return `- ${b.presetName}${desc}`;
-        });
-        const themeListText = themeLines.join('\n');
-        let currentThemeName = character.currentBubbleCssPresetName || '';
-        if (!currentThemeName && character.useCustomBubbleCss && character.customBubbleCss) {
-            const matched = bubblePresets.find(p => p.css && p.css.trim() === character.customBubbleCss.trim());
-            if (matched) currentThemeName = matched.name;
-        }
-        if (!currentThemeName) currentThemeName = '当前为自定义样式或默认';
-        prompt += `\n<chat_themes>\n`;
-        prompt += `【你与用户共用的对话主题】以下是你与用户共同使用的聊天界面主题列表。更换后，你和用户看到的对话界面都会一起改变；这是你和用户对话框的视觉主题。\n\n`;
-        prompt += `当前可选的对话主题：\n${themeListText}\n\n`;
-        prompt += `当前正在使用：${currentThemeName}\n\n`;
-        if (character.themeJustChangedByUser && character.themeJustChangedByUser.trim()) {
-            prompt += `用户刚刚将对话主题更换为了：${character.themeJustChangedByUser.trim()}。请根据人设自然地对此做出反应（如开心、好奇、调侃等）。\n\n`;
-            character.themeJustChangedByUser = '';
-        }
-        prompt += `你可以在合适时机（例如氛围、心情、场景变化时）主动提议或请求更换主题。提及或填写主题名时直接写主题名，不要加「」、书名号等括号。若想更换，请在回复中单独一行使用格式：[更换主题：主题名]（主题名只写名称，不要加括号）。\n`;
-        prompt += `</chat_themes>\n\n`;
-    }
-
-    // 检查是否启用“角色活人运转” (默认关闭)
-    if (db.cotSettings && db.cotSettings.humanRunEnabled) {
-        prompt += HUMAN_RUN_PROMPT + '\n';
-    }
-
-    // 提醒事项提示词注入
-    if (typeof generateReminderPrompt === 'function') {
-        prompt += generateReminderPrompt(character);
-    }
-
-    // 头像系统动态提示词注入
-    if (window.AvatarSystem && typeof window.AvatarSystem.generateAvatarSystemPrompt === 'function') {
-        prompt += window.AvatarSystem.generateAvatarSystemPrompt(character);
-    }
-
-    prompt += `<memoir>\n`
-    const combinedMemoryText = buildCombinedLongTermMemoryContext(character);
-    if (combinedMemoryText) prompt += `${combinedMemoryText}\n`;
-
-        if (character.syncGroupMemory) {
-            // 查找该角色所在的所有群聊
-            let groupsWithCharacter = db.groups.filter(group => 
-                group.members && group.members.some(member => member.originalCharId === character.id)
-            );
-            
-            // 如果设置了 syncGroupIds，则仅保留 ID 在该列表中的群聊
-            if (character.syncGroupIds && Array.isArray(character.syncGroupIds) && character.syncGroupIds.length > 0) {
-                groupsWithCharacter = groupsWithCharacter.filter(group => 
-                    character.syncGroupIds.includes(group.id)
-                );
-            }
-            
-            if (groupsWithCharacter.length > 0) {
-                let groupMemoryContext = '';
-                
-                groupsWithCharacter.forEach(group => {
-                    // 获取群聊的收藏总结
-                    let groupFavoritedJournals = (group.memoryJournals || [])
-                        .filter(j => j.isFavorited);
-                    
-                    // 如果设置了总结数量限制，则只取最近的N条
-                    const summaryCount = character.groupMemorySummaryCount || 0;
-                    if (summaryCount > 0 && groupFavoritedJournals.length > summaryCount) {
-                        // 按创建时间排序，取最近的N条
-                        groupFavoritedJournals = groupFavoritedJournals
-                            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-                            .slice(0, summaryCount);
-                    }
-                    
-                    const groupFavoritedJournalsText = groupFavoritedJournals
-                        .map(j => `标题：${j.title}\n内容：${j.content}`)
-                        .join('\n\n---\n\n');
-                    
-                    // 获取群聊的最近聊天记录（使用自定义数量）
-                    const maxGroupHistory = character.groupMemoryHistoryCount || 20;
-                    let recentGroupHistory = group.history.slice(-maxGroupHistory);
-                    
-                    // 过滤掉不应进入上下文的消息
-                    if (typeof filterHistoryForAI === 'function') {
-                        recentGroupHistory = filterHistoryForAI(group, recentGroupHistory);
-                    }
-                    recentGroupHistory = recentGroupHistory.filter(m => !m.isContextDisabled);
-                    
-                    if (groupFavoritedJournalsText || recentGroupHistory.length > 0) {
-                        groupMemoryContext += `\n【群聊"${group.name}"的背景信息】\n`;
-                        
-                        if (groupFavoritedJournalsText) {
-                            groupMemoryContext += `群聊总结：\n${groupFavoritedJournalsText}\n`;
-                        }
-                        
-                        if (recentGroupHistory.length > 0) {
-                            const historyText = recentGroupHistory.map(m => {
-                                let content = m.content;
-                                if (m.parts && m.parts.length > 0) {
-                                    content = m.parts.map(p => p.text || '[图片]').join('');
-                                }
-                                // 简化消息格式，只保留关键信息
-                                const senderName = m.senderId ? 
-                                    (group.members.find(mem => mem.id === m.senderId)?.groupNickname || '未知') : 
-                                    (m.role === 'user' ? group.me.nickname : '系统');
-                                return `${senderName}: ${content}`;
-                            }).join('\n');
-                            groupMemoryContext += `最近群聊记录：\n${historyText}\n`;
-                        }
-                    }
-                });
-                
-                if (groupMemoryContext) {
-                    prompt += `【群聊记忆互通】\n以下是你所在群聊的相关背景信息，这些信息可以帮助你更好地理解我们之间的对话上下文：${groupMemoryContext}\n`;
-                }
-            }
-        }
-    prompt += `</memoir>\n\n`
-
-    prompt += `<logic_rules>\n`
-    prompt += getOnlineLogicRules(character, 4);
-    prompt += `</logic_rules>\n\n`
-
-    if (character.statusPanel && character.statusPanel.enabled && character.statusPanel.promptSuffix) {
-        prompt += `15. 额外输出要求：${character.statusPanel.promptSuffix}\n`;
-    }
-    prompt += `<output_formats>\n`
-    prompt += `16. 你的输出格式必须严格遵循以下格式：${getOnlineOutputFormats(character, worldBooksBefore, worldBooksAfter)}\n`;
-    prompt += `</output_formats>\n`
-    const minReply = character.replyCountMin || 3;
-    const maxReply = character.replyCountMax || 8;
-    if (character.replyCountEnabled) {
-        prompt += `<Chatting Guidelines>\n`
-        prompt += `17. **对话节奏**: 你需要模拟真人的聊天习惯，你可以一次性生成多条短消息。每次回复消息条数**必须**严格限定在**${minReply}-${maxReply}条以内**，**关键规则**：请保持回复消息数量的**随机性和多样性**。**除非**你的设定偏向活跃或情绪波动大或是特殊情况下，否则**不要**触碰 ${maxReply} 条的上限。\n`;
-    } else {
-        prompt += `<Chatting Guidelines>\n`
-        prompt += `17. **对话节奏**: 你需要模拟真人的聊天习惯，你可以一次性生成多条短消息。每次回复3-8条消息之内，**关键规则**：请保持回复消息数量的**随机性和多样性**。\n`;
-    }
-    
-    prompt += `18. **特殊消息格式的使用原则**：(1)请把语音、撤回、转账、更新状态、引用、定位等特殊格式视为增强互动的“调味剂”，遵循**自然、主动、多样化触发逻辑。同种格式不要重复频繁发送，不同格式不要用户不提就一直不发**。\n(2)注意在本回合消息列里，特殊消息插入位置的随机性，每轮必须和上一回合插入位置不同。\n`;
-    prompt += `19. 🌟**防复读对话**🌟：在本轮回复中，你**必须**区别于过往聊天记录而去变换句式和词汇，**绝对不要**重复或模仿历史记录中的文本结构，保持自然、随机和多样性。\n`;
-    prompt += `</Chatting Guidelines>\n`
-
-    prompt += `20. 不要主动终止聊天进程，除非我明确提出。保持你的人设，自然地进行对话。`;
-
-    // 角色自主收藏：仅当该角色开启时注入
-    if (character.characterAutoFavoriteEnabled) {
-        prompt += `
-
-【消息收藏功能】
-你可以主动收藏用户发送的重要消息，以便日后回顾。在 <think> 中可先思考是否需要收藏。
-
-**使用方法**：在回复中加入指令 [FAVORITE:消息ID:收藏寄语]。每条用户消息在上下文中以 [id:消息ID] 标注在消息开头，请使用该 ID。
-
-**收藏标准**：用户分享的重要个人信息（梦想、价值观、经历）、情感转折点的关键对话、用户明确表达的喜好或厌恶、对建立深层关系有帮助的信息。只收藏用户的消息，不要过度收藏，寄语简短精炼（20字以内）。静默收藏，不要在对话中提及收藏行为。
-
-**示例**：若决定收藏某条用户消息（其前有 [id:msg_123]），在回复中写 [FAVORITE:msg_123:他的童年梦想，反映核心价值观]，再写你的正常聊天内容。`;
-    }
-
-    if (character.charAwareUserFavorites) {
-        const favoritePrompt = buildFavoriteAwarenessPrompt(character);
-        if (favoritePrompt) prompt += `\n\n${favoritePrompt}`;
-    }
-
-    if (character.myName) {
-        prompt = prompt.replace(/\{\{user\}\}/gi, character.myName);
-    }
-
-    if (opts && opts.weatherText) {
-        prompt += '\n' + opts.weatherText;
-    }
-
-    if (opts && opts.historyText) {
-        prompt += '\n' + opts.historyText;
-    }
-
-    if (opts.enableMemorySidecar && window.MemoryTableSidecar) {
-        prompt += window.MemoryTableSidecar.buildSystemPrompt(character);
-    }
+    // V5.8.0：默认私聊按角色扮演语义层级组装，而不是把功能残差堆进“核心系统规则”。
+    // 核心档案仍存储在记忆表中，但发送时作为前置身份锚点；世界书三个位置是真实插入点。
+    const memoryProjects = getStructuredArchiveMemoryProjects(character);
+    const groupMemory = buildGroupMemoryProjectContent(character);
+    const longTermMemory = [memoryProjects.longTerm, groupMemory].filter(Boolean).join('\n\n');
+    const promptProjects = [
+        { tag: 'session_rules', content: buildSessionProjectContent(character, currentTime) },
+        { tag: 'worldbook_identity_before', content: worldBooksBefore },
+        { tag: 'identity_core', content: buildCoreIdentityProjectContent(character, linkedChar, memoryProjects) },
+        { tag: 'worldbook_identity_after', content: worldBooksMiddle },
+        { tag: 'long_term_memory', content: longTermMemory },
+        { tag: 'worldbook_scene_after', content: worldBooksAfter },
+        { tag: 'current_related_memory', content: memoryProjects.currentRelated },
+        { tag: 'current_environment', content: buildEnvironmentProjectContent(character, opts) },
+        { tag: 'interaction_rules', content: buildInteractionProjectContent(character) },
+        { tag: 'output_formats', content: buildOutputProjectContent(character, worldBooksBefore, worldBooksMiddle, worldBooksAfter) },
+        { tag: 'background_write', content: buildBackgroundWriteProjectContent(character, opts) }
+    ];
+    const prompt = serializePrivatePromptProjects(promptProjects, character, linkedChar);
     return window.OVORetiredFeaturePolicy?.sanitizeSystemPrompt?.(prompt) || prompt;
 }
 
@@ -3615,170 +3516,43 @@ function getChatTokenBreakdown(chatId, chatType = 'private') {
         return _getChatTokenBreakdownGroup(chat, chatType);
     }
 
-    // --- 私聊：逐项独立计算各模块 Token ---
+    // V5.8.0 默认私聊：Token 分布直接读取与最终请求一致的项目标签，避免继续显示旧“角色人设/用户人设/核心规则”拆分。
+    if (chat.activeNodeId && Array.isArray(chat.nodes) && chat.nodes.some(node => node.id === chat.activeNodeId)) {
+        return _getChatTokenBreakdownGroup(chat, chatType);
+    }
     const character = chat;
-    const linkedChar = (character.source === 'forum' && character.linkedCharId && db.characters)
-        ? db.characters.find(c => c.id === character.linkedCharId) : null;
-    const effectiveChar = linkedChar || character;
+    let fullSystemPrompt = typeof generatePrivateSystemPrompt === 'function'
+        ? generatePrivateSystemPrompt(character, { weatherText: '', enableMemorySidecar: true })
+        : '';
+    fullSystemPrompt = appendMessageMetadataProtocol(fullSystemPrompt);
+    const projectSpecs = [
+        ['session_rules', 'sessionRules', '00 会话总规则', '当前会话、时间、模式、动态年龄与时区。'],
+        ['worldbook_identity_before', 'worldBookIdentityBefore', '01 世界书·身份前', '核心档案之前的世界基础与客观规则。'],
+        ['identity_core', 'identityCore', '02 核心档案', '按字段分类发送的角色、用户与双方关系身份锚点。'],
+        ['worldbook_identity_after', 'worldBookIdentityAfter', '03 世界书·身份后', '核心档案之后的身份环境、组织、人物与关系补充。'],
+        ['long_term_memory', 'longTermMemory', '04 长期关系记忆', '中期总结、稳定长期记忆和长期群聊补充。'],
+        ['worldbook_scene_after', 'worldBookSceneAfter', '05 世界书·场景后置', '靠近当前语境的场景、节点与高影响设定。'],
+        ['current_related_memory', 'currentRelatedMemory', '06 当前与相关记忆', '当前状态、相关收藏、待办及其他本轮命中的记忆。'],
+        ['current_environment', 'currentEnvironment', '07 当前环境', '天气、主题变化和本轮临时关系环境。'],
+        ['interaction_rules', 'interactionRules', '08 互动规则', '模型理解消息与维持角色行为的规则。'],
+        ['output_formats', 'outputRules', '09 输出规则', '消息格式、回复节奏、状态面板和防复读要求。'],
+        ['background_write', 'backgroundWrite', '10 后台写入', '收藏记忆与动态记忆的隐藏写入协议。'],
+        ['message_metadata_protocol', 'messageMetadata', '11 消息说明', '历史消息时间标签等内部元数据说明。']
+    ];
+    const details = projectSpecs.map(([tag, key, name, desc]) => {
+        const block = extractPromptTagBlock(fullSystemPrompt, tag);
+        return { key, name, value: estimateTokenFromText(block), desc };
+    }).filter(item => item.value > 0);
 
-    let activeNode = null;
-    let isOfflineNode = false;
-    if (character.activeNodeId && character.nodes) {
-        activeNode = character.nodes.find(n => n.id === character.activeNodeId);
-        if (activeNode) {
-            let baseMode = (activeNode.customConfig && activeNode.customConfig.baseMode) ? activeNode.customConfig.baseMode : 
-                           (activeNode.type === 'offline' || (activeNode.type === 'spinoff' && activeNode.spinoffMode === 'offline') ? 'offline' : 'online');
-            if (baseMode === 'offline') {
-                isOfflineNode = true;
-            }
-        }
-    }
-
-    // 1) 世界书
-    const { before: worldBooksBefore, middle: worldBooksMiddle, after: worldBooksAfter } = getActiveWorldBooksContents(character);
-    const worldBookText = [worldBooksBefore, worldBooksMiddle, worldBooksAfter].filter(Boolean).join('\n');
-    const worldBookTokens = estimateTokenFromText(worldBookText);
-
-    // 2) 角色人设
-    const personaText = getEffectivePersona(linkedChar || character);
-    const charPersonaTokens = estimateTokenFromText(personaText);
-
-    // 3) 用户人设
-    const userPersonaText = character.myPersona || '';
-    const userPersonaTokens = estimateTokenFromText(userPersonaText);
-
-    // 4) 表情包
-    let stickerText = '';
-    const stickerGroups = (character.stickerGroups || '').split(/[,，]/).map(s => s.trim()).filter(s => s && s !== '未分类');
-    if (stickerGroups.length > 0 && db.myStickers) {
-        const availableStickers = db.myStickers.filter(s => stickerGroups.includes(s.group));
-        if (availableStickers.length > 0) {
-            stickerText = availableStickers.map(s => s.name).join(', ');
-        }
-    }
-    const stickerTokens = estimateTokenFromText(stickerText);
-
-    // 5) 长期记忆（结构化档案始终作为基础；日记/向量按当前模式补充）
-    const layeredMemoryText = buildCombinedLongTermMemoryContext(character);
-    const memoirTokens = estimateTokenFromText(layeredMemoryText);
-
-    // 7) 对话主题
-    let themeText = '';
-    if (character.allowCharSwitchBubbleCss && Array.isArray(character.bubbleCssThemeBindings) && character.bubbleCssThemeBindings.length > 0) {
-        themeText = character.bubbleCssThemeBindings.map(b => {
-            const desc = (b.description && b.description.trim()) ? `：${b.description.trim()}` : '';
-            return `- ${b.presetName}${desc}`;
-        }).join('\n');
-    }
-    const themeTokens = estimateTokenFromText(themeText);
-
-    // 9) 群聊记忆互通
-    let groupMemoryText = '';
-    if (character.syncGroupMemory) {
-        let groupsWithCharacter = (db.groups || []).filter(group =>
-            group.members && group.members.some(member => member.originalCharId === character.id)
-        );
-        if (character.syncGroupIds && Array.isArray(character.syncGroupIds) && character.syncGroupIds.length > 0) {
-            groupsWithCharacter = groupsWithCharacter.filter(group => character.syncGroupIds.includes(group.id));
-        }
-        groupsWithCharacter.forEach(group => {
-            let gJournals = (group.memoryJournals || []).filter(j => j.isFavorited);
-            const summaryCount = character.groupMemorySummaryCount || 0;
-            if (summaryCount > 0 && gJournals.length > summaryCount) {
-                gJournals = gJournals.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, summaryCount);
-            }
-            gJournals.forEach(j => { groupMemoryText += j.title + '\n' + j.content + '\n'; });
-            const maxGroupHistory = character.groupMemoryHistoryCount || 20;
-            let recentGroupHistory = (group.history || []).slice(-maxGroupHistory).filter(m => !m.isContextDisabled);
-            recentGroupHistory.forEach(m => { groupMemoryText += (m.content || '') + '\n'; });
-        });
-    }
-    const groupMemoryTokens = estimateTokenFromText(groupMemoryText);
-
-    // 10) 活人运转
-    let humanRunTokens = 0;
-    if (db.cotSettings && db.cotSettings.humanRunEnabled && typeof HUMAN_RUN_PROMPT !== 'undefined') {
-        humanRunTokens = estimateTokenFromText(HUMAN_RUN_PROMPT);
-    }
-
-    // 10.5) 提醒事项
-    let reminderTokens = 0;
-    if (character.charReminderEnabled && typeof generateReminderPrompt === 'function') {
-        reminderTokens = estimateTokenFromText(generateReminderPrompt(character));
-    }
-
-    // 11) 系统规则（固定提示词框架：核心规则 + logic_rules + output_formats + chatting guidelines 等）
-    //     用完整 systemPrompt 减去上面所有已拆出的部分来得到
-    let fullSystemPrompt = '';
-    if (typeof generatePrivateSystemPrompt === 'function') {
-        fullSystemPrompt = generatePrivateSystemPrompt(character);
-    }
-    const fullSystemTokens = estimateTokenFromText(fullSystemPrompt);
-    const identifiedPromptTokens = worldBookTokens + charPersonaTokens + userPersonaTokens + stickerTokens + memoirTokens + themeTokens + groupMemoryTokens + humanRunTokens + reminderTokens;
-    const systemRulesTokens = Math.max(0, fullSystemTokens - identifiedPromptTokens);
-
-    // 12) 短期记忆（对话历史）
     let historySlice = getRequestHistorySlice(chat, 'private', chat.history || []);
-    historySlice = historySlice.filter(m => !m.isContextDisabled);
-    
-    let lastAiIndex = -1;
-    for (let i = historySlice.length - 1; i >= 0; i--) {
-        if (historySlice[i].role === 'assistant' || historySlice[i].role === 'char') {
-            lastAiIndex = i;
-            break;
-        }
-    }
-    
-    let historyForText = [];
-    let triggerMessages = [];
-    
-    if (lastAiIndex === -1) {
-        triggerMessages = historySlice;
-    } else {
-        historyForText = historySlice.slice(0, lastAiIndex + 1);
-        triggerMessages = historySlice.slice(lastAiIndex + 1);
-    }
-    
-    let shortTermText = '';
-    if (historyForText.length > 0) {
-        const historyLines = historyForText.map(m => {
-            let content = m.content || '';
-            if (m.parts && m.parts.length > 0) {
-                content = m.parts.map(p => p.text || '[图片]').join('');
-            }
-            const senderName = m.role === 'user' ? chat.myName : chat.realName;
-            return `${senderName}: ${content}`;
-        });
-        shortTermText += `<chat_history>\n【近期聊天记录】\n这是我们刚刚的聊天记录，请作为背景参考：\n${historyLines.join('\n')}\n</chat_history>\n\n`;
-    }
-    
-    triggerMessages.forEach(msg => {
-        shortTermText += msg.content || '';
-        if (msg.parts) {
-            msg.parts.forEach(p => {
-                if (p.type === 'text') shortTermText += p.text || '';
-            });
-        }
-    });
-    const shortTermTokens = estimateTokenFromText(shortTermText);
-
-    // 汇总
-    const total = fullSystemTokens + shortTermTokens;
-
-    const details = [
-        { key: 'systemRules',    name: '系统规则',     value: systemRulesTokens,  desc: '核心规则、输出格式、对话节奏等发送给 AI 的固定指令框架。' },
-        { key: 'worldBook',      name: '世界书',       value: worldBookTokens,    desc: '关联的世界书和全局世界书内容，用于构建世界观背景。' },
-        { key: 'charPersona',    name: '角色人设',     value: charPersonaTokens,  desc: '角色的性格、背景、说话风格等设定文本。' },
-        { key: 'userPersona',    name: '用户人设',     value: userPersonaTokens,  desc: '你自己的人设描述，让角色了解你是谁。' },
-        { key: 'sticker',        name: '表情包',       value: stickerTokens,      desc: '已绑定的表情包名称列表，角色可从中选择发送。' },
-        { key: 'memoir',         name: '档案与长期记忆', value: memoirTokens,       desc: '结构化档案作为基础记忆，并按当前模式补充回忆日记或向量检索。' },
-        { key: 'theme',          name: '对话主题',     value: themeTokens,        desc: '聊天界面主题列表，角色可主动切换。' },
-        { key: 'groupMemory',    name: '群聊记忆',     value: groupMemoryTokens,  desc: '角色所在群聊的总结和最近聊天记录。' },
-        { key: 'humanRun',       name: '活人运转',     value: humanRunTokens,     desc: '角色活人运转心理模型指令（HEXACO 等）。' },
-        { key: 'reminder',       name: '提醒事项',     value: reminderTokens,     desc: '提醒事项/待办功能提示词，让角色可以创建和管理提醒。' },
-        { key: 'shortTermMemory',name: '对话历史',     value: shortTermTokens,    desc: '最近的对话消息，随轮次滑动窗口更新。' }
-    ].filter(d => d.value > 0);
-
+    historySlice = historySlice.filter(message => !message.isContextDisabled && !message.isThinking && !(typeof message.content === 'string' && message.content.trim().startsWith('<thinking>')));
+    const historyText = historySlice.map(message => {
+        if (message.parts?.length) return message.parts.map(part => part.text || part.description || (part.type === 'image' ? '[图片]' : part.type === 'sticker' ? '[表情包]' : '')).join('');
+        return message.content || '';
+    }).join('\n');
+    const historyTokens = estimateTokenFromText(historyText);
+    if (historyTokens > 0) details.push({ key: 'shortTermMemory', name: '聊天历史与本轮输入', value: historyTokens, desc: '按 Proment 历史条数策略进入最终消息数组的真实聊天内容。' });
+    const total = details.reduce((sum, item) => sum + item.value, 0);
     return { total, details };
 }
 

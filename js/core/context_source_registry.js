@@ -1,9 +1,9 @@
-// QWQ V5.6.6 · AI context source registry with grouped inventories and exact source counts
+// QWQ V5.8.0 · AI context registry aligned with actual roleplay prompt projects
 // 第一阶段只登记、对账和诊断，不改变现有 Prompt 的业务效果。
 (function (global) {
     'use strict';
 
-    const VERSION = 'context-registry.v4';
+    const VERSION = 'context-registry.v5';
     const definitions = new Map();
     let lastManifest = null;
 
@@ -296,16 +296,20 @@ ${String(message?.content || '')}`;
         const matchedSystemChars = merged.reduce((sum, item) => sum + item.end - item.start, 0);
         const residualSystemChars = Math.max(0, systemText.length - matchedSystemChars);
         const residualSystemText = unmatchedText(systemText, merged);
-        const core = get('system.core_rules');
-        sourceEntries.unshift({
-            sourceId: 'system.core_rules', registered: !!core, title: core?.title || '核心系统规则',
-            domain: core?.domain || 'prompt', layer: core?.layer || 'system', role: 'system', priority: core?.priority || 10,
-            included: systemText.length > 0, chars: residualSystemChars, matchedChars: residualSystemChars,
-            reason: '最终 system prompt 中未被角色档案、世界书、记忆和输出协议单独覆盖的实际文本',
-            traceType: 'compiled_residual', sourceRef: null, accounted: true,
-            content: residualSystemText,
-            items: [], count: 0, metadata: null
-        });
+        // V5.8.0：正常请求应由项目标签完全覆盖。只在确有非空异常文本时显示“未归类内容”，
+        // 不再把标签之间的换行或所有剩余内容包装成巨大的“核心系统规则”。
+        if (residualSystemText.trim()) {
+            const unclassified = get('system.unclassified');
+            sourceEntries.push({
+                sourceId: 'system.unclassified', registered: !!unclassified, title: unclassified?.title || '未归类内容（需要检查）',
+                domain: unclassified?.domain || 'prompt', layer: unclassified?.layer || 'diagnostic', role: 'system', priority: unclassified?.priority || 99,
+                included: true, chars: residualSystemText.length, matchedChars: residualSystemText.length,
+                reason: '最终 system prompt 中未被任何项目标签覆盖的非空文本；正常情况下不应出现',
+                traceType: 'compiled_residual', sourceRef: null, accounted: true,
+                content: residualSystemText,
+                items: [], count: 0, metadata: { residualSystemChars }
+            });
+        }
 
         const nonSystem = messages.filter(message => message.role !== 'system');
         let currentInputIndex = -1;
@@ -540,6 +544,18 @@ ${String(message?.content || '')}`;
     function getLastManifest() { return clone(lastManifest || global.__ovoLastContextManifest || null); }
 
     registerMany([
+        { id: 'prompt.session', domain: 'prompt', layer: 'session', title: '00 会话总规则', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 10, optional: false },
+        { id: 'worldbook.identity_before', domain: 'worldbook', layer: 'identity-before', title: '01 世界书·身份前', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 20, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'identity.core', domain: 'memory', layer: 'identity', title: '02 核心档案', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 30, optional: false, navigation: { kind: 'structured-memory' } },
+        { id: 'worldbook.identity_after', domain: 'worldbook', layer: 'identity-after', title: '03 世界书·身份后', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 40, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'memory.long_term', domain: 'memory', layer: 'long-term', title: '04 长期关系记忆', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 50, optional: true, navigation: { kind: 'structured-memory' } },
+        { id: 'worldbook.scene_after', domain: 'worldbook', layer: 'scene-after', title: '05 世界书·场景后置', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 60, optional: true, navigation: { kind: 'worldbook' } },
+        { id: 'memory.current_related', domain: 'memory', layer: 'current', title: '06 当前与相关记忆', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 70, optional: true, navigation: { kind: 'structured-memory' } },
+        { id: 'runtime.environment', domain: 'runtime', layer: 'environment', title: '07 当前环境', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 80, optional: true },
+        { id: 'prompt.interaction_rules', domain: 'prompt', layer: 'interaction', title: '08 互动规则', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 90, optional: false },
+        { id: 'output.background_write', domain: 'memory', layer: 'output', title: '10 后台写入', tasks: ['chat.reply'], role: 'system', priority: 101, optional: true },
+        { id: 'prompt.message_metadata', domain: 'prompt', layer: 'metadata', title: '11 消息说明', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 110, optional: false },
+        { id: 'system.unclassified', domain: 'prompt', layer: 'diagnostic', title: '未归类内容（需要检查）', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 199, optional: true },
         { id: 'system.core_rules', domain: 'prompt', layer: 'system', title: '核心系统规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 10, optional: false },
         { id: 'character.profile', domain: 'character', layer: 'identity', title: '角色档案', tasks: ['chat.reply', 'chat.background', 'call.reply', 'journal.generate'], role: 'system', priority: 20, optional: false, navigation: { kind: 'character' } },
         { id: 'user.profile', domain: 'user', layer: 'identity', title: '用户档案', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 30, optional: true, navigation: { kind: 'user' } },
@@ -550,15 +566,13 @@ ${String(message?.content || '')}`;
         { id: 'memory.vector', domain: 'memory', layer: 'memory', title: '向量记忆补充', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 53, optional: true, navigation: { kind: 'structured-memory' } },
         { id: 'runtime.current_time', domain: 'runtime', layer: 'environment', title: '当前时间与时区', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 60, optional: false },
         { id: 'runtime.weather', domain: 'weather', layer: 'environment', title: '天气', tasks: ['chat.reply', 'call.reply'], role: 'system', priority: 61, optional: true },
-        { id: 'reminder.active', domain: 'reminder', layer: 'runtime', title: '提醒事项', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 62, optional: true, navigation: { kind: 'reminder' } },
-        { id: 'collection.relevant', domain: 'collection', layer: 'memory', title: '收藏盘点', tasks: ['chat.reply', 'journal.generate'], role: 'system', priority: 63, optional: true, navigation: { kind: 'collection' } },
         { id: 'character.live_state', domain: 'character', layer: 'runtime', title: '角色实时状态', tasks: ['chat.reply', 'chat.background'], role: 'system', priority: 64, optional: true },
         { id: 'chat.history', domain: 'chat', layer: 'conversation', title: '聊天历史', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'mixed', priority: 70, optional: false },
         { id: 'chat.current_input', domain: 'chat', layer: 'conversation', title: '本轮用户输入', tasks: ['chat.reply', 'call.reply'], role: 'user', priority: 71, optional: false },
         { id: 'chat.continuation', domain: 'chat', layer: 'control', title: '继续对话控制消息', tasks: ['chat.reply'], role: 'user', priority: 72, optional: true },
         { id: 'task.instruction', domain: 'task', layer: 'control', title: '任务指令', tasks: ['*'], role: 'user', priority: 80, optional: true },
         { id: 'cot.instructions', domain: 'prompt', layer: 'control', title: 'CoT与预填', tasks: ['chat.reply', 'chat.background'], role: 'mixed', priority: 85, optional: true },
-        { id: 'output.chat_protocol', domain: 'prompt', layer: 'output', title: '聊天输出协议', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 90, optional: false },
+        { id: 'output.chat_protocol', domain: 'prompt', layer: 'output', title: '09 输出规则', tasks: ['chat.reply', 'chat.background', 'call.reply'], role: 'system', priority: 90, optional: false },
         { id: 'output.memory_protocol', domain: 'memory', layer: 'output', title: '动态记忆协议', tasks: ['chat.reply'], role: 'system', priority: 91, optional: true },
         { id: 'task.input', domain: 'task', layer: 'input', title: '任务输入', tasks: ['*'], role: 'user', priority: 92, optional: false },
         { id: 'media.image_input', domain: 'media', layer: 'input', title: '图片输入', tasks: ['vision.image.describe', 'vision.avatar.recognize', 'vision.sticker.recognize'], role: 'user', priority: 93, optional: false },

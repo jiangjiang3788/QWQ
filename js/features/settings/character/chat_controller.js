@@ -212,17 +212,6 @@
             });
         }
 
-        const charAwareUserFavoritesEl = document.getElementById('setting-char-aware-user-favorites');
-        if (charAwareUserFavoritesEl) {
-            charAwareUserFavoritesEl.addEventListener('change', (e) => {
-                triggerHapticFeedback('light');
-                const container = document.getElementById('setting-aware-favorite-scope-container');
-                if (container) {
-                    container.style.display = e.target.checked ? 'block' : 'none';
-                }
-            });
-        }
-
         const syncGroupMemorySwitch = document.getElementById('setting-sync-group-memory');
         if (syncGroupMemorySwitch) {
             syncGroupMemorySwitch.addEventListener('change', (e) => {
@@ -315,23 +304,6 @@
         const charAutoFavEl = document.getElementById('setting-char-auto-favorite');
         if (charAutoFavEl) charAutoFavEl.checked = e.characterAutoFavoriteEnabled || false;
 
-        const charAwareUserFavoritesEl = document.getElementById('setting-char-aware-user-favorites');
-        const awareFavoriteScopeContainer = document.getElementById('setting-aware-favorite-scope-container');
-        if (charAwareUserFavoritesEl) {
-            charAwareUserFavoritesEl.checked = e.charAwareUserFavorites || false;
-            if (awareFavoriteScopeContainer) {
-                awareFavoriteScopeContainer.style.display = e.charAwareUserFavorites ? 'block' : 'none';
-            }
-        }
-
-        const awareScopeCurrent = document.getElementById('setting-aware-favorite-scope-current');
-        const awareScopeAll = document.getElementById('setting-aware-favorite-scope-all');
-        if (e.awareFavoriteScope === 'all') {
-            if (awareScopeAll) awareScopeAll.checked = true;
-        } else {
-            if (awareScopeCurrent) awareScopeCurrent.checked = true;
-        }
-
         const journalFavTopEl = document.getElementById('setting-journal-favorite-top');
         if (journalFavTopEl) journalFavTopEl.checked = e.journalFavoriteTop !== false; // 默认开启
 
@@ -363,7 +335,6 @@
         document.getElementById('setting-timestamp-format').value = e.timestampFormat || 'hm';
         document.getElementById('setting-show-status').checked = e.showStatus !== false;
         document.getElementById('setting-show-status-update-msg').checked = e.showStatusUpdateMsg || false;
-        document.getElementById('setting-show-reminder-msg').checked = e.showReminderMsg !== false;
 
         const useCustomCssCheckbox = document.getElementById('setting-use-custom-css'),
             customCssTextarea = document.getElementById('setting-custom-bubble-css'),
@@ -416,12 +387,6 @@
         e.autoJournalInterval = (isNaN(autoJournalIntervalInput) || autoJournalIntervalInput < 10) ? 100 : autoJournalIntervalInput;
         const charAutoFavEl = document.getElementById('setting-char-auto-favorite');
         e.characterAutoFavoriteEnabled = charAutoFavEl ? charAutoFavEl.checked : false;
-
-        const charAwareUserFavoritesEl = document.getElementById('setting-char-aware-user-favorites');
-        e.charAwareUserFavorites = charAwareUserFavoritesEl ? charAwareUserFavoritesEl.checked : false;
-
-        const awareScopeAll = document.getElementById('setting-aware-favorite-scope-all');
-        e.awareFavoriteScope = (awareScopeAll && awareScopeAll.checked) ? 'all' : 'current';
 
         const journalFavTopEl = document.getElementById('setting-journal-favorite-top');
         if (journalFavTopEl) {
@@ -482,7 +447,6 @@
         }
 
         e.showStatusUpdateMsg = document.getElementById('setting-show-status-update-msg').checked;
-        e.showReminderMsg = document.getElementById('setting-show-reminder-msg').checked;
 
         if (!e.statusPanel) e.statusPanel = {};
         e.statusPanel.enabled = document.getElementById('setting-status-panel-enabled').checked;

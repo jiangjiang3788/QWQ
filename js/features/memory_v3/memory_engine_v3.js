@@ -17,8 +17,11 @@
     }
 
     const AI_PROTECTED_GROUPS = new Set(['core', 'medium', 'long']);
-    const AI_PROTECTED_TABLE_IDS = new Set(['v5_core_profile', 'v5_event_summary', 'v5_thought_summary', 'v5_stable_long_term']);
+    const AI_PROTECTED_TABLE_IDS = new Set(['v5_core_profile', 'v5_event_summary', 'v5_thought_summary', 'v5_stable_long_term', M.constants.FAVORITE_TABLE_ID]);
     const SUMMARY_TARGETS = Object.freeze({ v5_recent_events: 'v5_event_summary', v5_thoughts: 'v5_thought_summary' });
+    const CORE_TABLE_ID = 'v5_core_profile';
+    const CURRENT_TABLE_ID = 'v5_current_state';
+    const LONG_TERM_GROUPS = new Set(['medium', 'long']);
     const OPERATION_KEYS = new Set(['tableId', 'action', 'recordId', 'source', 'values', 'match']);
     const PAYLOAD_KEYS = new Set(['operations', 'memoryOps']);
 
@@ -127,8 +130,13 @@
     }
 
     function missingAddFields(table, values) {
+        // 收藏记忆没有标题和分类，新增时只要求实际内容。
+        if (table?.id === M.constants.FAVORITE_TABLE_ID) {
+            const contentField = table.fields.find(field => field.scope === 'common' && field.commonKey === 'content');
+            return contentField && !hasValue(values[contentField.id]) ? [contentField.name] : [];
+        }
         // KV是单例表单：只校验用户配置为必填的可见自定义字段。
-        // Rows仍保留分类/标题/内容三个基础必填项。
+        // 普通Rows保留分类/标题/内容三个基础必填项。
         const baseRequiredKeys = new Set(['category', 'title', 'content']);
         return table.fields
             .filter(field => !field.hidden)
@@ -329,7 +337,31 @@
         return text(value).toLowerCase().replace(/\s+/g, ' ');
     }
 
+    function explicitFavoriteTags(query) {
+        return unique(Array.from(String(query || '').matchAll(/#([^#\s，。！？、；：,.!?;:]{1,20})/gu)).map(match => normalizeSearch(match[1])));
+    }
+
+    function favoriteRecordScore(query, terms, record, store) {
+        const tags = unique(record?.tags || []).map(normalizeSearch).filter(Boolean);
+        if (!tags.length) return 0;
+        const neverTags = store?.settings?.tagBehaviors?.neverInject || [];
+        if ((record.tags || []).some(tag => neverTags.includes(tag))) return 0;
+        const alwaysTags = store?.settings?.tagBehaviors?.alwaysInject || [];
+        let score = (record.tags || []).some(tag => alwaysTags.includes(tag)) ? 1000 : 0;
+        const explicit = explicitFavoriteTags(query);
+        tags.forEach(tag => {
+            if (explicit.includes(tag)) score += 200;
+            if (query.includes(tag)) score += 40 + Math.min(12, tag.length * 2);
+            terms.forEach(term => {
+                if (term === tag) score += 24;
+                else if (term.length >= 2 && (tag.includes(term) || term.includes(tag))) score += 7;
+            });
+        });
+        return score;
+    }
+
     function recordScore(query, terms, table, record, store) {
+        if (table?.id === M.constants.FAVORITE_TABLE_ID) return favoriteRecordScore(query, terms, record, store);
         const body = normalizeSearch(formatRecordText(table, record, table.behavior.contextFieldIds));
         const metadata = normalizeSearch(`${record.category} ${(record.tags || []).join(' ')} ${record.title}`);
         const alwaysTags = store?.settings?.tagBehaviors?.alwaysInject || [];
@@ -344,6 +376,11 @@
 
     function isExpired(table, record) {
         if (table?.id === 'v5_current_state') return false;
+        // “待办与近期事项”承担唯一待办功能：未完成的待办不因15天引用期限而失效。
+        if (table?.id === 'v5_recent_events') {
+            const statusField = table.fields?.find(field => field.name === '事项状态');
+            if (statusField && text(getFieldValue(record, statusField)).trim() === '待办') return false;
+        }
         const days = Number(table.behavior.retentionDays) || 0;
         if (!days) return false;
         const stamp = new Date(record.updatedAt || record.createdAt || 0).getTime();
@@ -362,12 +399,17 @@
             return rows.sort((a, b) => text(b.updatedAt).localeCompare(text(a.updatedAt)));
         }
         if (table.behavior.contextPolicy !== 'relevant') return [];
-        const query = normalizeSearch(roundText(chat, { includeAssistant: true }));
+        const query = normalizeSearch(roundText(chat, { includeAssistant: table.id !== M.constants.FAVORITE_TABLE_ID }));
         const terms = queryTerms(query);
         if (!query) return [];
-        const perTableLimit = table.id === 'v5_daily_observation'
-            ? Math.min(3, store.settings.relevantMaxPerTable || 5)
-            : (store.settings.relevantMaxPerTable || 5);
+        const configuredFavoriteLimit = parseInt(store.settings.favoriteMaxPerRound, 10);
+        const perTableLimit = table.id === M.constants.FAVORITE_TABLE_ID
+            ? (Number.isFinite(configuredFavoriteLimit)
+                ? (configuredFavoriteLimit === 0 ? rows.length : Math.max(1, configuredFavoriteLimit))
+                : 5)
+            : (table.id === 'v5_daily_observation'
+                ? Math.min(3, store.settings.relevantMaxPerTable || 5)
+                : (store.settings.relevantMaxPerTable || 5));
         return rows.map(record => ({ record, score: recordScore(query, terms, table, record, store) }))
             .filter(item => item.score > 0)
             .sort((a, b) => b.score - a.score || text(b.record.updatedAt).localeCompare(text(a.record.updatedAt)))
@@ -375,20 +417,144 @@
             .map(item => item.record);
     }
 
-    function getContextBlock(chat) {
+    function structuredContextBudget() {
+        const policy = global.db?.magicRoom?.contextPolicy || {};
+        if (policy.structuredEnabled === false) return 0;
+        const number = Number(policy.structuredBudget);
+        return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 1800;
+    }
+
+    function orderedCoreCategories(categories) {
+        const preferred = ['角色档案', '用户档案', '双方关系'];
+        return Array.from(categories).sort((a, b) => {
+            const ai = preferred.indexOf(a);
+            const bi = preferred.indexOf(b);
+            if (ai >= 0 || bi >= 0) return (ai >= 0 ? ai : preferred.length) - (bi >= 0 ? bi : preferred.length);
+            return a.localeCompare(b, 'zh-CN');
+        });
+    }
+
+    function coreProfileProject(chat, store = ensureStore(chat)) {
+        const table = store.tables.find(item => item.id === CORE_TABLE_ID);
+        const record = table && (store.records[table.id] || []).find(item => !item.compressedAt);
+        if (!table || !record) return { text: '', groups: [], recordCount: 0, chars: 0 };
+        const grouped = new Map();
+        visibleFields(table).forEach(field => {
+            const value = formatValue(field, getFieldValue(record, field));
+            if (!value) return;
+            const category = text(field.category) || '其他核心信息';
+            if (!grouped.has(category)) grouped.set(category, []);
+            grouped.get(category).push({ fieldId: field.id, fieldName: field.name, value });
+        });
+        const groups = orderedCoreCategories(grouped.keys()).map(category => ({
+            category,
+            fields: grouped.get(category) || []
+        })).filter(group => group.fields.length);
+        const body = groups.map(group => `【${group.category}】\n${group.fields.map(field => `${field.fieldName}: ${field.value}`).join('\n')}`).join('\n\n');
+        return { text: body, groups, recordCount: body ? 1 : 0, chars: body.length };
+    }
+
+    function memorySectionText(table, records) {
+        const rows = (Array.isArray(records) ? records : []).map(record => formatRecordText(table, record, table.behavior.contextFieldIds)).filter(Boolean);
+        return rows.length ? `【${table.name}】\n${rows.join('\n---\n')}` : '';
+    }
+
+    function getContextProjects(chat) {
         const store = ensureStore(chat);
-        if (!store.settings.enabled) return '';
-        const sections = [];
-        let total = 0;
+        const budget = structuredContextBudget();
+        const empty = {
+            core: '', longTerm: '', currentRelated: '',
+            coreGroups: [],
+            selectedCount: 0, omittedCount: 0, usedChars: 0, budget,
+            items: []
+        };
+        if (!store.settings.enabled || budget === 0) return empty;
+
+        // 核心档案是身份定义层。它按字段分类完整发送，不与普通动态记忆争抢字符预算。
+        const coreProject = coreProfileProject(chat, store);
+        const currentTable = store.tables.find(table => table.id === CURRENT_TABLE_ID);
+        const currentRows = currentTable ? contextRecords(chat, currentTable, store) : [];
+        const currentStateText = currentTable ? memorySectionText(currentTable, currentRows) : '';
+
         const max = Math.max(1, Number(store.settings.contextMaxRecords) || 32);
-        for (const table of store.tables) {
-            if (total >= max) break;
-            const rows = contextRecords(chat, table, store).slice(0, max - total);
-            if (!rows.length) continue;
-            total += rows.length;
-            const content = rows.map(record => formatRecordText(table, record, table.behavior.contextFieldIds)).filter(Boolean).join('\n---\n');
-            if (content) sections.push(`【${table.name}】\n${content}`);
+        const candidates = [];
+        store.tables.forEach((table, tableIndex) => {
+            if (table.id === CORE_TABLE_ID || table.id === CURRENT_TABLE_ID) return;
+            contextRecords(chat, table, store).forEach((record, recordIndex) => {
+                const recordText = formatRecordText(table, record, table.behavior.contextFieldIds);
+                if (!recordText) return;
+                // 收藏记忆虽然属于长期保存，但只在当前话题标签命中时靠近聊天历史发送，不能混进长期关系层。
+                const placement = table.id === M.constants.FAVORITE_TABLE_ID
+                    ? 'currentRelated'
+                    : (LONG_TERM_GROUPS.has(table.group) ? 'longTerm' : 'currentRelated');
+                // 选择优先级与发送位置分离：当前相关记录优先占预算，长期记录仍在请求中更靠前发送。
+                const selectionPriority = placement === 'currentRelated' ? 0 : 1;
+                candidates.push({ table, tableIndex, record, recordIndex, recordText, placement, selectionPriority });
+            });
+        });
+        candidates.sort((a, b) => a.selectionPriority - b.selectionPriority || a.tableIndex - b.tableIndex || a.recordIndex - b.recordIndex);
+
+        const selected = [];
+        const headings = new Set();
+        let usedChars = 0;
+        let omittedCount = 0;
+        for (const item of candidates) {
+            if (selected.length >= max) { omittedCount += 1; continue; }
+            const headingKey = `${item.placement}:${item.table.id}`;
+            const headingCost = headings.has(headingKey) ? 5 : (`【${item.table.name}】\n`.length);
+            const cost = headingCost + item.recordText.length;
+            if (budget > 0 && usedChars + cost > budget) { omittedCount += 1; continue; }
+            selected.push(item);
+            headings.add(headingKey);
+            usedChars += cost;
         }
+
+        const sectionFor = placement => store.tables.map(table => {
+            const rows = selected.filter(item => item.placement === placement && item.table.id === table.id).map(item => item.record);
+            return memorySectionText(table, rows);
+        }).filter(Boolean).join('\n\n');
+        const longTerm = sectionFor('longTerm');
+        const relatedTail = sectionFor('currentRelated');
+        const currentRelated = [currentStateText, relatedTail].filter(Boolean).join('\n\n');
+        const items = [];
+        coreProject.groups.forEach(group => {
+            group.fields.forEach((field, index) => {
+                const content = `${field.fieldName}: ${field.value}`;
+                items.push({
+                    layer: 'core', tableId: CORE_TABLE_ID, tableName: group.category,
+                    recordId: 'core-profile', recordIndex: index + 1,
+                    title: field.fieldName, content, chars: content.length,
+                    sent: true, reason: '核心档案按字段分类前置发送'
+                });
+            });
+        });
+        if (currentTable) currentRows.forEach((record, index) => {
+            const content = formatRecordText(currentTable, record, currentTable.behavior.contextFieldIds);
+            if (content) items.push({ layer: 'currentRelated', tableId: currentTable.id, tableName: currentTable.name, recordId: record.id, recordIndex: index + 1, title: `${currentTable.name} · 第 ${index + 1} 条`, content, chars: content.length, sent: true, reason: '当前状态固定发送' });
+        });
+        selected.forEach(item => items.push({
+            layer: item.placement, tableId: item.table.id, tableName: item.table.name,
+            recordId: item.record.id, recordIndex: item.recordIndex + 1,
+            title: `${item.table.name} · 第 ${item.recordIndex + 1} 条`, content: item.recordText, chars: item.recordText.length,
+            sent: true, reason: item.placement === 'longTerm' ? '长期关系记忆入选' : '当前话题相关记忆入选'
+        }));
+
+        return {
+            core: coreProject.text,
+            longTerm,
+            currentRelated,
+            coreGroups: coreProject.groups,
+            selectedCount: selected.length + currentRows.length + coreProject.recordCount,
+            omittedCount,
+            usedChars,
+            budget,
+            items
+        };
+    }
+
+    function getContextBlock(chat) {
+        const projects = getContextProjects(chat);
+        const sections = [projects.core, projects.longTerm, projects.currentRelated].filter(Boolean);
         if (!sections.length) return '';
         return `\n<structured_memory version="${M.VERSION}">\n${sections.join('\n\n')}\n</structured_memory>`;
     }
@@ -789,6 +955,7 @@ ${tables.map(table => tablePrompt(chat, table, store)).join('\n\n')}
     M.engine = Object.freeze({
         applyOperations,
         formatRecordText,
+        getContextProjects,
         getContextBlock,
         buildSystemPrompt,
         validateSidecarPayload,

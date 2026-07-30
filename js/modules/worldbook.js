@@ -1121,47 +1121,63 @@ function renderCategorizedWorldBookList(container, books, selectedIds, idPrefix)
         const globalIds = globalBooks.map(wb => wb.id);
         const allBookIds = [...new Set([...associatedIds, ...globalIds])];
         const recentMsgs = (character.history || []).filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'char').slice(-15);
-        const recentText = recentMsgs.map(m => m.parts && m.parts.length ? m.parts.map(p => p.text || '').join(' ') : (m.content || '')).join('\n');
+        const latestUser = [...recentMsgs].reverse().find(m => m.role === 'user') || null;
+        const messageText = message => message?.parts && message.parts.length
+            ? message.parts.map(part => part.text || '').join(' ')
+            : (message?.content || '');
+        const currentUserText = messageText(latestUser);
+        const recentText = recentMsgs.map(messageText).join('\n');
 
-        const items = allBookIds.map(id => allBooks.find(wb => wb.id === id)).map(wb => {
-            if (!wb) return { id:'', name:'缺失条目', eligible:false, included:false, reason:'关联 ID 对应的世界书不存在', position:'unknown', weight:100, chars:0, injectedChars:0, matchedKeywords:[] };
+        const items = allBookIds.map(id => allBooks.find(wb => wb.id === id)).map((wb, sourceIndex) => {
+            if (!wb) return { id:'', name:'缺失条目', eligible:false, included:false, reason:'关联 ID 对应的世界书不存在', position:'unknown', weight:100, chars:0, injectedChars:0, matchedKeywords:[], sourceIndex };
             const keywords = Array.isArray(wb.keywords) ? wb.keywords.filter(Boolean) : [];
-            const matchedKeywords = keywords.filter(kw => recentText.includes(kw));
+            const matchedCurrentKeywords = keywords.filter(keyword => currentUserText.includes(keyword));
+            const matchedKeywords = keywords.filter(keyword => recentText.includes(keyword));
+            const matchedRecentKeywords = matchedKeywords.filter(keyword => !matchedCurrentKeywords.includes(keyword));
+            const alwaysOn = wb.alwaysOn !== false;
             let eligible = true;
             let reason = '常驻条目';
             if (!policy.worldBookEnabled) { eligible = false; reason = 'Proment 已关闭世界书注入'; }
             else if (wb.disabled) { eligible = false; reason = '条目已停用'; }
-            else if (wb.alwaysOn === false) {
+            else if (!alwaysOn) {
                 if (!keywords.length) { eligible = false; reason = '非常驻且未设置关键词'; }
-                else if (!matchedKeywords.length) { eligible = false; reason = '关键词未命中'; }
-                else reason = `关键词命中：${matchedKeywords.join('、')}`;
+                else if (matchedCurrentKeywords.length) reason = `本轮用户消息命中：${matchedCurrentKeywords.join('、')}`;
+                else if (matchedRecentKeywords.length) reason = `最近对话命中：${matchedRecentKeywords.join('、')}`;
+                else { eligible = false; reason = '关键词未命中'; }
             }
-            return { id:wb.id, name:wb.name || wb.title || '未命名世界书', eligible, included:false, reason, isGlobal:!!wb.isGlobal,
-                position:wb.position || 'after', weight:wb.weight !== undefined ? wb.weight : 100, chars:String(wb.content || '').length,
-                injectedChars:0, clipped:false, keywords, matchedKeywords, content:String(wb.content || '') };
+            const triggerRank = alwaysOn ? 0 : (matchedCurrentKeywords.length ? 1 : 2);
+            return {
+                id:wb.id, name:wb.name || wb.title || '未命名世界书', eligible, included:false, reason, isGlobal:!!wb.isGlobal,
+                position:wb.position || 'after', weight:wb.weight !== undefined ? Number(wb.weight) : 100, chars:String(wb.content || '').length,
+                injectedChars:0, clipped:false, keywords, matchedKeywords, matchedCurrentKeywords, matchedRecentKeywords,
+                alwaysOn, triggerRank, sourceIndex, content:String(wb.content || '')
+            };
         });
 
-        const order = { before:0, middle:1, after:2 };
-        const eligible = items.filter(i => i.eligible).sort((a,b) => (order[a.position] ?? 9) - (order[b.position] ?? 9) || a.weight - b.weight);
+        // 预算选择与插入位置分离：先按常驻/本轮命中/近期命中和权重选择，选中后再放回身份前、身份后、场景后置。
+        const eligible = items.filter(item => item.eligible).sort((a, b) =>
+            a.triggerRank - b.triggerRank || a.weight - b.weight || a.sourceIndex - b.sourceIndex);
         let remaining = Math.max(0, Number(policy.worldBookBudget) || 0);
         const buckets = { before:[], middle:[], after:[] };
         eligible.forEach(item => {
-            if (remaining <= 0) { item.reason = '命中但超出世界书预算'; return; }
-            const slice = item.content.slice(0, remaining);
-            item.injectedChars = slice.length;
-            item.included = slice.length > 0;
-            item.clipped = slice.length < item.content.length;
-            if (item.clipped) item.reason += `；按预算裁剪 ${item.content.length - slice.length} 字符`;
-            if (item.included) (buckets[item.position] || buckets.after).push(slice);
-            remaining -= slice.length;
+            if (!item.content) { item.reason += '；正文为空'; return; }
+            if (remaining <= 0 || item.content.length > remaining) {
+                item.reason += `；命中但预算不足（需要 ${item.content.length}，剩余 ${remaining}）`;
+                return;
+            }
+            item.injectedChars = item.content.length;
+            item.included = true;
+            item.clipped = false;
+            (buckets[item.position] || buckets.after).push(item.content);
+            remaining -= item.content.length;
         });
-        const result = { before:buckets.before.join('\n'), middle:buckets.middle.join('\n'), after:buckets.after.join('\n') };
+        const result = { before:buckets.before.join('\n\n'), middle:buckets.middle.join('\n\n'), after:buckets.after.join('\n\n') };
         const diagnostic = {
             capturedAt:new Date().toISOString(), characterId:character.id || '', characterName:character.remarkName || character.name || '未命名角色',
             mode:isOfflineNode ? 'offline':'online', recentMessageCount:recentMsgs.length, recentTextChars:recentText.length,
             linkedCount:associatedIds.length, globalCount:globalIds.length, candidateCount:items.length,
-            eligibleCount:items.filter(i=>i.eligible).length, includedCount:items.filter(i=>i.included).length,
-            excludedCount:items.filter(i=>!i.included).length, budget:Number(policy.worldBookBudget)||0, remainingBudget:remaining,
+            eligibleCount:items.filter(item=>item.eligible).length, includedCount:items.filter(item=>item.included).length,
+            excludedCount:items.filter(item=>!item.included).length, budget:Number(policy.worldBookBudget)||0, remainingBudget:remaining,
             priority:Number(policy.worldBookPriority)||20,
             outputChars:String(result.before).length + String(result.middle).length + String(result.after).length,
             sections:{ before:String(result.before).length, middle:String(result.middle).length, after:String(result.after).length }, items
@@ -1171,7 +1187,7 @@ function renderCategorizedWorldBookList(container, books, selectedIds, idPrefix)
     }
 
     global.WorldBookContextProvider = Object.freeze({
-        VERSION: 'worldbook-context.v2',
+        VERSION: 'worldbook-context.v3',
         provide: provideWorldBookContext,
         getLastDiagnostic() { try { return JSON.parse(JSON.stringify(lastDiagnostic)); } catch (_) { return lastDiagnostic; } }
     });

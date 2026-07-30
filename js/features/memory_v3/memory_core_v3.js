@@ -2,8 +2,9 @@
     'use strict';
 
     const M = global.MemoryV5 = global.MemoryV5 || {};
-    const VERSION = '5.6.0';
+    const VERSION = '5.8.0';
     const STORE_VERSION = 3;
+    const FAVORITE_TABLE_ID = 'v5_message_favorites';
 
     const GROUPS = new Set(['core', 'current', 'short', 'medium', 'long']);
     const VIEW_MODES = new Set(['kv', 'rows']);
@@ -129,7 +130,8 @@
                 alwaysInject: ['始终注入'],
                 neverInject: ['不进入上下文']
             },
-            stage: 'V5.6.0：KV字段分类与动态表单统一'
+            favoriteMaxPerRound: 5,
+            stage: 'V5.8.0：角色扮演提示词分层；核心档案按字段分类前置发送'
         };
     }
 
@@ -164,7 +166,9 @@
                 sortRules: Array.isArray(definition.display?.sortRules)
                     ? definition.display.sortRules.filter(rule => rule && fieldIds.has(text(rule.fieldId))).map(rule => ({ fieldId: text(rule.fieldId), direction: rule.direction === 'asc' ? 'asc' : 'desc' }))
                     : []
-            }
+            },
+            systemRole: text(definition.systemRole),
+            locked: definition.locked === true
         };
     }
 
@@ -173,6 +177,52 @@
         if (common) return common.id;
         const byName = table.fields.find(field => field.name === key);
         return byName?.id || '';
+    }
+
+    function createFavoriteTable() {
+        const table = baseTable({
+            id: FAVORITE_TABLE_ID,
+            name: '收藏记忆',
+            group: 'long',
+            viewMode: 'rows',
+            description: '保存当前角色私聊中由用户或角色收藏的消息。收藏只属于当前角色，并按标签在相关对话中发送。',
+            extractPrompt: '本表由收藏功能专用写入。聊天AI不得通过memory_ops新增或修改；只有标签与本轮用户消息相关时才进入上下文。',
+            categoryHints: [],
+            tagHints: ['人物', '关系', '家庭', '健康', '情绪', '偏好', '经历', '计划', '约定', '重要原话'],
+            aiCanSupplementCategories: false,
+            aiCanSupplementTags: false,
+            fields: [
+                commonField('tags', { hidden: false, width: 220, aiHint: '用于相关召回的简短标签，建议2—8个。' }),
+                customField('收藏方', 'multiselect', { id: 'favorite_collectors', required: true, width: 120, options: ['用户', '角色'], aiHint: '这条消息由用户、角色或双方收藏。' }),
+                customField('发送方', 'text', { id: 'favorite_sender', required: false, width: 120, aiHint: '原消息实际发送方。' }),
+                commonField('content', { hidden: false, width: 420, aiHint: '收藏的原消息正文，不生成标题，不改写原意。' }),
+                customField('收藏寄语', 'longtext', { id: 'favorite_note', required: false, width: 260, aiHint: '用户或角色收藏时留下的简短寄语；没有则留空。' }),
+                customField('消息时间', 'datetime', { id: 'favorite_message_time', required: false, width: 170, aiHint: '原消息发送时间。' }),
+                commonField('category', { hidden: true }),
+                commonField('title', { hidden: true }),
+                commonField('source', { hidden: true }),
+                commonField('time', { hidden: true }),
+                customField('原消息ID', 'text', { id: 'favorite_message_id', hidden: true }),
+                customField('旧收藏ID', 'multiselect', { id: 'favorite_legacy_ids', hidden: true }),
+                customField('原始内容', 'longtext', { id: 'favorite_raw_content', hidden: true }),
+                customField('内容类型', 'text', { id: 'favorite_content_type', hidden: true }),
+                customField('合并收藏', 'boolean', { id: 'favorite_merged', hidden: true })
+            ],
+            behavior: { writePolicy: 'manual', contextPolicy: 'relevant', allowAiWrite: false, retentionDays: 0 },
+            display: { sortRules: [{ fieldId: 'favorite_message_time', direction: 'desc' }] },
+            systemRole: 'message_favorites',
+            locked: true
+        });
+        table.behavior.identityFieldIds = ['favorite_message_id'];
+        table.behavior.contextFieldIds = [
+            fieldId(table, 'tags'),
+            'favorite_collectors',
+            'favorite_sender',
+            fieldId(table, 'content'),
+            'favorite_note',
+            'favorite_message_time'
+        ].filter(Boolean);
+        return table;
     }
 
     function createDefaultTables() {
@@ -210,13 +260,15 @@
         current.behavior.contextFieldIds = [];
         tables.push(current);
 
+        tables.push(createFavoriteTable());
+
         const events = baseTable({
             id: 'v5_recent_events',
-            name: '近期事项',
+            name: '待办与近期事项',
             group: 'short',
             viewMode: 'rows',
-            description: '保存最近7—15天真实发生、准备发生或已经完结的事情，一件事情一行。',
-            extractPrompt: '注重事实。新事项新增；同一事项出现进展、结果或状态变化时更新原行。',
+            description: '统一保存角色对话中的待办，以及最近7—15天准备发生、已经发生或已经完结的事项；一件事情一行。',
+            extractPrompt: '本表是唯一待办来源。用户或角色明确提出需要执行、等待或跟进的事项时新增；同一事项出现进展、结果或状态变化时更新原行。',
             categoryHints: ['生活', '工作', '健康', '关系', '家庭', '计划', '娱乐', '其他'],
             tagHints: ['待办', '已发生', '已完结', '近期'],
             fields: COMMON_KEYS.map(key => commonField(key)).concat([
@@ -569,8 +621,23 @@
         settings.tagBehaviors = Object.assign(defaultSettings().tagBehaviors, clone(store?.settings?.tagBehaviors || {}));
         if (!previousStage || previousStage.startsWith('V5.0')) settings.roundNoticeEnabled = true;
         settings.tablePageSize = Math.max(20, Math.min(500, parseInt(settings.tablePageSize, 10) || 100));
+        const favoriteMax = parseInt(settings.favoriteMaxPerRound, 10);
+        settings.favoriteMaxPerRound = Number.isFinite(favoriteMax) ? Math.max(0, favoriteMax) : 5;
         settings.stage = defaultSettings().stage;
-        const tables = (Array.isArray(store?.tables) ? store.tables : []).map(normalizeTable);
+        let tables = (Array.isArray(store?.tables) ? store.tables : []).map(normalizeTable);
+        const favoriteIndex = tables.findIndex(table => table.id === FAVORITE_TABLE_ID || table.systemRole === 'message_favorites');
+        if (favoriteIndex < 0) {
+            const favoriteTable = createFavoriteTable();
+            const currentIndex = tables.findIndex(table => table.id === 'v5_current_state');
+            tables.splice(currentIndex >= 0 ? currentIndex + 1 : 0, 0, favoriteTable);
+        } else {
+            const incomingFavorite = tables[favoriteIndex];
+            const fixedFavorite = createFavoriteTable();
+            fixedFavorite.display.sortRules = Array.isArray(incomingFavorite.display?.sortRules) && incomingFavorite.display.sortRules.length
+                ? incomingFavorite.display.sortRules
+                : fixedFavorite.display.sortRules;
+            tables[favoriteIndex] = fixedFavorite;
+        }
         const protectedGroups = new Set(['core', 'medium', 'long']);
         tables.forEach(table => {
             if (protectedGroups.has(table.group)) table.behavior.allowAiWrite = false;
@@ -774,7 +841,7 @@
 
     M.VERSION = VERSION;
     M.STORE_VERSION = STORE_VERSION;
-    M.constants = Object.freeze({ GROUPS, VIEW_MODES, WRITE_POLICIES, CONTEXT_POLICIES, SOURCES, FIELD_TYPES, COMMON_KEYS, COMMON_FIELD_DEFS });
+    M.constants = Object.freeze({ GROUPS, VIEW_MODES, WRITE_POLICIES, CONTEXT_POLICIES, SOURCES, FIELD_TYPES, COMMON_KEYS, COMMON_FIELD_DEFS, FAVORITE_TABLE_ID });
     M.util = Object.freeze({ clone, text, esc, unique, nowIso, localDateTimeSeconds, id, clampTitle });
     M.model = Object.freeze({
         defaultSettings,
@@ -782,6 +849,7 @@
         customField,
         baseTable,
         createDefaultTables,
+        createFavoriteTable,
         createDefaultStore,
         normalizeField,
         normalizeFields,

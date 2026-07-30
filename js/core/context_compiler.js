@@ -1,4 +1,4 @@
-// QWQ V5.6.6 · unified final context compiler for private chat requests
+// QWQ V5.8.0 · unified final context compiler for private chat requests
 (function (global) {
     'use strict';
 
@@ -111,21 +111,87 @@
         return source.length <= limit ? source : source.slice(0, limit);
     }
 
+    function clipStructuredWholeRecords(value, budget) {
+        const source = String(value || '').trim();
+        const limit = Math.max(0, Number(budget) || 0);
+        if (!source || !limit) return { value: '', clipped: !!source, omitted: source ? 1 : 0 };
+        if (source.length <= limit) return { value: source, clipped: false, omitted: 0 };
+
+        let body = source;
+        let openTag = '';
+        let closeTag = '';
+        const wrapped = source.match(/^(<structured_memory\b[^>]*>)\s*([\s\S]*?)\s*(<\/structured_memory>)$/i);
+        if (wrapped) {
+            openTag = wrapped[1];
+            body = wrapped[2];
+            closeTag = wrapped[3];
+        }
+
+        const headingPattern = /【([^】]+)】/g;
+        const headings = Array.from(body.matchAll(headingPattern));
+        if (!headings.length) {
+            // 无法识别记录边界时宁可不发送，也不截断半条记忆。
+            return { value: '', clipped: true, omitted: 1 };
+        }
+
+        const selected = [];
+        let omitted = 0;
+        const serialize = groups => {
+            const content = groups.map(group => `【${group.name}】\n${group.records.join('\n---\n')}`).join('\n\n');
+            if (!content) return '';
+            return openTag ? `${openTag}\n${content}\n${closeTag}` : content;
+        };
+
+        headings.forEach((heading, index) => {
+            const name = String(heading[1] || '').trim();
+            const start = heading.index + heading[0].length;
+            const end = headings[index + 1]?.index ?? body.length;
+            const records = body.slice(start, end).trim().split(/\n\s*---\s*\n/g).map(item => item.trim()).filter(Boolean);
+            records.forEach(record => {
+                let group = selected.find(item => item.name === name);
+                const tentative = selected.map(item => ({ name: item.name, records: item.records.slice() }));
+                let tentativeGroup = tentative.find(item => item.name === name);
+                if (!tentativeGroup) {
+                    tentativeGroup = { name, records: [] };
+                    tentative.push(tentativeGroup);
+                }
+                tentativeGroup.records.push(record);
+                if (serialize(tentative).length <= limit) {
+                    if (!group) {
+                        group = { name, records: [] };
+                        selected.push(group);
+                    }
+                    group.records.push(record);
+                } else {
+                    omitted += 1;
+                }
+            });
+        });
+
+        return { value: serialize(selected), clipped: true, omitted };
+    }
+
     function applyStructuredPolicy(prompt, policy, changes) {
         const source = String(prompt || '');
+        const projectTags = ['identity_core', 'long_term_memory', 'current_related_memory'];
         if (!policy.structuredEnabled) {
-            const next = replaceTagBlock(source, 'structured_archive_memory', () => '');
+            let next = replaceTagBlock(source, 'structured_archive_memory', () => '');
+            projectTags.forEach(tag => { next = replaceTagBlock(next, tag, () => ''); });
             if (next !== source) changes.push({ sourceId: 'memory.structured', action: 'excluded', reason: 'Proment 已关闭结构化记忆' });
             return next;
         }
-        let clipped = false;
+        // V5.8.0 项目式记忆已由记忆引擎按完整记录完成选择与预算控制，
+        // 编译器只兼容旧 structured_archive_memory，避免再次截断或打乱发送层级。
+        if (projectTags.some(tag => new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'i').test(source))) return source;
+        let result = { value: '', clipped: false, omitted: 0 };
         const next = replaceTagBlock(source, 'structured_archive_memory', content => {
-            const normalized = content.trim();
-            const value = clipText(normalized, policy.structuredBudget);
-            clipped = value.length < normalized.length;
-            return value ? `\n${value}\n` : '';
+            result = clipStructuredWholeRecords(content, policy.structuredBudget);
+            return result.value ? `\n${result.value}\n` : '';
         });
-        if (clipped) changes.push({ sourceId: 'memory.structured', action: 'clipped', reason: `按 ${policy.structuredBudget} 字符预算裁剪` });
+        if (result.clipped) {
+            const omittedHint = result.omitted ? `，整条排除 ${result.omitted} 条未放入预算的记录` : '';
+            changes.push({ sourceId: 'memory.structured', action: 'clipped', reason: `按 ${policy.structuredBudget} 字符预算整条筛选${omittedHint}` });
+        }
         return next;
     }
 

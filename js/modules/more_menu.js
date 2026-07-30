@@ -22,9 +22,6 @@ function initMoreMenu() {
         const action = item.dataset.action;
         if (action === 'status-bar') {
             openStatusBarManager();
-        } else if (action === 'star') {
-            if (typeof openFavoritesScreen === 'function') openFavoritesScreen();
-            else showToast('收藏功能加载中…');
         } else if (action === 'regex-filter') {
             if (typeof openRegexFilterManager === 'function') openRegexFilterManager();
             else showToast('正则过滤功能加载中…');
@@ -54,7 +51,6 @@ function initMoreMenu() {
 // 初始化编辑器预览逻辑
 initStatusBarPreview();
 
-    if (typeof initFavoritesScreen === 'function') initFavoritesScreen();
 
     // 初始化正则过滤模块
     if (typeof initRegexFilter === 'function') initRegexFilter();

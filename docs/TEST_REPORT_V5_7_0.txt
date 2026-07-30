@@ -1,0 +1,77 @@
+QWQ V5.7.0 测试报告
+====================
+
+一、语法检查
+------------
+以下修改文件均通过 `node --check`：
+- js/features/memory_v3/memory_core_v3.js
+- js/features/memory_v3/memory_engine_v3.js
+- js/features/memory_v3/memory_ui_v3.js
+- js/modules/favorites.js
+- js/modules/chat_ai.js
+- js/core/context_compiler.js
+- js/core/context_source_registry.js
+- js/features/settings/character/chat_controller.js
+- js/features/settings/proment_governance.js
+- js/app_registry.js
+- js/modules/more_menu.js
+- js/db.js
+- js/main.js
+
+二、自动化测试
+--------------
+执行：
+
+  for f in tests/*.test.js; do node "$f"; done
+
+结果：18 个测试文件全部正常结束。
+其中 `memory_kv_singleton_migration.test.js` 依赖外部私人样本 `/mnt/data/memoryStore_V5_4_1b_阿沉_2026-07-29.json`；样本不在代码包时会明确跳过，不判定失败。
+
+新增专项测试：
+- tests/v5_7_0_favorite_memory.test.js
+
+专项覆盖：
+- 不再存在收藏 App、收藏页面和独立收藏来源；
+- 收藏直接写入当前角色 `v5_message_favorites`；
+- 另一角色不会获得该记录；
+- 标题隐藏且内容可仅为一句话；
+- “收藏方”正确记录用户、角色或双方；
+- 本轮用户标签命中时召回；
+- 角色回复中的同词不会触发召回；
+- 用户收藏与角色收藏同一消息时合并；
+- 旧 `db.favorites` 转换后清空；
+- 转换对账信息写入 `favoriteMigrationArchive`；
+- Proment 字符预算按完整记录排除，不截断半条收藏。
+
+三、回归结果
+------------
+通过：
+- 自定义必填字段
+- KV 动态字段和字段分类
+- KV 单例标准化
+- MemoryV5 聊天写入
+- 中期压缩和长期草稿
+- 记忆分页与导入稳定性
+- 最终上下文编译
+- AI Gateway
+- Proment 治理
+- 状态栏导航
+- 退役上下文清理
+- 请求来源追踪
+- 悬浮球来源展示
+- 聊天历史无 200 条人工上限
+- 操作记录数组不再统一截为 120 条
+
+四、人工静态核查
+----------------
+确认产品代码中不存在：
+- favorites-screen
+- favorites-detail-screen
+- css/modules/favorites.css 引用
+- setting-char-aware-user-favorites
+- awareFavoriteScope
+- charAwareUserFavorites
+- <favorite_inventory>
+- collection.relevant 注册或请求写入
+
+保留的“收藏”字样仅包括消息收藏动作、角色自主收藏设置，以及日记／小剧场／头像等彼此独立的收藏功能。

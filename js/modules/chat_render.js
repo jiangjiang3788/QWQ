@@ -549,7 +549,6 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
     const updateStatusRegex = /\[(.*?)更新状态为[：:](.*?)\]/;
     const callInviteRegex = /\[(.*?)向(.*?)发起了(视频|语音)通话\]/;
     const callRejectRegex = /\[(.*?)拒绝了(.*?)的(视频|语音)通话\]/;
-    const reminderMsgRegex = /\[(.*?)(?:创建了提醒|添加了待办|完成了待办|提醒你|的待办到期|提醒.*?)[：:](.*?)\]/;
 
     const timeSkipMatch = content.match(timeSkipRegex);
     const inviteMatch = content.match(inviteRegex);
@@ -557,7 +556,6 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
     const updateStatusMatch = content.match(updateStatusRegex);
     const callInviteMatch = content.match(callInviteRegex);
     const callRejectMatch = content.match(callRejectRegex);
-    const reminderMsgMatch = message.isReminderMsg ? content.match(reminderMsgRegex) : null;
 
     // 私聊消息正则
     const privateRegex = /^\[Private: (.*?) -> (.*?): ([\s\S]+?)\]$/;
@@ -571,13 +569,11 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
     }
 
     let isDebugHiddenMsg = false;
-    // 提醒事项消息：开关关闭时隐藏
-    const isHiddenReminder = message.isReminderMsg && chat.showReminderMsg === false;
     // 头像操作消息：开关关闭时隐藏
     const avatarActionMatch = content.match(/^\[avatar-action:([\s\S]+?)\]$/);
     const isHiddenAvatarAction = !!avatarActionMatch && !chat.showAvatarActionMsg;
     // 在这里增加 || isThinking，只要标记为思考中，就强制走隐形消息逻辑
-    if (invisibleRegex.test(content) || privateRegex.test(content) || privateEndRegex.test(content) || isThinking || isHiddenReminder || isHiddenAvatarAction) {
+    if (invisibleRegex.test(content) || privateRegex.test(content) || privateEndRegex.test(content) || isThinking || isHiddenAvatarAction) {
         if (!isDebugMode) return null; 
         isDebugHiddenMsg = true;       
     }
@@ -621,7 +617,7 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
         return wrapper;
     }
     // 【新增】 && !isThinking —— 只有当不是思考过程时，才允许渲染成系统通知气泡
-    if ((timeSkipMatch || inviteMatch || renameMatch || (updateStatusMatch && chat.showStatusUpdateMsg) || callInviteMatch || callRejectMatch || (reminderMsgMatch && chat.showReminderMsg !== false)) && !isThinking) {
+    if ((timeSkipMatch || inviteMatch || renameMatch || (updateStatusMatch && chat.showStatusUpdateMsg) || callInviteMatch || callRejectMatch) && !isThinking) {
         wrapper.className = 'message-wrapper system-notification';
         if (message.isContextDisabled) wrapper.classList.add('context-disabled');
         let bubbleText = '';
@@ -631,7 +627,6 @@ const contentMatch = content.match(/^\[.*?(?:消息|回复)[：:]([\s\S]+)\]$/);
         if (updateStatusMatch) bubbleText = `${updateStatusMatch[1]} 更新状态为：${updateStatusMatch[2]}`;
         if (callInviteMatch) bubbleText = `${callInviteMatch[1]}向${callInviteMatch[2]}发起了${callInviteMatch[3]}通话`;
         if (callRejectMatch) bubbleText = `${callRejectMatch[1]}拒绝了${callRejectMatch[2]}的${callRejectMatch[3]}通话`;
-        if (reminderMsgMatch) bubbleText = content.replace(/^\[/, '').replace(/\]$/, '');
         // 如果消息携带了 theaterScenarioId，则气泡可点击跳转到对应小剧场
         if (message.theaterScenarioId) {
             const bubble = document.createElement('div');

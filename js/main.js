@@ -127,6 +127,7 @@ const init = async () => {
         'setupTutorialApp',
         'setupSearchSystem',
         'setupMemoryJournalScreen',
+        'setupFavoriteMemory',
         'setupMemoryTableScreen',
         'setupMemoryModeUI',
         'setupDeleteHistoryChunk',

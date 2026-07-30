@@ -32,9 +32,13 @@ for (const file of [
 const chat={id:'char_click',history:[]};
 sandbox.db.characters.push(chat);
 const M=sandbox.MemoryV5;
-M.model.ensureStore(chat);
+const clickStore=M.model.ensureStore(chat);
+const clickStateTable=clickStore.tables.find(table => table.id === 'v5_current_state');
+const clickStateField=M.model.customField('当前需求','longtext');
+clickStateTable.fields=[clickStateField];
+clickStateTable.behavior.contextFieldIds=[clickStateField.id];
 const result=M.engine.applyOperations(chat,[{
-  tableId:'v5_current_state',action:'add',values:{分类:'用户状态',标题:'当前需求',内容:'希望继续整理代码'}
+  tableId:'v5_current_state',action:'add',values:{当前需求:'希望继续整理代码'}
 }],{origin:'manual'});
 assert.strictEqual(result.changed.length,1);
 M.engine.refreshStateBar(chat);

@@ -359,7 +359,6 @@ function setupHomeScreen() {
 
     applyWallpaper(db.wallpaper);
     applyHomeStatusBar();
-    if (typeof setupReminderModule === 'function') setupReminderModule();
 
     homeScreen.querySelectorAll('.primary-dock .dock-app').forEach(item => {
         item.setAttribute('role', 'button');

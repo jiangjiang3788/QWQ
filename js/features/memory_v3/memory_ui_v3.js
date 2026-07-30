@@ -205,12 +205,12 @@
 <div class="action-btn-group"><button class="action-btn" data-mv5-action="new-table" title="新建表">＋</button><button class="action-btn" data-mv5-action="settings" title="设置">⚙</button></div>
 </header>
 <main class="content mv5-shell">
-<section class="mv5-topbar"><div><strong>动态记忆 V5.4.3</strong><span>上下文治理 · 真实来源清单 · 精简操作记录</span></div><div class="mv5-top-actions"><button class="btn btn-small btn-secondary" data-mv5-action="export-template">导出空模板</button><button class="btn btn-small btn-secondary" data-mv5-action="export">导出全部</button><button class="btn btn-small btn-secondary" data-mv5-action="import">导入</button><input id="mv5-import-input" type="file" accept="application/json,.json" hidden></div></section>
+<section class="mv5-topbar"><div><strong>动态记忆 V5.8.0</strong><span>上下文治理 · 真实来源清单 · 精简操作记录</span></div><div class="mv5-top-actions"><button class="btn btn-small btn-secondary" data-mv5-action="export-template">导出空模板</button><button class="btn btn-small btn-secondary" data-mv5-action="export">导出全部</button><button class="btn btn-small btn-secondary" data-mv5-action="import">导入</button><input id="mv5-import-input" type="file" accept="application/json,.json" hidden></div></section>
 <section class="mv5-layout">
 <aside class="mv5-sidebar"><div class="mv5-sidebar-head"><strong>表格</strong><span>${store.tables.length}</span></div><div class="mv5-table-list">${store.tables.map(item => `<button class="mv5-table-item ${item.id === table?.id ? 'active' : ''}" data-mv5-table="${esc(item.id)}"><span class="mv5-table-name">${tableUpdateDot(chat, item.id)}${esc(item.name)}</span><b class="mv5-group mv5-${item.group}">${groupLabel(item.group)}</b></button>`).join('')}</div></aside>
-<section class="mv5-main">${table ? `<div class="mv5-table-head"><div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<div class="mv5-extract"><b>AI提取说明：</b>${esc(table.extractPrompt)}</div>` : ''}</div><div class="mv5-table-actions"><button class="btn btn-small btn-primary" data-mv5-action="new-record">新增记录</button>${['v5_recent_events','v5_thoughts'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="compress">压缩所选短期记录</button><button class="btn btn-small btn-secondary" data-mv5-action="delete-compressed">删除已压缩记录</button>' : ''}${['v5_event_summary','v5_thought_summary'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="long-term-draft">生成长期草稿</button>' : ''}<button class="btn btn-small btn-secondary" data-mv5-action="sort">多维排序</button><button class="btn btn-small btn-secondary" data-mv5-action="edit-table">表设置</button><button class="btn btn-small btn-danger" data-mv5-action="delete-table">删除表</button></div></div>
+<section class="mv5-main">${table ? `<div class="mv5-table-head"><div><h2>${esc(table.name)}</h2><p>${esc(table.description || '未填写用途说明')}</p>${table.extractPrompt ? `<div class="mv5-extract"><b>AI提取说明：</b>${esc(table.extractPrompt)}</div>` : ''}</div><div class="mv5-table-actions"><button class="btn btn-small btn-primary" data-mv5-action="new-record">新增记录</button>${['v5_recent_events','v5_thoughts'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="compress">压缩所选短期记录</button><button class="btn btn-small btn-secondary" data-mv5-action="delete-compressed">删除已压缩记录</button>' : ''}${['v5_event_summary','v5_thought_summary'].includes(table.id) ? '<button class="btn btn-small btn-primary" data-mv5-action="long-term-draft">生成长期草稿</button>' : ''}<button class="btn btn-small btn-secondary" data-mv5-action="sort">多维排序</button>${table.locked ? '' : '<button class="btn btn-small btn-secondary" data-mv5-action="edit-table">表设置</button><button class="btn btn-small btn-danger" data-mv5-action="delete-table">删除表</button>'}</div></div>
 <div class="mv5-rule-line"><span>${table.viewMode === 'kv' ? 'KV：单例表单' : 'Rows：多行记录'}</span><span>${groupLabel(table.group)}</span><span>${writeLabel(table.behavior.writePolicy)}</span><span>${contextLabel(table.behavior.contextPolicy)}</span>${table.behavior.retentionDays ? `<span>保留/引用${table.behavior.retentionDays}天</span>` : '<span>时间不限</span>'}${table.behavior.chatStatus ? '<span>状态栏来源</span>' : ''}</div>
-<div class="mv5-filters"><input id="mv5-search" type="search" placeholder="搜索当前表" value="${esc(state.search)}"><select id="mv5-category"><option value="">全部分类</option>${categories.map(value => `<option ${value === state.category ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select><select id="mv5-tag"><option value="">全部标签</option>${tags.map(value => `<option ${value === state.tag ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select></div>
+<div class="mv5-filters"><input id="mv5-search" type="search" placeholder="搜索当前表" value="${esc(state.search)}">${table.id === M.constants.FAVORITE_TABLE_ID ? '' : `<select id="mv5-category"><option value="">全部分类</option>${categories.map(value => `<option ${value === state.category ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select>`}<select id="mv5-tag"><option value="">全部标签</option>${tags.map(value => `<option ${value === state.tag ? 'selected' : ''}>${esc(value)}</option>`).join('')}</select></div>
 ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table, rows)}${renderPager(page)}` : '<div class="mv5-empty-page">当前没有表格。</div>'}</section>
 </section></main>`;
         bindScreenEvents(screen, chat, store, table);
@@ -436,6 +436,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     }
 
     function openTableEditor(chat, existing) {
+        if (existing?.locked) return toast('收藏记忆是系统表，只能编辑其中的记录。');
         const store = ensureStore(chat);
         const table = existing ? clone(existing) : normalizeTable({
             name: '新记忆表',
@@ -570,6 +571,12 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
 
     function openRecordEditor(chat, table, existing) {
         const record = existing ? clone(existing) : normalizeRecord({ source: '用户明确', time: localDateTimeSeconds() }, table);
+        if (!existing && table.id === M.constants.FAVORITE_TABLE_ID) {
+            const collectorField = table.fields.find(field => field.id === 'favorite_collectors');
+            const messageTimeField = table.fields.find(field => field.id === 'favorite_message_time');
+            if (collectorField) setFieldValue(record, collectorField, ['用户'], { table });
+            if (messageTimeField) setFieldValue(record, messageTimeField, localDateTimeSeconds(), { table });
+        }
         const body = `<div class="mv5-record-form">${visibleFields(table).map(field => `<div class="mv5-record-field"><label><span>${esc(field.name)}${field.required ? ' *' : ''}</span>${field.aiHint ? `<small>${esc(field.aiHint)}</small>` : ''}</label><div>${controlForField(field, getFieldValue(record, field))}</div></div>`).join('')}</div>`;
         modal(table.viewMode === 'kv' ? '编辑表单' : (existing ? '编辑记录' : '新增记录'), body, async form => {
             const values = {};
@@ -581,7 +588,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
                 values[field.id] = value;
             });
             const titleField = table.fields.find(field => field.scope === 'common' && field.commonKey === 'title');
-            if (table.viewMode !== 'kv' && titleField && !text(values[titleField.id])) throw new Error('标题不能为空。');
+            if (table.viewMode !== 'kv' && titleField && titleField.hidden !== true && !text(values[titleField.id])) throw new Error('标题不能为空。');
             const operation = { tableId: table.id, action: existing ? 'upsert' : 'add', recordId: existing?.id, values };
             const result = applyOperations(chat, [operation], { origin: 'manual' });
             if (!result.changed.length && !result.checked.length) throw new Error(result.rejected[0]?.reason || '保存失败。');
@@ -617,12 +624,14 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     function openSettings(chat) {
         const store = ensureStore(chat);
         const settings = store.settings;
-        const body = `<section class="mv5-form-card"><h3>全局设置</h3><div class="mv5-form-grid"><label class="mv5-check"><input type="checkbox" name="enabled" ${settings.enabled ? 'checked' : ''}>启用记忆上下文与自动写入</label><label class="mv5-check"><input type="checkbox" name="roundNoticeEnabled" ${settings.roundNoticeEnabled ? 'checked' : ''}>每轮显示记忆处理结果</label><label><span>上下文最多记录数</span><input type="number" name="contextMaxRecords" min="1" value="${settings.contextMaxRecords}"></label><label><span>相关表每表最多记录</span><input type="number" name="relevantMaxPerTable" min="1" max="20" value="${settings.relevantMaxPerTable}"></label><label><span>表格每页记录数</span><input type="number" name="tablePageSize" min="20" max="500" value="${settings.tablePageSize || 100}"><small>大量记录时分页显示，建议50—200</small></label><label><span>始终注入标签</span><input name="alwaysInject" value="${esc(settings.tagBehaviors.alwaysInject.join('，'))}"></label><label><span>禁止注入标签</span><input name="neverInject" value="${esc(settings.tagBehaviors.neverInject.join('，'))}"></label></div><p class="mv5-help">V5.4.3保持现有记忆数据结构，并统一Proment真实来源治理与悬浮球运行摘要。</p></section>`;
+        const body = `<section class="mv5-form-card"><h3>全局设置</h3><div class="mv5-form-grid"><label class="mv5-check"><input type="checkbox" name="enabled" ${settings.enabled ? 'checked' : ''}>启用记忆上下文与自动写入</label><label class="mv5-check"><input type="checkbox" name="roundNoticeEnabled" ${settings.roundNoticeEnabled ? 'checked' : ''}>每轮显示记忆处理结果</label><label><span>上下文最多记录数</span><input type="number" name="contextMaxRecords" min="1" value="${settings.contextMaxRecords}"></label><label><span>相关表每表最多记录</span><input type="number" name="relevantMaxPerTable" min="1" max="20" value="${settings.relevantMaxPerTable}"></label><label><span>收藏每轮发送上限</span><input type="number" name="favoriteMaxPerRound" min="0" step="1" value="${Number.isFinite(Number(settings.favoriteMaxPerRound)) ? Number(settings.favoriteMaxPerRound) : 5}"><small>可填任意非负整数；0表示不设收藏独立条数上限，仍受上下文总记录数与字符预算限制</small></label><label><span>表格每页记录数</span><input type="number" name="tablePageSize" min="20" max="500" value="${settings.tablePageSize || 100}"><small>大量记录时分页显示，建议50—200</small></label><label><span>始终注入标签</span><input name="alwaysInject" value="${esc(settings.tagBehaviors.alwaysInject.join('，'))}"></label><label><span>禁止注入标签</span><input name="neverInject" value="${esc(settings.tagBehaviors.neverInject.join('，'))}"></label></div><p class="mv5-help">独立提醒/待办已删除。V5.8.0：核心档案按字段分类前置发送；世界书保留身份前、身份后、场景后置三个真实位置。</p></section>`;
         modal('记忆设置', body, async form => {
             settings.enabled = form.get('enabled') === 'on';
             settings.roundNoticeEnabled = form.get('roundNoticeEnabled') === 'on';
             settings.contextMaxRecords = Math.max(1, parseInt(form.get('contextMaxRecords'), 10) || 32);
             settings.relevantMaxPerTable = Math.max(1, Math.min(20, parseInt(form.get('relevantMaxPerTable'), 10) || 5));
+            const favoriteMax = parseInt(form.get('favoriteMaxPerRound'), 10);
+            settings.favoriteMaxPerRound = Number.isFinite(favoriteMax) ? Math.max(0, favoriteMax) : 5;
             settings.tablePageSize = Math.max(20, Math.min(500, parseInt(form.get('tablePageSize'), 10) || 100));
             settings.tagBehaviors.alwaysInject = unique(form.get('alwaysInject'));
             settings.tagBehaviors.neverInject = unique(form.get('neverInject'));
@@ -632,6 +641,7 @@ ${table.viewMode === 'kv' ? renderKv(chat, table, rows) : renderRows(chat, table
     }
 
     async function deleteTable(chat, table) {
+        if (table?.locked) return toast('收藏记忆是系统表，不能删除整张表。');
         const store = ensureStore(chat);
         const recordCount = (store.records[table.id] || []).length;
         const dependents = store.tables.filter(item => item.id !== table.id && item.behavior.sourceTableIds.includes(table.id)).map(item => item.name);

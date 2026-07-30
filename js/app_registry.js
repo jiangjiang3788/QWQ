@@ -31,8 +31,6 @@
         { id: 'memory', label: '记忆', group: 'main', section: 'people', placement: { dock: 30 }, opener: 'memory', customizable: false, iconKey: 'memory-table-screen', fallbackIcon: svgIcon('忆', '#f4efff', '#7b57c7') },
         { id: 'worldbook', label: '世界书', group: 'main', section: 'creative', placement: { home: 10 }, target: 'world-book-screen', opener: 'worldbook', iconKey: 'world-book-screen', fallbackIcon: svgIcon('界', '#eef8f2', '#438663') },
         { id: 'theater', label: '剧场', group: 'main', section: 'creative', placement: { home: 20 }, target: 'theater-screen', iconKey: 'theater-screen', fallbackIcon: svgIcon('剧', '#fff2eb', '#bd6d3f') },
-        { id: 'favorites', label: '收藏', group: 'main', section: 'organize', placement: { home: 30 }, opener: 'favorites', iconKey: 'favorites-screen', fallbackIcon: svgIcon('藏', '#fff1f4', '#d55d78') },
-        { id: 'reminder', label: '提醒', group: 'main', section: 'organize', placement: { home: 40 }, opener: 'reminder', iconKey: 'reminder-screen', fallbackIcon: svgIcon('醒', '#fff8e8', '#b98224') },
         { id: 'search', label: '搜索', group: 'main', section: 'organize', placement: { home: 50 }, opener: 'search', iconKey: 'search-history-screen', fallbackIcon: svgIcon('搜', '#edf7fa', '#3f8191') },
 
         { id: 'chat', label: '聊天', group: 'dock', placement: { dock: 10 }, target: 'chat-list-screen', customizable: false, iconKey: 'chat-list-screen', fallbackIcon: svgIcon('聊', '#eff3ff', '#5570d8') },
@@ -209,22 +207,9 @@
             if (typeof global.renderMemoryTableScreen === 'function') global.renderMemoryTableScreen();
             openCharacterPicker('选择角色记忆', open);
         },
-        reminder() {
-            const open = () => {
-                if (typeof global.openReminderScreen === 'function') global.openReminderScreen();
-                else navigate('reminder-screen');
-            };
-            const current = global.currentChatType === 'private' ? setCurrentCharacter(global.currentChatId) : null;
-            if (current) open();
-            else openCharacterPicker('选择角色提醒', open);
-        },
         search() {
             if (global.SearchSystem && typeof global.SearchSystem.open === 'function') global.SearchSystem.open();
             else navigate('search-history-screen');
-        },
-        favorites() {
-            if (typeof global.openFavoritesScreen === 'function') global.openFavoritesScreen();
-            else navigate('favorites-screen');
         },
         worldbook() {
             if (typeof global.renderWorldBookList === 'function') global.renderWorldBookList();

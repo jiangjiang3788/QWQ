@@ -78,7 +78,6 @@ const defaultIcons = {
     'magic-room-screen': {name: 'Proment', url: 'https://i.postimg.cc/hPCcZG3v/png-(143).png'},
     'appearance-settings-screen': {name: '外观设置', url: 'https://i.postimg.cc/KcgT1wzQ/DF424409FC54EDFF74D78ECB1311E1D7.png'},
     'theater-screen': {name: '小剧场', url: 'https://i.postimg.cc/t4gXjG8P/7632D362A35EC703E7A81F6FF0F8AE34.png'},
-    'favorites-screen': {name: '收藏', url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23fff4f6'/%3E%3Cpath d='M50 78S18 60 18 38c0-12 9-20 20-20 7 0 12 4 16 9 4-5 9-9 16-9 11 0 20 8 20 20 0 22-32 40-40 40z' fill='%23e95f78'/%3E%3C/svg%3E"},
 };
 
 const DEFAULT_COT_PRESETS = [
@@ -144,7 +143,7 @@ const globalSettingKeys = [
     'globalSendSound', 'globalReceiveSound', 'globalMessageSentSound', 'multiMsgSoundEnabled',
     'hapticEnabled', 'globalToastEnabled',
     'soundPresets', 'iconPresets', 'voicePresets',
-    'cotSettings', 'cotPresets', 'favorites',
+    'cotSettings', 'cotPresets', 'favorites', 'favoriteMigrationArchive',
     'theaterScenarios', 'theaterPromptPresets', 'theaterHtmlScenarios', 'theaterHtmlPromptPresets',
     'theaterMode', 'theaterApiSettings', 'theaterFontSize', 'theaterFontPreset',
     'novelAiSettings', 'gptImageSettings', 'gptImagePresets', 'avatarRecognitionDetailLevel',
@@ -339,7 +338,7 @@ const updateLog = [
             "1.新增论坛可以分享贴子给群聊，可以多选删除已有帖子",
             "2.新增小剧场可以调节字体，世界书可以多选移动到分类和多选启用和停用（豹豹老师改）",
             "3.新增免打扰时间段，这段时间应该不会有后台消息发来",
-            "4.新增提醒事项，角色可以自行创建自己的代办事项，也可以在聊天过程中，帮用户创建代办事项。到点会自动提醒",
+            "4.历史版本曾新增提醒事项（该独立功能已于V5.7.2移除，待办改用角色记忆表）",
             "5.新增编辑可以新增消息，修复语音、视频不能自动播放的BUG",
             "6.新增偷看手机专属API",
             "7.新增头像系统，总之就是角色可以裁剪情头、自己更换头像，能发现用户头像的使用变化，比如说用户换头像会问一嘴。然后可以感知情头，生气了自己会换掉情头，或者用户换掉情头也会感知",
@@ -741,7 +740,8 @@ var db = {
     },
     cotPresets: JSON.parse(JSON.stringify(DEFAULT_COT_PRESETS)),
     archives: [],
-    favorites: [],  // 消息收藏：{ id, messageId, chatId, chatType, chatName, content, timestamp, favoriteTime, note, sender }
+    favorites: [],  // V5.7.0 仅作一次性旧收藏转换源；转换后清空
+    favoriteMigrationArchive: null, // 旧收藏转换对账与无法关联记录
     phoneControlRecycleBin: [],  // 角色掌控模式：被角色“删除”的角色移入回收站，可恢复
     memoryTableTemplates: [],
 };
@@ -749,7 +749,7 @@ var db = {
 var currentChatId = null;
 var currentChatType = null;
 var isGenerating = false;
-var currentReplyAbortController = null; // 用于「暂停调用」中止当前 AI 请求（单聊/群聊共用）
+var currentReplyAbortController = null; // 当前 AI 请求控制器（供超时、任务清理与内部状态同步使用）
 var longPressTimer = null;
 var isInMultiSelectMode = false;
 var editingMessageId = null;
@@ -1030,6 +1030,7 @@ const loadData = async () => {
             cotSettings: { enabled: false, activePresetId: 'default' },
             cotPresets: JSON.parse(JSON.stringify(DEFAULT_COT_PRESETS)),
             favorites: [],
+            favoriteMigrationArchive: null,
             theaterScenarios: [],
             theaterPromptPresets: [],
             theaterHtmlScenarios: [],
@@ -1067,6 +1068,9 @@ const loadData = async () => {
     if (Object.prototype.hasOwnProperty.call(db, 'vectorMemoryTemplates')) delete db.vectorMemoryTemplates;
     if (!Array.isArray(db.vectorApiPresets)) db.vectorApiPresets = [];
 
+    // V5.7.2：独立提醒/待办功能已退役。记忆表“待办与近期事项”是唯一待办来源。
+    let removedRetiredReminderData = false;
+
     // Data integrity checks
     db.characters.forEach(c => {
         if (c.isPinned === undefined) c.isPinned = false;
@@ -1080,6 +1084,13 @@ const loadData = async () => {
         if (c.themeJustChangedByUser === undefined) c.themeJustChangedByUser = '';
         if (c.showTimestamp === undefined) c.showTimestamp = false;
         if (c.timestampPosition === undefined) c.timestampPosition = 'below_avatar';
+        // 删除旧提醒模块的角色数据和开关，不转换到记忆表；用户已确认旧数据可直接舍弃。
+        ['reminders', 'charReminderEnabled', 'showReminderMsg'].forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(c, key)) {
+                delete c[key];
+                removedRetiredReminderData = true;
+            }
+        });
         if (!c.statusPanel) {
             c.statusPanel = {
                 enabled: false,
@@ -1150,6 +1161,10 @@ const loadData = async () => {
             if (item.name === undefined) item.name = (item.description && item.description.length > 12) ? item.description.slice(0, 12) + '…' : (item.description || '未命名');
         });
     });
+    if (removedRetiredReminderData && db.characters.length) {
+        // 立即落盘，避免旧 reminders 字段继续出现在后续备份中。
+        await dexieDB.characters.bulkPut(db.characters);
+    }
     if (db.userAvatarLibrary && Array.isArray(db.userAvatarLibrary) && db.userAvatarLibrary.length > 0) {
         db.characters.forEach(c => {
             if (!c.userAvatarLibrary) c.userAvatarLibrary = [];

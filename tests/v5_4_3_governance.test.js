@@ -76,7 +76,7 @@ assert(runtime.getStorageStats().budget === 260000, 'Storage budget not converge
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 assert(html.includes('proment-source-registry-list'));
 assert(html.includes('proment-real-request-content'));
-assert(html.includes('proment_governance.js?v=544'));
+assert(html.includes('proment_governance.js?v=572'));
 assert(!html.includes('id="proment-preview-context"'), 'Old simulation preview should not remain visible');
 assert(!html.includes('id="proment-compare-runtime"'), 'Old design/runtime comparison should not remain visible');
 assert(!html.includes('id="proment-preview-worldbook"'), 'Old worldbook diagnostic should not remain visible');
@@ -86,7 +86,7 @@ const dock = fs.readFileSync(path.join(root, 'js/modules/floating_ball.js'), 'ut
 assert(dock.includes('request?.contextManifest'));
 assert(dock.includes('function renderRequestBody(request)'));
 assert(dock.includes('消息数组'));
-assert(dock.includes("const PACKAGE_VERSION = '5.6.6'"));
+assert(dock.includes("const PACKAGE_VERSION = '5.8.0'"));
 assert(!dock.includes('完整 Prompt 与真实清单请在 Proment 查看'));
 assert(!dock.includes('downloadText(filename'));
 assert(!dock.includes('reportFilename(prefix'));

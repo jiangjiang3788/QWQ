@@ -242,7 +242,6 @@
         if (charCollectCoupleEl) charCollectCoupleEl.checked = e.charCollectCoupleAvatarEnabled === true;
         const charSenseCoupleEl = document.getElementById('setting-char-sense-couple-avatar');
         if (charSenseCoupleEl) charSenseCoupleEl.checked = e.charSenseCoupleAvatarEnabled === true;
-        document.getElementById('setting-char-reminder-enabled').checked = e.charReminderEnabled || false;
 
         // === 加载 NovelAI 生图设置（模型/尺寸/画师串）到拓展 Tab ===
         if (db.novelAiSettings) {
@@ -279,7 +278,6 @@
         const charSenseCoupleInput = document.getElementById('setting-char-sense-couple-avatar');
         e.charSenseCoupleAvatarEnabled = charSenseCoupleInput ? charSenseCoupleInput.checked : false;
         e.showAvatarActionMsg = document.getElementById('setting-show-avatar-action-msg').checked;
-        e.charReminderEnabled = document.getElementById('setting-char-reminder-enabled').checked;
 
         // === 保存 NovelAI 生图设置（模型/尺寸/画师串）回 db.novelAiSettings ===
         {

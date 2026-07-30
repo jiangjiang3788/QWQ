@@ -30,7 +30,7 @@
         VERSION: M.VERSION,
         state: Object.freeze({ ensure: M.model.ensureStore, currentChat: M.model.getCurrentChat }),
         screen: Object.freeze({ setup: M.ui.setup, render: M.ui.render, openWorkspace: M.ui.render }),
-        context: Object.freeze({ get: M.engine.getContextBlock, prepare: async chat => M.engine.getContextBlock(chat), export: M.engine.getContextBlock }),
+        context: Object.freeze({ get: M.engine.getContextBlock, projects: M.engine.getContextProjects, prepare: async chat => M.engine.getContextBlock(chat), export: M.engine.getContextBlock }),
         writer: Object.freeze({ apply: M.engine.applyOperations }),
         aggregation: Object.freeze({ run: M.engine.runAggregation, check: M.engine.runEligibleAggregations }),
         rounds: M.rounds,
@@ -44,6 +44,7 @@
     global.setupMemoryTableScreen = M.ui.setup;
     global.renderMemoryTableScreen = M.ui.render;
     global.getMemoryTableContextBlock = M.engine.getContextBlock;
+    global.getMemoryTableContextProjects = M.engine.getContextProjects;
     global.prepareMemoryTableContext = async chat => M.engine.getContextBlock(chat);
     global.exportMemoryTableContext = M.engine.getContextBlock;
     global.getBoundMemoryTableTemplateIds = chat => M.model.ensureStore(chat).tables.map(table => table.id);
@@ -54,6 +55,7 @@
         ensureStore: M.model.ensureStore,
         applyOperations: M.engine.applyOperations,
         runAggregation: M.engine.runAggregation,
+        getContextProjects: M.engine.getContextProjects,
         getContextBlock: M.engine.getContextBlock,
         render: M.ui.render
     });

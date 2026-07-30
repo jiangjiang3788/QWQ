@@ -1,688 +1,413 @@
-// --- 消息收藏模块 ---
+// --- 消息收藏模块 V5.8.0：收藏直接写入当前角色的“收藏记忆”表 ---
+(function (global) {
+    'use strict';
 
-const FavoriteMessageContent = window.OvoMessageContent || null;
+    const TABLE_ID = global.MemoryV5?.constants?.FAVORITE_TABLE_ID || 'v5_message_favorites';
+    const FavoriteMessageContent = global.OvoMessageContent || null;
+    const MIGRATION_VERSION = '5.7.0';
 
-// 收藏预览统一走消息内容解析器。旧收藏只有 raw content，新收藏同时保存 plainText。
-function getMessagePreview(content, plainText, contentType) {
-    const savedText = typeof plainText === 'string' ? plainText.trim() : '';
-    if (contentType === 'voice' && savedText) return `[语音] ${savedText}`;
-    if (savedText && contentType && contentType !== 'text' && contentType !== 'message') {
-        if (contentType === 'sticker') return '[表情包]';
-        if (contentType === 'photo_video') return '[照片/视频]';
-    }
-    if (savedText) return savedText;
-    if (FavoriteMessageContent) return FavoriteMessageContent.getPreview(content);
-    if (!content || typeof content !== 'string') return '';
-    const messageMatch = content.match(/^\[.*?的消息：([\s\S]+?)\]$/);
-    if (messageMatch && messageMatch[1]) return messageMatch[1].trim();
-    const voiceMatch = content.match(/^\[.*?的语音：([\s\S]*?)\]$/);
-    if (voiceMatch) return voiceMatch[1].trim() ? `[语音] ${voiceMatch[1].trim()}` : '[语音]';
-    if (/\[.*?的表情包：.*?\]/.test(content)) return '[表情包]';
-    if (/\[.*?发来的照片\/视频：.*?\]/.test(content)) return '[照片/视频]';
-    return content;
-}
-
-function getFavoriteMessageSnapshot(message) {
-    if (FavoriteMessageContent) return FavoriteMessageContent.snapshot(message);
-    const content = typeof message?.content === 'string'
-        ? message.content
-        : (message?.parts && message.parts[0] ? message.parts[0].text : '');
-    return { content, contentType: 'text', plainText: getMessagePreview(content) };
-}
-
-// 获取发送者显示名
-function getSenderName(chat, message) {
-    if (message.role === 'user') return chat.myName || '我';
-    return chat.remarkName || chat.name || '对方';
-}
-
-// 获取聊天显示名（角色名或群名）
-function getChatDisplayName(chatType, chatId) {
-    const c = (db.characters || []).find(c => c.id === chatId);
-    return c ? (c.remarkName || c.name || '角色') : '历史收藏';
-}
-
-// 单条消息收藏
-function addMessageToFavorites(messageId) {
-    const chat = (db.characters || []).find(c => c.id === currentChatId);
-    if (!chat || !chat.history) return;
-    const message = chat.history.find(m => m.id === messageId);
-    if (!message) return;
-
-    const snapshot = getFavoriteMessageSnapshot(message);
-    const chatName = getChatDisplayName(currentChatType, currentChatId);
-    const sender = getSenderName(chat, message);
-
-    const existing = (db.favorites || []).find(f => f.chatId === currentChatId && (f.chatType || 'private') === 'private' && f.messageId === messageId && (f.favoriteBy !== 'character'));
-    if (existing) {
-        showToast('该消息已在收藏中');
-        return;
-    }
-
-    const fav = {
-        id: 'fav_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-        messageId: message.id,
-        chatId: currentChatId,
-        chatType: 'private',
-        chatName: chatName,
-        content: snapshot.content,
-        contentType: snapshot.contentType,
-        plainText: snapshot.plainText,
-        timestamp: message.timestamp || Date.now(),
-        favoriteTime: Date.now(),
-        note: '',
-        sender: sender,
-        favoriteBy: 'user',
-        characterId: null
+    const text = value => String(value == null ? '' : value).trim();
+    const unique = values => Array.from(new Set((Array.isArray(values) ? values : text(values).split(/[,，、\n]/u)).map(text).filter(Boolean)));
+    const pad2 = value => String(value).padStart(2, '0');
+    const localDateTimeSeconds = value => {
+        const date = value instanceof Date ? value : new Date(Number(value) || Date.now());
+        return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
     };
-    if (!db.favorites) db.favorites = [];
-    db.favorites.push(fav);
-    saveData().then(() => {
-        showToast('已收藏');
-        if (typeof triggerHapticFeedback === 'function') triggerHapticFeedback('light');
-    });
-}
 
-// 多选收藏：将当前选中的消息全部加入收藏
-function addFavoritesFromSelection() {
-    if (!selectedMessageIds || selectedMessageIds.size === 0) {
-        showToast('请至少选择一条消息');
-        return;
+    function getMessagePreview(content, plainText, contentType) {
+        const savedText = typeof plainText === 'string' ? plainText.trim() : '';
+        if (contentType === 'voice' && savedText) return `[语音] ${savedText}`;
+        if (savedText && contentType && contentType !== 'text' && contentType !== 'message') {
+            if (contentType === 'sticker') return '[表情包]';
+            if (contentType === 'photo_video') return '[照片/视频]';
+        }
+        if (savedText) return savedText;
+        if (FavoriteMessageContent) return FavoriteMessageContent.getPreview(content);
+        if (!content || typeof content !== 'string') return '';
+        const messageMatch = content.match(/^\[.*?的消息：([\s\S]+?)\]$/);
+        if (messageMatch && messageMatch[1]) return messageMatch[1].trim();
+        const voiceMatch = content.match(/^\[.*?的语音：([\s\S]*?)\]$/);
+        if (voiceMatch) return voiceMatch[1].trim() ? `[语音] ${voiceMatch[1].trim()}` : '[语音]';
+        if (/\[.*?的表情包：.*?\]/.test(content)) return '[表情包]';
+        if (/\[.*?发来的照片\/视频：.*?\]/.test(content)) return '[照片/视频]';
+        return content;
     }
-    const chat = (db.characters || []).find(c => c.id === currentChatId);
-    if (!chat || !chat.history) return;
 
-    let added = 0;
-    const existingIds = new Set((db.favorites || []).filter(f => f.chatId === currentChatId && (f.chatType || 'private') === 'private' && (f.favoriteBy !== 'character')).map(f => f.messageId));
+    function getFavoriteMessageSnapshot(message) {
+        if (FavoriteMessageContent) return FavoriteMessageContent.snapshot(message);
+        const content = typeof message?.content === 'string'
+            ? message.content
+            : (message?.parts && message.parts[0] ? message.parts[0].text : '');
+        return { content, contentType: 'text', plainText: getMessagePreview(content) };
+    }
 
-    const chatName = getChatDisplayName(currentChatType, currentChatId);
-    const messages = chat.history.filter(m => selectedMessageIds.has(m.id));
+    function getSenderName(chat, message) {
+        if (message?.role === 'user') return chat?.myName || '我';
+        return chat?.remarkName || chat?.realName || chat?.name || '对方';
+    }
 
-    if (!db.favorites) db.favorites = [];
-    messages.forEach(message => {
-        if (existingIds.has(message.id)) return;
-        const snapshot = getFavoriteMessageSnapshot(message);
-        const sender = getSenderName(chat, message);
-        db.favorites.push({
-            id: 'fav_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-            messageId: message.id,
-            chatId: currentChatId,
-            chatType: 'private',
-            chatName: chatName,
-            content: snapshot.content,
-            contentType: snapshot.contentType,
-            plainText: snapshot.plainText,
-            timestamp: message.timestamp || Date.now(),
-            favoriteTime: Date.now(),
-            note: '',
-            sender: sender,
-            favoriteBy: 'user',
-            characterId: null
+    const TAG_RULES = Object.freeze([
+        ['家庭', /爸爸|父亲|妈妈|母亲|爸妈|家人|家庭|哥哥|弟弟|姐姐|妹妹|爷爷|奶奶|外公|外婆/],
+        ['爸爸', /爸爸|父亲|老爸/],
+        ['妈妈', /妈妈|母亲|老妈/],
+        ['健康', /健康|生病|医院|医生|复查|检查|药|过敏|疼|痛|发烧|感冒|手术|住院|康复/],
+        ['睡眠', /睡眠|睡觉|失眠|熬夜|早睡|晚睡|做梦/],
+        ['饮食', /吃饭|食物|口味|香菜|早餐|午餐|晚餐|零食|饮料|咖啡|奶茶|火锅|甜食/],
+        ['偏好', /喜欢|讨厌|偏好|最爱|不喜欢|想要|不想要/],
+        ['情绪', /开心|难过|生气|焦虑|害怕|紧张|委屈|孤独|烦|累|压力|情绪/],
+        ['关系', /关系|在一起|分手|恋爱|爱你|喜欢你|朋友|闺蜜|同事|相处|信任/],
+        ['约定', /约定|答应|承诺|说好|一定要|记得|别忘了/],
+        ['计划', /计划|准备|打算|明天|后天|下周|下个月|以后|将来|目标/],
+        ['工作', /工作|上班|同事|老板|项目|客户|加班|面试|辞职|职业/],
+        ['学习', /学习|考试|作业|课程|论文|复习|成绩/],
+        ['学校', /学校|校园|教室|宿舍|老师|同学/],
+        ['经历', /以前|小时候|童年|曾经|发生过|经历|回忆/],
+        ['生日', /生日|纪念日|周年/],
+        ['礼物', /礼物|送给|收到|纪念品/],
+        ['旅行', /旅行|旅游|出发|酒店|机票|火车|景点/],
+        ['问候', /早安|晚安|午安|你好|再见|好梦/],
+        ['宠物', /宠物|猫|狗|仓鼠|兔子|养了/],
+        ['金钱', /钱|工资|消费|花费|存款|借钱|转账|预算/]
+    ]);
+
+    function deriveFavoriteTags(content, note = '') {
+        const source = `${text(note)}\n${text(content)}`;
+        const tags = [];
+        for (const match of source.matchAll(/#([^#\s，。！？、；：,.!?;:]{1,20})/gu)) tags.push(match[1]);
+        TAG_RULES.forEach(([tag, pattern]) => { if (pattern.test(source)) tags.push(tag); });
+
+        // 收藏寄语通常已经是最准确的概括，优先抽取其中的短词。
+        text(note).split(/[，。！？、；：,.!?;:\s]+/u).forEach(part => {
+            const cleaned = part.replace(/^(他的|她的|我的|用户的|角色的|关于|记住|以后|需要|这条|一条)/u, '').trim();
+            if (/^[\u3400-\u9fffA-Za-z0-9_-]{2,8}$/u.test(cleaned)) tags.push(cleaned);
         });
-        existingIds.add(message.id);
-        added++;
-    });
 
-    saveData().then(() => {
-        if (typeof exitMultiSelectMode === 'function') exitMultiSelectMode();
-        showToast(added > 0 ? `已收藏 ${added} 条消息` : '选中消息已在收藏中');
-        if (added > 0 && typeof triggerHapticFeedback === 'function') triggerHapticFeedback('medium');
-    });
-}
-
-// 多选收藏（合并为一条）：将选中的消息按时间顺序合并成一条收藏，便于连贯查看
-function addFavoritesFromSelectionMerged() {
-    if (!selectedMessageIds || selectedMessageIds.size === 0) {
-        showToast('请至少选择一条消息');
-        return;
-    }
-    const chat = (db.characters || []).find(c => c.id === currentChatId);
-    if (!chat || !chat.history) return;
-
-    const messages = chat.history
-        .filter(m => selectedMessageIds.has(m.id))
-        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-    if (messages.length === 0) return;
-
-    const chatName = getChatDisplayName(currentChatType, currentChatId);
-    const parts = [];
-    messages.forEach(m => {
-        const snapshot = getFavoriteMessageSnapshot(m);
-        const text = getMessagePreview(snapshot.content, snapshot.plainText, snapshot.contentType) || snapshot.content || '';
-        if (text.trim()) parts.push(text.trim());
-    });
-    const mergedContent = parts.join('\n\n');
-
-    const first = messages[0];
-    const fav = {
-        id: 'fav_merged_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-        messageId: first.id,
-        chatId: currentChatId,
-        chatType: 'private',
-        chatName: chatName,
-        content: mergedContent,
-        timestamp: first.timestamp || Date.now(),
-        favoriteTime: Date.now(),
-        note: '',
-        sender: '多条消息',
-        favoriteBy: 'user',
-        characterId: null,
-        merged: true
-    };
-    if (!db.favorites) db.favorites = [];
-    db.favorites.push(fav);
-    saveData().then(() => {
-        if (typeof exitMultiSelectMode === 'function') exitMultiSelectMode();
-        showToast(`已合并 ${messages.length} 条消息为一条收藏`);
-        if (typeof triggerHapticFeedback === 'function') triggerHapticFeedback('medium');
-    });
-}
-
-// 角色静默收藏（仅收藏用户消息，不提示）
-function addCharacterFavorite(messageId, characterId, note) {
-    const chat = db.characters.find(c => c.id === characterId);
-    if (!chat || !chat.history) return;
-    const message = chat.history.find(m => m.id === messageId);
-    if (!message) return;
-    if (message.role !== 'user') return;
-    const existing = (db.favorites || []).find(
-        f => f.messageId === messageId && f.characterId === characterId && f.favoriteBy === 'character'
-    );
-    if (existing) return;
-    const snapshot = getFavoriteMessageSnapshot(message);
-    const chatName = chat.remarkName || chat.name || '角色';
-    const sender = chat.myName || '我';
-    const fav = {
-        id: 'fav_char_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
-        messageId: message.id,
-        chatId: characterId,
-        chatType: 'private',
-        chatName: chatName,
-        content: snapshot.content,
-        contentType: snapshot.contentType,
-        plainText: snapshot.plainText,
-        timestamp: message.timestamp || Date.now(),
-        favoriteTime: Date.now(),
-        note: (note || '').trim(),
-        sender: sender,
-        favoriteBy: 'character',
-        characterId: characterId
-    };
-    if (!db.favorites) db.favorites = [];
-    db.favorites.push(fav);
-    saveData();
-}
-
-// 打开收藏界面（从更多页进入）
-function openFavoritesScreen() {
-    if (favoritesMultiSelectMode) exitFavoritesMultiSelectMode();
-    currentFavoritesFilter = 'user';
-    renderFavoritesList(currentFavoritesFilter);
-    switchScreen('favorites-screen');
-    const tabs = document.querySelectorAll('.favorites-tab');
-    tabs.forEach(t => {
-        t.classList.toggle('active', t.dataset.filter === currentFavoritesFilter);
-    });
-}
-
-let currentFavoritesFilter = 'user';
-
-// 按 chatKey 分组：私聊用 chatId，群聊用 chatId（仅用户收藏）
-function getFavoritesByChat() {
-    const list = (db.favorites || []).filter(f => f.favoriteBy !== 'character');
-    const map = {};
-    list.forEach(f => {
-        const normalizedType = f.chatType === 'private' ? 'private' : 'legacy';
-        const key = normalizedType + '_' + f.chatId;
-        if (!map[key]) map[key] = { chatId: f.chatId, chatType: normalizedType, chatName: f.chatName || (normalizedType === 'private' ? getChatDisplayName('private', f.chatId) : '历史收藏'), items: [] };
-        map[key].items.push(f);
-    });
-    return Object.values(map).map(g => ({
-        ...g,
-        items: g.items.sort((a, b) => b.favoriteTime - a.favoriteTime)
-    })).sort((a, b) => {
-        const lastA = a.items[0] && a.items[0].favoriteTime || 0;
-        const lastB = b.items[0] && b.items[0].favoriteTime || 0;
-        return lastB - lastA;
-    });
-}
-
-// 按角色分组的角色收藏
-function getCharacterFavoritesByCharacter() {
-    const list = (db.favorites || []).filter(f => f.favoriteBy === 'character');
-    const map = {};
-    list.forEach(f => {
-        const key = f.characterId || f.chatId;
-        if (!map[key]) map[key] = { characterId: key, characterName: f.chatName, items: [] };
-        map[key].items.push(f);
-    });
-    return Object.values(map).map(g => ({
-        ...g,
-        items: g.items.sort((a, b) => b.favoriteTime - a.favoriteTime)
-    })).sort((a, b) => {
-        const lastA = a.items[0] && a.items[0].favoriteTime || 0;
-        const lastB = b.items[0] && b.items[0].favoriteTime || 0;
-        return lastB - lastA;
-    });
-}
-
-// 渲染收藏列表（按 tab：我的收藏 / 角色收藏）
-function renderFavoritesList(filter) {
-    const f = (typeof filter === 'string') ? filter : currentFavoritesFilter;
-    currentFavoritesFilter = f;
-    const container = document.getElementById('favorites-list-container');
-    const emptyEl = document.getElementById('favorites-empty-placeholder');
-    const emptyText = document.getElementById('favorites-empty-text');
-    const emptyHint = document.getElementById('favorites-empty-hint');
-    if (!container) return;
-
-    if (f === 'character') {
-        const groups = getCharacterFavoritesByCharacter();
-        if (groups.length === 0) {
-            container.innerHTML = '';
-            if (emptyEl) emptyEl.style.display = 'block';
-            if (emptyText) emptyText.textContent = '角色还没有收藏任何消息';
-            if (emptyHint) emptyHint.textContent = '在对应角色的设置→功能中开启「角色自主收藏」后，该角色会自主收藏认为重要的用户消息';
-        } else {
-            if (emptyEl) emptyEl.style.display = 'none';
-            container.innerHTML = groups.map(g => {
-                const itemsHtml = g.items.map(fav => {
-                    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
-                    const previewShort = preview.length > 60 ? preview.slice(0, 60) + '…' : preview;
-                    const timeStr = formatFavoriteTime(fav.favoriteTime);
-                    const note = (fav.note || '').trim();
-                    return `
-                    <div class="favorite-card character-favorite" data-favorite-id="${fav.id}">
-                        <div class="favorite-checkbox"></div>
-                        <div class="favorite-card-content">${escapeHtml(previewShort)}</div>
-                        ${note ? `<div class="favorite-card-note"><span class="character-thought-icon">💭</span>${escapeHtml(note)}</div>` : ''}
-                        <div class="favorite-card-meta">
-                            <span class="favorite-card-time">${timeStr}</span>
-                        </div>
-                    </div>`;
-                }).join('');
-                return `
-                <div class="favorites-group character-favorites-group">
-                    <div class="favorites-group-header" style="display: flex; align-items: center;">
-                        <span class="favorites-group-name">${escapeHtml(g.characterName)}</span>
-                        <span class="favorites-group-badge character-favorite-badge">角色收藏</span>
-                        <div style="flex: 1;"></div>
-                        <button class="icon-btn-simple favorites-group-delete-btn" data-chat-id="${g.characterId}" data-favorite-by="character" title="删除该角色所有收藏">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#ff4d4f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                    </div>
-                    <div class="favorites-group-list">${itemsHtml}</div>
-                </div>`;
-            }).join('');
-        }
-    } else {
-        const groups = getFavoritesByChat();
-        if (groups.length === 0) {
-            container.innerHTML = '';
-            if (emptyEl) emptyEl.style.display = 'block';
-            if (emptyText) emptyText.textContent = '还没有收藏任何消息';
-            if (emptyHint) emptyHint.textContent = '在聊天中长按消息，选择「收藏」或「多选收藏」即可添加';
-        } else {
-            if (emptyEl) emptyEl.style.display = 'none';
-            container.innerHTML = groups.map(g => {
-                const typeLabel = g.chatType === 'private' ? '私聊' : '历史';
-                const itemsHtml = g.items.map(fav => {
-                    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
-                    const previewShort = preview.length > 80 ? preview.slice(0, 80) + '…' : preview;
-                    const favoriteTimeStr = formatFavoriteTime(fav.favoriteTime);
-                    const sendTimeStr = formatMessageSendTime(fav.timestamp);
-                    const note = (fav.note || '').trim();
-                    return `
-                    <div class="favorite-card" data-favorite-id="${fav.id}">
-                        <div class="favorite-checkbox"></div>
-                        <div class="favorite-card-content">${escapeHtml(previewShort)}</div>
-                        <div class="favorite-card-meta">
-                            <span class="favorite-card-time">${sendTimeStr}</span>
-                            <span class="favorite-card-time-sep">·</span>
-                            <span class="favorite-card-time">${favoriteTimeStr}</span>
-                            ${note ? `<span class="favorite-card-note-tag">${escapeHtml(note)}</span>` : ''}
-                        </div>
-                    </div>`;
-                }).join('');
-                return `
-                <div class="favorites-group" data-chat-id="${g.chatId}" data-chat-type="${g.chatType}">
-                    <div class="favorites-group-header" style="display: flex; align-items: center;">
-                        <span class="favorites-group-name">${escapeHtml(g.chatName)}</span>
-                        <span class="favorites-group-badge">${typeLabel}</span>
-                        <div style="flex: 1;"></div>
-                        <button class="icon-btn-simple favorites-group-delete-btn" data-chat-id="${g.chatId}" data-chat-type="${g.chatType}" data-favorite-by="user" title="删除该分组所有收藏">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#ff4d4f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                    </div>
-                    <div class="favorites-group-list">${itemsHtml}</div>
-                </div>`;
-            }).join('');
-        }
-    }
-
-    // 点击由 initFavoritesScreen 中容器上的事件委托统一处理
-}
-
-let favoritesMultiSelectMode = false;
-let selectedFavoriteIds = new Set();
-
-function onFavoritesListClick(e) {
-    const card = e.target.closest('.favorite-card');
-    if (!card) return;
-    const favoriteId = card.dataset.favoriteId;
-    if (!favoriteId) return;
-
-    if (favoritesMultiSelectMode) {
-        if (selectedFavoriteIds.has(favoriteId)) {
-            selectedFavoriteIds.delete(favoriteId);
-            const cb = card.querySelector('.favorite-checkbox');
-            if (cb) cb.classList.remove('checked');
-        } else {
-            selectedFavoriteIds.add(favoriteId);
-            const cb = card.querySelector('.favorite-checkbox');
-            if (cb) cb.classList.add('checked');
-        }
-        updateFavoritesSelectCount();
-        return;
-    }
-    openFavoriteDetail(favoriteId);
-}
-
-function updateFavoritesSelectCount() {
-    const el = document.getElementById('favorites-select-count');
-    if (el) el.textContent = `已选 ${selectedFavoriteIds.size} 项`;
-    const deleteBtn = document.getElementById('favorites-batch-delete-btn');
-    if (deleteBtn) deleteBtn.disabled = selectedFavoriteIds.size === 0;
-}
-
-function enterFavoritesMultiSelectMode() {
-    favoritesMultiSelectMode = true;
-    selectedFavoriteIds.clear();
-    const screen = document.getElementById('favorites-screen');
-    const bar = document.getElementById('favorites-multi-select-bar');
-    const deleteBtn = document.getElementById('favorites-delete-btn');
-    if (screen) screen.classList.add('favorites-multi-select-mode');
-    if (bar) bar.style.display = 'flex';
-    if (deleteBtn) deleteBtn.style.display = 'none'; // 进入多选后隐藏删除图标，由底部栏操作
-    updateFavoritesSelectCount();
-}
-
-function exitFavoritesMultiSelectMode() {
-    favoritesMultiSelectMode = false;
-    selectedFavoriteIds.clear();
-    const screen = document.getElementById('favorites-screen');
-    const bar = document.getElementById('favorites-multi-select-bar');
-    const deleteBtn = document.getElementById('favorites-delete-btn');
-    if (screen) screen.classList.remove('favorites-multi-select-mode');
-    if (bar) bar.style.display = 'none';
-    if (deleteBtn) deleteBtn.style.display = '';
-    const container = document.getElementById('favorites-list-container');
-    if (container) container.querySelectorAll('.favorite-checkbox').forEach(cb => cb.classList.remove('checked'));
-    
-    // 恢复全选按钮文本
-    const selectAllBtn = document.getElementById('favorites-select-all-btn');
-    if (selectAllBtn) selectAllBtn.textContent = '全选';
-}
-
-function selectAllFavorites() {
-    const container = document.getElementById('favorites-list-container');
-    if (!container) return;
-    
-    const allCards = container.querySelectorAll('.favorite-card');
-    if (allCards.length === 0) return;
-    
-    if (selectedFavoriteIds.size === allCards.length) {
-        // 如果已经全选，则取消全选
-        selectedFavoriteIds.clear();
-        allCards.forEach(card => {
-            const cb = card.querySelector('.favorite-checkbox');
-            if (cb) cb.classList.remove('checked');
-        });
-        const selectAllBtn = document.getElementById('favorites-select-all-btn');
-        if (selectAllBtn) selectAllBtn.textContent = '全选';
-    } else {
-        // 否则全选
-        allCards.forEach(card => {
-            const id = card.dataset.favoriteId;
-            if (id) {
-                selectedFavoriteIds.add(id);
-                const cb = card.querySelector('.favorite-checkbox');
-                if (cb) cb.classList.add('checked');
+        // 没有足够标签时，用分词结果补充可读关键词；不截取任意长句当标签。
+        if (unique(tags).length < 2) {
+            const stopWords = new Set([
+                '我们', '你们', '他们', '这个', '那个', '就是', '因为', '所以', '但是', '然后', '已经', '还是', '没有',
+                '可以', '觉得', '真的', '现在', '今天', '明天', '昨天', '一下', '什么', '怎么', '不要', '需要', '只是',
+                '一句', '一个', '一些', '这里', '那里', '那天', '以后', '很久', '突然', '回家', '跟你', '跟我'
+            ]);
+            const appendWord = value => {
+                const word = text(value).replace(/^[的了呢吧啊呀哦在把给和与及又都就还再很更最我你他她它]+|[的了呢吧啊呀哦]+$/gu, '');
+                if (!word || stopWords.has(word)) return;
+                if (/^[\u3400-\u9fff]{2,6}$/u.test(word) || /^[A-Za-z][A-Za-z0-9_-]{1,15}$/u.test(word)) tags.push(word);
+            };
+            try {
+                if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                    const segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' });
+                    for (const item of segmenter.segment(source)) {
+                        if (item.isWordLike) appendWord(item.segment);
+                        if (unique(tags).length >= 4) break;
+                    }
+                }
+            } catch (_) {}
+            if (unique(tags).length < 2) {
+                source.split(/[，。！？、；：,.!?;:\s]+/u).forEach(part => appendWord(part));
             }
+        }
+        return unique(tags).slice(0, 8);
+    }
+
+    function favoriteApi() {
+        const M = global.MemoryV5;
+        if (!M?.model || !M?.engine) throw new Error('记忆模块尚未加载');
+        return M;
+    }
+
+    function favoriteTable(chat) {
+        const M = favoriteApi();
+        const store = M.model.ensureStore(chat);
+        const table = M.model.findTable(store, TABLE_ID);
+        if (!table) throw new Error('收藏记忆表不存在');
+        return { M, store, table, rows: store.records[TABLE_ID] ||= [] };
+    }
+
+    function field(table, idOrName) {
+        return table.fields.find(item => item.id === idOrName || item.name === idOrName || item.commonKey === idOrName) || null;
+    }
+
+    function fieldValue(M, record, table, idOrName) {
+        const target = field(table, idOrName);
+        return target ? M.model.getFieldValue(record, target) : undefined;
+    }
+
+    function mergeNotes(left, right) {
+        const values = unique([text(left), text(right)]);
+        return values.join('；');
+    }
+
+    function upsertFavoriteMemory(chat, input, options = {}) {
+        const { M, table, rows } = favoriteTable(chat);
+        const messageKey = text(input.messageKey || input.messageId);
+        const content = text(input.content);
+        if (!content) return { status: 'rejected', reason: '收藏内容为空' };
+        const messageIdField = field(table, 'favorite_message_id');
+        const existing = rows.find(record => messageKey && text(M.model.getFieldValue(record, messageIdField)) === messageKey) || null;
+        const tags = unique(input.tags || deriveFavoriteTags(content, input.note));
+        const stamp = new Date().toISOString();
+        const values = {
+            common_tags: tags,
+            favorite_collectors: unique(input.collectors || ['用户']),
+            favorite_sender: text(input.sender),
+            common_content: content,
+            favorite_note: text(input.note),
+            favorite_message_time: text(input.messageTime) || localDateTimeSeconds(input.timestamp),
+            common_category: '收藏',
+            common_title: '',
+            favorite_message_id: messageKey,
+            favorite_legacy_ids: unique(input.legacyIds || []),
+            favorite_raw_content: text(input.rawContent),
+            favorite_content_type: text(input.contentType || 'text'),
+            favorite_merged: input.merged === true
+        };
+
+        if (existing) {
+            values.common_tags = unique([].concat(existing.tags || [], tags));
+            values.favorite_collectors = unique([].concat(fieldValue(M, existing, table, 'favorite_collectors') || [], input.collectors || ['用户']));
+            values.favorite_note = mergeNotes(fieldValue(M, existing, table, 'favorite_note'), input.note);
+            values.favorite_legacy_ids = unique([].concat(fieldValue(M, existing, table, 'favorite_legacy_ids') || [], input.legacyIds || []));
+            Object.entries(values).forEach(([fieldId, value]) => {
+                const target = field(table, fieldId);
+                if (!target) return;
+                if ((value === '' || (Array.isArray(value) && !value.length)) && fieldValue(M, existing, table, fieldId)) return;
+                M.model.setFieldValue(existing, target, value, { table });
+            });
+            existing.source = '用户明确';
+            existing.time = localDateTimeSeconds();
+            existing.updatedAt = stamp;
+            existing.changedFieldIds = unique(Object.keys(values));
+            return { status: 'updated', record: existing };
+        }
+
+        const record = M.model.normalizeRecord({
+            id: M.util.id('favorite_memory'),
+            tableId: TABLE_ID,
+            source: '用户明确',
+            time: localDateTimeSeconds(),
+            createdAt: stamp,
+            updatedAt: stamp,
+            category: '收藏',
+            title: '',
+            content,
+            tags,
+            values: Object.fromEntries(Object.entries(values).filter(([key]) => !key.startsWith('common_')))
+        }, table);
+        rows.push(record);
+        return { status: 'added', record };
+    }
+
+    async function persistFavoriteChat(chat) {
+        if (!chat?.id) return;
+        if (typeof global.saveCharacter === 'function') await global.saveCharacter(chat.id);
+        else if (typeof saveCharacter === 'function') await saveCharacter(chat.id);
+    }
+
+    function snapshotInput(chat, message, options = {}) {
+        const snapshot = options.snapshot || getFavoriteMessageSnapshot(message);
+        const content = text(options.content || getMessagePreview(snapshot.content, snapshot.plainText, snapshot.contentType) || snapshot.content);
+        return {
+            messageId: message?.id,
+            messageKey: options.messageKey || message?.id,
+            content,
+            rawContent: text(snapshot.content),
+            contentType: snapshot.contentType || 'text',
+            sender: options.sender || getSenderName(chat, message),
+            timestamp: options.timestamp || message?.timestamp || Date.now(),
+            messageTime: options.messageTime || localDateTimeSeconds(options.timestamp || message?.timestamp || Date.now()),
+            note: text(options.note),
+            tags: unique(options.tags || []),
+            merged: options.merged === true,
+            legacyIds: unique(options.legacyIds || []),
+            collectors: unique(options.collectors || ['用户'])
+        };
+    }
+
+    async function addMessageToFavorites(messageId) {
+        const chat = (global.db?.characters || []).find(item => item.id === global.currentChatId);
+        if (!chat || global.currentChatType !== 'private') return;
+        const message = (chat.history || []).find(item => item.id === messageId);
+        if (!message) return;
+        const draft = snapshotInput(chat, message);
+        const result = upsertFavoriteMemory(chat, { ...draft, tags: deriveFavoriteTags(draft.content) });
+        await persistFavoriteChat(chat);
+        global.showToast?.(result.status === 'updated' ? '已更新收藏记忆' : '已收藏到记忆表');
+        global.triggerHapticFeedback?.('light');
+    }
+
+    async function addFavoritesFromSelection() {
+        if (!global.selectedMessageIds || global.selectedMessageIds.size === 0) {
+            global.showToast?.('请至少选择一条消息');
+            return;
+        }
+        const chat = (global.db?.characters || []).find(item => item.id === global.currentChatId);
+        if (!chat || global.currentChatType !== 'private') return;
+        const messages = (chat.history || []).filter(message => global.selectedMessageIds.has(message.id));
+        if (!messages.length) return;
+        let added = 0;
+        let updated = 0;
+        messages.forEach(message => {
+            const draft = snapshotInput(chat, message);
+            const result = upsertFavoriteMemory(chat, { ...draft, tags: deriveFavoriteTags(draft.content) });
+            if (result.status === 'added') added += 1;
+            if (result.status === 'updated') updated += 1;
         });
-        const selectAllBtn = document.getElementById('favorites-select-all-btn');
-        if (selectAllBtn) selectAllBtn.textContent = '取消全选';
+        await persistFavoriteChat(chat);
+        global.exitMultiSelectMode?.();
+        global.showToast?.(`收藏记忆已保存：新增${added}条${updated ? `，更新${updated}条` : ''}`);
+        global.triggerHapticFeedback?.('medium');
     }
-    updateFavoritesSelectCount();
-}
 
-function deleteSelectedFavorites() {
-    if (selectedFavoriteIds.size === 0) return;
-    if (!confirm(`确定要删除选中的 ${selectedFavoriteIds.size} 条收藏吗？`)) return;
-    db.favorites = (db.favorites || []).filter(f => !selectedFavoriteIds.has(f.id));
-    saveData().then(() => {
-        showToast('已删除');
-        exitFavoritesMultiSelectMode();
-        renderFavoritesList(currentFavoritesFilter);
-    });
-}
-
-function deleteFavoritesByGroup(chatType, chatId, favoriteBy) {
-    if (!confirm('确定要删除该分组下的所有收藏记录吗？此操作不可恢复。')) return;
-    
-    db.favorites = (db.favorites || []).filter(f => {
-        if (favoriteBy === 'character') {
-            const key = f.characterId || f.chatId;
-            return !(f.favoriteBy === 'character' && key === chatId);
-        } else {
-            return !(f.favoriteBy !== 'character' && f.chatType === chatType && f.chatId === chatId);
+    async function addFavoritesFromSelectionMerged() {
+        if (!global.selectedMessageIds || global.selectedMessageIds.size === 0) {
+            global.showToast?.('请至少选择一条消息');
+            return;
         }
-    });
-    
-    saveData().then(() => {
-        showToast('已删除该分组所有收藏');
-        renderFavoritesList(currentFavoritesFilter);
-    });
-}
-
-function formatFavoriteTime(ts) {
-    const d = new Date(ts);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 86400000);
-    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    let dateStr;
-    if (dDate.getTime() === today.getTime()) dateStr = '今天';
-    else if (dDate.getTime() === yesterday.getTime()) dateStr = '昨天';
-    else dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    return `${dateStr} ${timeStr} 收藏`;
-}
-
-// 消息发送时间（用于列表展示，不含「收藏」后缀）
-function formatMessageSendTime(ts) {
-    if (!ts) return '';
-    const d = new Date(ts);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 86400000);
-    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    let dateStr;
-    if (dDate.getTime() === today.getTime()) dateStr = '今天';
-    else if (dDate.getTime() === yesterday.getTime()) dateStr = '昨天';
-    else dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    return `${dateStr} ${timeStr} 发送`;
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// 打开收藏详情（查看内容 + 编辑寄语）
-function openFavoriteDetail(favoriteId) {
-    const fav = (db.favorites || []).find(f => f.id === favoriteId);
-    if (!fav) return;
-    const titleEl = document.getElementById('favorite-detail-title');
-    const contentEl = document.getElementById('favorite-detail-content');
-    const metaEl = document.getElementById('favorite-detail-meta');
-    const noteInput = document.getElementById('favorite-detail-note');
-    const deleteBtn = document.getElementById('favorite-detail-delete-btn');
-    const saveNoteBtn = document.getElementById('favorite-detail-save-note-btn');
-    const noteSection = document.querySelector('.favorite-detail-note-section');
-    if (!contentEl || !noteInput) return;
-
-    currentFavoriteDetailId = favoriteId;
-    const preview = getMessagePreview(fav.content, fav.plainText, fav.contentType);
-    const timeStr = formatFavoriteTime(fav.favoriteTime);
-    const msgTimeStr = formatFavoriteTime(fav.timestamp);
-    const isCharacterFavorite = fav.favoriteBy === 'character';
-
-    if (titleEl) titleEl.textContent = fav.chatName;
-    if (metaEl) {
-        if (isCharacterFavorite) {
-            metaEl.textContent = `由 ${fav.chatName} 收藏 · ${timeStr} · 消息时间 ${msgTimeStr} · ${fav.sender}`;
-        } else {
-            metaEl.textContent = `收藏于 ${timeStr} · 消息时间 ${msgTimeStr} · ${fav.sender}`;
-        }
+        const chat = (global.db?.characters || []).find(item => item.id === global.currentChatId);
+        if (!chat || global.currentChatType !== 'private') return;
+        const messages = (chat.history || [])
+            .filter(message => global.selectedMessageIds.has(message.id))
+            .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        if (!messages.length) return;
+        const parts = messages.map(message => snapshotInput(chat, message).content).filter(Boolean);
+        const content = parts.join('\n\n');
+        const tags = deriveFavoriteTags(content);
+        const messageKey = `merged:${messages.map(message => message.id).join('|')}`;
+        const result = upsertFavoriteMemory(chat, {
+            messageKey,
+            messageId: messages[0].id,
+            content,
+            rawContent: content,
+            contentType: 'text',
+            sender: '多条消息',
+            timestamp: messages[0].timestamp || Date.now(),
+            tags,
+            merged: true
+        });
+        await persistFavoriteChat(chat);
+        global.exitMultiSelectMode?.();
+        global.showToast?.(result.status === 'updated' ? '已更新合并收藏记忆' : `已合并${messages.length}条消息到收藏记忆`);
+        global.triggerHapticFeedback?.('medium');
     }
-    contentEl.textContent = preview;
-    noteInput.value = fav.note || '';
-    noteInput.readOnly = isCharacterFavorite;
-    noteInput.placeholder = isCharacterFavorite ? '角色的收藏寄语（只读）' : '写一句想记住的话…';
-    if (saveNoteBtn) saveNoteBtn.style.display = isCharacterFavorite ? 'none' : '';
-    if (noteSection) {
-        const label = noteSection.querySelector('.favorite-detail-note-label');
-        if (label) label.textContent = isCharacterFavorite ? '角色收藏寄语' : '收藏寄语';
+
+    // 角色静默收藏。模型只提供消息ID、标签和寄语，正文始终从当前聊天历史读取。
+    async function addCharacterFavorite(messageId, characterId, note, tags = []) {
+        const chat = (global.db?.characters || []).find(item => item.id === characterId);
+        if (!chat) return;
+        const message = (chat.history || []).find(item => item.id === messageId);
+        if (!message || message.role !== 'user') return;
+        const draft = snapshotInput(chat, message, { note, tags: unique(tags).slice(0, 8), collectors: ['角色'] });
+        upsertFavoriteMemory(chat, { ...draft, tags: draft.tags.length ? draft.tags : deriveFavoriteTags(draft.content, note) });
+        await persistFavoriteChat(chat);
     }
-    if (deleteBtn) {
-        deleteBtn.onclick = () => confirmDeleteFavorite(favoriteId);
+
+    function legacyCharacterId(favorite) {
+        return text(favorite?.characterId || favorite?.chatId);
     }
-    switchScreen('favorites-detail-screen');
-}
 
-
-// 从收藏详情返回原私聊并定位消息。旧群聊/已删除消息会给出明确提示。
-function locateFavoriteSourceMessage() {
-    const fav = (db.favorites || []).find(f => f.id === currentFavoriteDetailId);
-    if (!fav) return;
-    if (fav.chatType && fav.chatType !== 'private') {
-        showToast('这是已退休功能的历史收藏，只能查看内容');
-        return;
+    function legacyMessageKey(favorite) {
+        if (favorite?.merged) return `merged:${text(favorite.id) || text(favorite.messageId)}`;
+        return text(favorite?.messageId) || `legacy:${text(favorite?.id)}`;
     }
-    const chat = (db.characters || []).find(c => c.id === fav.chatId);
-    if (!chat) {
-        showToast('原角色已不存在，收藏内容仍会保留');
-        return;
-    }
-    const message = (chat.history || []).find(m => m.id === fav.messageId);
-    if (!message) {
-        showToast('原消息已删除，收藏副本仍会保留');
-        return;
-    }
-    if (typeof openChatRoom === 'function') openChatRoom(fav.chatId, 'private');
-    else if (typeof switchScreen === 'function') switchScreen('chat-room-screen');
-    setTimeout(() => {
-        const el = document.querySelector(`[data-message-id="${CSS.escape(String(fav.messageId))}"]`) || document.getElementById(String(fav.messageId));
-        if (el) {
-            el.scrollIntoView({behavior:'smooth', block:'center'});
-            el.classList.add('favorite-source-highlight');
-            setTimeout(() => el.classList.remove('favorite-source-highlight'), 1800);
-        } else {
-            showToast('已进入原私聊，请在历史记录中查看');
-        }
-    }, 450);
-}
 
-// 保存收藏寄语
-function saveFavoriteNote() {
-    const id = currentFavoriteDetailId;
-    const noteInput = document.getElementById('favorite-detail-note');
-    if (!id || !noteInput) return;
-    const fav = (db.favorites || []).find(f => f.id === id);
-    if (!fav) return;
-    fav.note = noteInput.value.trim();
-    saveData().then(() => {
-        showToast('寄语已保存');
-        renderFavoritesList(currentFavoritesFilter);
-    });
-}
+    async function migrateLegacyFavoritesToMemory() {
+        const M = favoriteApi();
+        await M.model.migrateAllCharacters();
+        const legacy = Array.isArray(global.db?.favorites) ? global.db.favorites.slice() : [];
+        if (!legacy.length) return { migrated: 0, merged: 0, unmatched: 0, total: 0 };
 
-function confirmDeleteFavorite(favoriteId) {
-    if (!confirm('确定要取消收藏这条消息吗？')) return;
-    db.favorites = (db.favorites || []).filter(f => f.id !== favoriteId);
-    saveData().then(() => {
-        showToast('已取消收藏');
-        switchScreen('favorites-screen');
-        renderFavoritesList(currentFavoritesFilter);
-    });
-}
-
-let currentFavoriteDetailId = null;
-
-// 初始化收藏界面事件
-function initFavoritesScreen() {
-    const backBtn = document.querySelector('#favorites-screen .back-btn');
-    if (backBtn) backBtn.addEventListener('click', () => { exitFavoritesMultiSelectMode(); switchScreen('home-screen'); });
-
-    const detailBackBtn = document.querySelector('#favorites-detail-screen .back-btn');
-    if (detailBackBtn) detailBackBtn.addEventListener('click', () => switchScreen('favorites-screen'));
-
-    const saveNoteBtn = document.getElementById('favorite-detail-save-note-btn');
-    if (saveNoteBtn) saveNoteBtn.addEventListener('click', saveFavoriteNote);
-
-    const locateBtn = document.getElementById('favorite-detail-locate-btn');
-    if (locateBtn) locateBtn.addEventListener('click', locateFavoriteSourceMessage);
-
-    // 收藏列表点击委托：多选时勾选/取消，否则进入详情，处理分组删除
-    const listContainer = document.getElementById('favorites-list-container');
-    if (listContainer) {
-        listContainer.addEventListener('click', (e) => {
-            const deleteGroupBtn = e.target.closest('.favorites-group-delete-btn');
-            if (deleteGroupBtn) {
-                e.stopPropagation();
-                const chatId = deleteGroupBtn.dataset.chatId;
-                const chatType = deleteGroupBtn.dataset.chatType;
-                const favoriteBy = deleteGroupBtn.dataset.favoriteBy;
-                deleteFavoritesByGroup(chatType, chatId, favoriteBy);
+        const changedCharacters = new Set();
+        const unmatched = [];
+        let migrated = 0;
+        let merged = 0;
+        legacy.forEach(favorite => {
+            const characterId = legacyCharacterId(favorite);
+            const chat = (global.db.characters || []).find(item => String(item.id) === characterId);
+            if (!chat || (favorite.chatType && favorite.chatType !== 'private')) {
+                unmatched.push(favorite);
                 return;
             }
-            onFavoritesListClick(e);
+            const content = text(getMessagePreview(favorite.content, favorite.plainText, favorite.contentType) || favorite.content);
+            if (!content) {
+                unmatched.push(favorite);
+                return;
+            }
+            const result = upsertFavoriteMemory(chat, {
+                messageKey: legacyMessageKey(favorite),
+                messageId: favorite.messageId,
+                content,
+                rawContent: text(favorite.content),
+                contentType: favorite.contentType || 'text',
+                sender: favorite.sender || (favorite.favoriteBy === 'character' ? (chat.myName || '我') : '未记录'),
+                timestamp: favorite.timestamp || favorite.favoriteTime || Date.now(),
+                note: favorite.note || '',
+                collectors: [favorite.favoriteBy === 'character' ? '角色' : '用户'],
+                tags: unique(favorite.tags || deriveFavoriteTags(content, favorite.note)),
+                merged: favorite.merged === true,
+                legacyIds: [favorite.id].filter(Boolean)
+            });
+            if (result.status === 'added') migrated += 1;
+            if (result.status === 'updated') merged += 1;
+            changedCharacters.add(chat.id);
         });
+
+        global.db.favoriteMigrationArchive = {
+            version: MIGRATION_VERSION,
+            migratedAt: new Date().toISOString(),
+            sourceCount: legacy.length,
+            migrated,
+            merged,
+            unmatchedCount: unmatched.length,
+            unmatched
+        };
+        global.db.favorites = [];
+        if (typeof saveData === 'function') await saveData();
+        else {
+            for (const characterId of changedCharacters) await persistFavoriteChat(global.db.characters.find(item => item.id === characterId));
+            await global.saveGlobalSettings?.();
+        }
+        console.info('[FavoriteMemory] 旧收藏转换完成', global.db.favoriteMigrationArchive);
+        return { migrated, merged, unmatched: unmatched.length, total: legacy.length };
     }
 
-    // 右上角删除按钮：进入多选删除模式
-    const deleteBtn = document.getElementById('favorites-delete-btn');
-    if (deleteBtn) deleteBtn.addEventListener('click', enterFavoritesMultiSelectMode);
+    async function setupFavoriteMemory() {
+        try {
+            const report = await migrateLegacyFavoritesToMemory();
+            if (report.total > 0) {
+                const unmatched = report.unmatched ? `，未关联 ${report.unmatched} 条已保存在转换档案` : '';
+                global.showToast?.(`旧收藏已转入角色记忆：新增 ${report.migrated} 条，合并 ${report.merged} 条${unmatched}`, 6000);
+            }
+            return report;
+        } catch (error) {
+            console.error('[FavoriteMemory] 初始化或转换失败', error);
+            global.showToast?.(`收藏记忆初始化失败：${error.message || error}`);
+            return { migrated: 0, merged: 0, unmatched: 0, total: 0, error: String(error?.message || error) };
+        }
+    }
 
-    const cancelMultiBtn = document.getElementById('favorites-multi-select-cancel-btn');
-    if (cancelMultiBtn) cancelMultiBtn.addEventListener('click', exitFavoritesMultiSelectMode);
+    // 旧入口仅兼容残留快捷方式，实际直接进入当前角色的收藏记忆表。
+    function openFavoritesScreen() {
+        const current = (global.db?.characters || []).find(item => item.id === global.currentChatId);
+        if (current) {
+            global.openMemoryTableForCharacter?.(current.id, TABLE_ID);
+            return;
+        }
+        global.showToast?.('请先进入一个角色聊天，再打开收藏记忆');
+    }
 
-    const batchDeleteBtn = document.getElementById('favorites-batch-delete-btn');
-    if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', deleteSelectedFavorites);
-    
-    const selectAllBtn = document.getElementById('favorites-select-all-btn');
-    if (selectAllBtn) selectAllBtn.addEventListener('click', selectAllFavorites);
-
-    document.querySelectorAll('.favorites-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const filter = tab.dataset.filter;
-            if (!filter) return;
-            if (favoritesMultiSelectMode) exitFavoritesMultiSelectMode();
-            currentFavoritesFilter = filter;
-            document.querySelectorAll('.favorites-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === filter));
-            renderFavoritesList(filter);
-        });
+    global.FavoriteMemory = Object.freeze({
+        TABLE_ID,
+        deriveTags: deriveFavoriteTags,
+        upsert: upsertFavoriteMemory,
+        migrate: migrateLegacyFavoritesToMemory,
+        setup: setupFavoriteMemory,
+        open: openFavoritesScreen
     });
-}
-
-// 供全局调用
-window.addMessageToFavorites = addMessageToFavorites;
-window.addFavoritesFromSelection = addFavoritesFromSelection;
-window.addFavoritesFromSelectionMerged = addFavoritesFromSelectionMerged;
-window.addCharacterFavorite = addCharacterFavorite;
-window.openFavoritesScreen = openFavoritesScreen;
-window.renderFavoritesList = renderFavoritesList;
+    global.setupFavoriteMemory = setupFavoriteMemory;
+    global.addMessageToFavorites = addMessageToFavorites;
+    global.addFavoritesFromSelection = addFavoritesFromSelection;
+    global.addFavoritesFromSelectionMerged = addFavoritesFromSelectionMerged;
+    global.addCharacterFavorite = addCharacterFavorite;
+    global.openFavoritesScreen = openFavoritesScreen;
+})(window);

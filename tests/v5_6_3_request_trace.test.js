@@ -40,7 +40,8 @@ function resetBrowserGlobals() {
     ]
   });
   const byId = Object.fromEntries(manifest.sources.map(source => [source.sourceId, source]));
-  assert(byId['system.core_rules'].content.includes('核心规则'));
+  assert(byId['system.unclassified'].content.includes('核心规则'));
+  assert.strictEqual(byId['system.core_rules'], undefined);
   assert.strictEqual(byId['character.profile'].content, '角色人设：Alice');
   assert.strictEqual(byId['worldbook.active'].items[0].content, '世界设定正文');
   assert.strictEqual(byId['memory.structured'].content, '结构化记忆正文');

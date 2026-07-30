@@ -1,9 +1,9 @@
-// QuickDock · QWQ 5.6.6：同类来源分组盘点、收藏数量对账、历史无上限与长内容滚动修复。
+// QuickDock · QWQ 5.8.0：只读请求观察；打开悬浮球不会暂停或取消模型请求。
 (() => {
     'use strict';
 
     const STORAGE_KEY = 'ovo_quick_dock_v2';
-    const PACKAGE_VERSION = '5.6.6';
+    const PACKAGE_VERSION = '5.8.0';
     const state = { open: false, panel: 'main', x: null, y: null, status: '', selectedOperationId: null, historyVisible: 8 };
     let rootEl = null;
     let panelEl = null;
@@ -445,44 +445,6 @@
         }).join('')}</div>`;
     }
 
-    function favoriteCountsFromSection(section) {
-        const items = Array.isArray(section?.items) ? section.items : [];
-        const metadataCounts = section?.metadata?.favoriteCounts || {};
-        const content = String(section?.content || '');
-        const title = String(section?.title || '');
-        const readTagCount = tag => {
-            const match = content.match(new RegExp(`<${tag}\\b[^>]*\\bcount=["'](\\d+)["'][^>]*>`, 'i'));
-            return match ? Math.max(0, Number(match[1]) || 0) : null;
-        };
-        const titleMatch = title.match(/用户\s*(\d+)[^\d]+角色\s*(\d+)/i);
-        const capturedUser = items.filter(item => item?.metadata?.favoriteType !== 'character').length;
-        const capturedCharacter = items.filter(item => item?.metadata?.favoriteType === 'character').length;
-        const user = Number.isFinite(Number(metadataCounts.user))
-            ? Math.max(0, Number(metadataCounts.user))
-            : (readTagCount('user_favorites') ?? (titleMatch ? Number(titleMatch[1]) : capturedUser));
-        const character = Number.isFinite(Number(metadataCounts.character))
-            ? Math.max(0, Number(metadataCounts.character))
-            : (readTagCount('character_favorites') ?? (titleMatch ? Number(titleMatch[2]) : capturedCharacter));
-        return { user, character, total: user + character, capturedUser, capturedCharacter };
-    }
-
-    function renderFavoriteSource(section) {
-        const items = Array.isArray(section.items) ? section.items : [];
-        const counts = favoriteCountsFromSection(section);
-        const userItems = items.filter(item => item?.metadata?.favoriteType !== 'character');
-        const characterItems = items.filter(item => item?.metadata?.favoriteType === 'character');
-        return renderGroupedSourceItems([
-            {
-                title: '用户收藏', count: counts.user, items: userItems,
-                titleFor: (_item, index) => `收藏 ${index + 1}`
-            },
-            {
-                title: '角色收藏', count: counts.character, items: characterItems,
-                titleFor: (_item, index) => `收藏 ${index + 1}`
-            }
-        ]);
-    }
-
     function renderStructuredMemorySource(section) {
         const items = Array.isArray(section.items) ? section.items : [];
         const tableMap = new Map();
@@ -521,8 +483,7 @@
             const items = Array.isArray(section.items) ? section.items : [];
             if (!items.length) return '';
             if (sourceMatches(section, 'chat.history')) return renderHistorySourceItems(items);
-            if (sourceMatches(section, 'collection.relevant')) return renderFavoriteSource(section);
-            if (sourceMatches(section, 'memory.structured')) return renderStructuredMemorySource(section);
+            if (['memory.structured', 'identity.core', 'memory.long_term', 'memory.current_related'].some(sourceId => sourceMatches(section, sourceId))) return renderStructuredMemorySource(section);
             return renderGenericSourceItems(section);
         };
 
@@ -536,16 +497,10 @@
                 ? renderItems(section)
                 : (content ? `<pre class="quick-dock-source-content">${escapeHtml(content)}</pre>` : '<p class="quick-dock-operation-muted">本项没有发送文本。</p>');
             const isHistorySection = sourceMatches(section, 'chat.history');
-            const isFavoriteSection = sourceMatches(section, 'collection.relevant');
-            const isStructuredMemory = sourceMatches(section, 'memory.structured');
+            const isStructuredMemory = ['memory.structured', 'identity.core', 'memory.long_term', 'memory.current_related'].some(sourceId => sourceMatches(section, sourceId));
             let countHint = items.length ? `${Math.max(items.length, Number(section.count) || 0)} 条明细` : (hasText ? '实际正文' : (section.reason || '本次未发送'));
             let displayTitle = section.title || meta.title;
             if (isHistorySection) countHint = `${items.length} 条消息`;
-            if (isFavoriteSection) {
-                const counts = favoriteCountsFromSection(section);
-                displayTitle = '收藏盘点';
-                countHint = `用户 ${counts.user} · 角色 ${counts.character} · 共 ${counts.total} 条`;
-            }
             if (isStructuredMemory) {
                 const tableCount = new Set(items.map(item => String(item?.metadata?.tableName || item?.title || '结构化记忆').replace(/\s*·\s*第\s*\d+\s*条\s*$/, ''))).size;
                 countHint = `${tableCount} 个表 · ${items.length} 条记录`;
@@ -707,7 +662,6 @@
                     ${mutationSummaryText(operation.mutationSummary) ? `<p class="quick-dock-operation-mutations">${escapeHtml(mutationSummaryText(operation.mutationSummary))}</p>` : ''}
                     ${options.compact ? '' : `<div class="quick-dock-operation-meta"><span>${escapeHtml(requestLine)}</span><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>`}
                 </button>
-                ${(operation.status === 'running' || operation.status === 'queued') && !options.compact ? `<button type="button" class="quick-dock-operation-cancel" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消</button>` : ''}
             </article>`;
     }
 
@@ -796,7 +750,7 @@
                 <div class="quick-dock-operation-list">${history.length ? history.map(item => renderOperationCard(item, { compact: true })).join('') : '<p class="quick-dock-operation-muted">暂无历史记录。</p>'}</div>
                 ${history.length < allRoots.filter(item => !current || item.id !== current.id).length ? '<button type="button" class="quick-dock-show-more" data-qd-action="show-more-history">显示更多</button>' : ''}
             </section>
-            <p class="quick-dock-status">操作记录与聊天历史是两套数量；进入详情后可查看本次实际请求、实际来源和实际写入内容。</p>`;
+            <p class="quick-dock-status">悬浮球是只读观察面板；打开、关闭或展开详情都不会暂停、取消或重新发送当前请求。操作记录与聊天历史是两套数量。</p>`;
         renderPanelShell('AI 操作中心', `QWQ v${PACKAGE_VERSION} · ${active.length ? `${active.length} 项主操作正在进行` : '当前没有运行中的主操作'}`, body, current);
     }
 
@@ -857,7 +811,6 @@
             <section class="quick-dock-operation-detail-head" data-operation-status="${escapeHtml(meta.className)}">
                 <div><b>${escapeHtml(meta.label)}</b><span>${escapeHtml(formatDuration(operationDuration(operation)))}</span></div>
                 <p>${escapeHtml(operationResultText(operation))}</p>
-                ${(operation.status === 'running' || operation.status === 'queued') ? `<button type="button" data-qd-action="cancel-operation" data-operation-id="${escapeHtml(operation.id)}">取消本次操作</button>` : ''}
             </section>
             <div class="quick-dock-fold-list">
                 ${fold('执行阶段', `${steps.length} 条`, stepContent, true)}
@@ -932,12 +885,6 @@
         if (action === 'open-operation') {
             state.selectedOperationId = trigger?.dataset?.operationId || getOperationRuntime()?.getCurrent?.()?.id || null;
             state.panel = 'operation';
-            render();
-            return;
-        }
-        if (action === 'cancel-operation') {
-            const operationId = trigger?.dataset?.operationId || state.selectedOperationId;
-            if (operationId) getOperationRuntime()?.cancel?.(operationId, '用户从操作中心取消');
             render();
             return;
         }

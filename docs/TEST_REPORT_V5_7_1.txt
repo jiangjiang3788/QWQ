@@ -1,0 +1,31 @@
+QWQ 5.7.1 测试报告
+
+一、语法检查
+- js/chat.js：通过
+- js/db.js：通过
+- js/modules/chat_ai.js：通过
+- js/modules/floating_ball.js：通过
+- js/features/memory_v3/memory_core_v3.js：通过
+- js/features/memory_v3/memory_engine_v3.js：通过
+- js/features/memory_v3/memory_ui_v3.js：通过
+
+二、专项测试
+文件：tests/v5_7_1_request_observer_favorite_limit.test.js
+结果：通过
+覆盖：
+- 聊天“暂停调用”入口已删除；
+- 悬浮球取消操作入口与处理分支已删除；
+- 悬浮球明确为只读观察；
+- 收藏发送上限不再有 max=20；
+- 设置 5 时发送 5 条；
+- 设置 7 时发送 7 条；
+- 设置 0 时取消收藏独立条数上限。
+
+三、完整回归
+共执行 19 个 *.test.js 文件：
+- 18 个通过；
+- 1 个旧 KV 迁移样本测试因私人 fixture 不在代码包中按既有逻辑跳过；
+- 无失败。
+
+四、说明
+内部 AbortController 仍用于超时、网络错误和任务清理。PROMENT 中独立的“取消全部 AI 请求”应急按钮仍保留；本次移除的是聊天和悬浮球中的暂停／取消入口。

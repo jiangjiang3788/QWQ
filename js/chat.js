@@ -333,16 +333,6 @@ function setupChatRoom() {
     getReplyBtn.addEventListener('click', () => getAiReply(currentChatId, currentChatType));
     regenerateBtn.addEventListener('click', handleRegenerate);
 
-    const abortReplyBtn = document.getElementById('abort-reply-btn');
-    if (abortReplyBtn) {
-        abortReplyBtn.addEventListener('click', () => {
-            if (window.OVOChatReplyTasks?.cancel?.(currentChatId, currentChatType)) return;
-            if (typeof currentReplyAbortController !== 'undefined' && currentReplyAbortController) {
-                currentReplyAbortController.abort();
-            }
-        });
-    }
-    
     messageArea.addEventListener('click', (e) => {
         if (isDebugMode) {
             const messageWrapper = e.target.closest('.message-wrapper');

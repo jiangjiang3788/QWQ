@@ -28,7 +28,7 @@ const context = {
     magicRoom: {
       contextPolicy: {
         structuredEnabled: true,
-        structuredBudget: 4,
+        structuredBudget: 115,
         historyEnabled: true,
         historyCount: 2,
         statusEnabled: false
@@ -52,7 +52,7 @@ const body = {
   stream: true,
   temperature: 0.8,
   messages: [
-    { role: 'system', content: 'CORE\n你的当前状态是：在线。\n<memory_live_context>活跃待办</memory_live_context>\n<structured_archive_memory>abcdefgh</structured_archive_memory>\nOUTPUT' },
+    { role: 'system', content: 'CORE\n你的当前状态是：在线。\n<memory_live_context>活跃待办</memory_live_context>\n<structured_archive_memory><structured_memory version="5.7.0">\n【收藏记忆】\n标签: 爸爸\n内容: 爸爸明天复查\n---\n标签: 工作\n内容: 这是一条很长且预算不足时必须整条排除的第二条记录\n</structured_memory></structured_archive_memory>\nOUTPUT' },
     { role: 'user', content: '旧用户消息' },
     { role: 'assistant', content: '旧角色消息' },
     { role: 'user', content: '本轮用户输入' },
@@ -66,7 +66,8 @@ const compiled = context.OVOContextCompiler.compilePrivateChatRequest({
   task: 'chat.reply', provider: 'openai', model: 'test-model', requestBody: body
 });
 assert.strictEqual(compiled.mode, 'compiled');
-assert(compiled.systemPrompt.includes('<structured_archive_memory>\nabcd\n</structured_archive_memory>'), 'structured memory should obey real budget');
+assert(compiled.systemPrompt.includes('内容: 爸爸明天复查'), 'first complete structured record should remain');
+assert(!compiled.systemPrompt.includes('必须整条排除的第二条记录'), 'second record must be excluded whole, never sliced');
 assert(!compiled.systemPrompt.includes('活跃待办'), 'status/live context should be removed when disabled');
 assert(!compiled.systemPrompt.includes('你的当前状态是'), 'character status should be removed when disabled');
 assert.strictEqual(body.messages.some(item => item.content === '旧用户消息'), false, 'history should be trimmed');
@@ -78,7 +79,7 @@ const manifest = context.OVOContextSourceRegistry.buildCompiledManifest({
   task: 'chat.reply', provider: 'openai', model: 'test-model', requestBody: body,
   policy: compiled.policy, compileChanges: compiled.changes,
   promptSources: [
-    { type: 'structured_memory', registryId: 'memory.structured', content: 'abcd', sent: true },
+    { type: 'structured_memory', registryId: 'memory.structured', content: '标签: 爸爸\n内容: 爸爸明天复查', sent: true },
     { type: 'output_rules', registryId: 'output.chat_protocol', content: 'OUTPUT', sent: true }
   ]
 });
@@ -115,7 +116,7 @@ assert.strictEqual(disabledBody.messages.some(item => item.content === '当前�
 assert.strictEqual(disabledBody.messages.some(item => item.content === '<thinking>'), true);
 
 const indexText = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-assert(indexText.includes('js/core/context_compiler.js?v=566'), 'compiler must load before chat requests');
+assert(indexText.includes('js/core/context_compiler.js?v=570'), 'compiler must load before chat requests');
 const chatText = fs.readFileSync(path.join(root, 'js/modules/chat_ai.js'), 'utf8');
 assert(chatText.includes('buildCompiledManifest'), 'private chat should use compiled manifest');
 assert(chatText.includes('WorldBookContextProvider'), 'chat module should call the worldbook domain provider');

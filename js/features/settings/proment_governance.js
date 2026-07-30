@@ -163,8 +163,13 @@
             return;
         }
         if (kind === 'user') { global.switchScreen?.('my-profile-screen'); return; }
-        if (kind === 'reminder') { global.openReminderScreen?.(); if (!global.openReminderScreen) global.switchScreen?.('reminder-screen'); return; }
-        if (kind === 'collection') { global.switchScreen?.('favorites-screen'); return; }
+        if (kind === 'collection') {
+            if (char && typeof global.openMemoryTableForCharacter === 'function') {
+                const tableId = global.MemoryV5?.constants?.FAVORITE_TABLE_ID || 'v5_message_favorites';
+                global.openMemoryTableForCharacter(char.id, tableId);
+            } else global.showToast?.('请先进入一个角色聊天');
+            return;
+        }
         global.showToast?.('该来源没有独立管理页面');
     }
 
