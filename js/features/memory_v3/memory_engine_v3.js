@@ -155,10 +155,89 @@
         });
     }
 
+    function canonical(value) {
+        if (Array.isArray(value)) return value.map(canonical);
+        if (value && typeof value === 'object') {
+            return Object.keys(value).sort().reduce((out, key) => {
+                out[key] = canonical(value[key]);
+                return out;
+            }, {});
+        }
+        return value === undefined ? null : value;
+    }
+
+    function snapshotsEqual(left, right) {
+        return JSON.stringify(canonical(left || null)) === JSON.stringify(canonical(right || null));
+    }
+
+    function ensureRoundTransaction(store, roundId) {
+        const normalizedRoundId = text(roundId);
+        if (!normalizedRoundId) return null;
+        const transactions = store.roundTransactions ||= [];
+        let transaction = transactions.find(entry => entry.roundId === normalizedRoundId) || null;
+        if (!transaction) {
+            const stamp = new Date().toISOString();
+            transaction = {
+                roundId: normalizedRoundId,
+                status: 'applied',
+                createdAt: stamp,
+                updatedAt: stamp,
+                mutations: []
+            };
+            transactions.push(transaction);
+            const max = Number(M.constants.MAX_ROUND_TRANSACTIONS) || 300;
+            if (transactions.length > max) transactions.splice(0, transactions.length - max);
+        }
+        return transaction;
+    }
+
+    function recordRoundMutationInStore(store, roundId, mutation) {
+        if (!store || !text(roundId) || !mutation) return null;
+        const tableId = text(mutation.tableId);
+        const recordId = text(mutation.recordId);
+        if (!tableId || !recordId) return null;
+        const transaction = ensureRoundTransaction(store, roundId);
+        if (!transaction) return null;
+        let current = transaction.mutations.find(item => item.tableId === tableId && item.recordId === recordId) || null;
+        if (!current) {
+            current = {
+                tableId,
+                recordId,
+                before: mutation.before ? clone(mutation.before) : null,
+                after: mutation.after ? clone(mutation.after) : null
+            };
+            transaction.mutations.push(current);
+        } else {
+            current.after = mutation.after ? clone(mutation.after) : null;
+        }
+        if (snapshotsEqual(current.before, current.after)) {
+            transaction.mutations = transaction.mutations.filter(item => item !== current);
+        }
+        transaction.status = 'applied';
+        transaction.updatedAt = new Date().toISOString();
+        if (!transaction.mutations.length) {
+            store.roundTransactions = (store.roundTransactions || []).filter(item => item !== transaction);
+            return null;
+        }
+        return transaction;
+    }
+
+    function recordRoundMutation(chat, roundId, mutation) {
+        const store = ensureStore(chat);
+        return recordRoundMutationInStore(store, roundId, mutation);
+    }
+
+    function getRoundTransaction(chat, roundId) {
+        const store = ensureStore(chat);
+        const transaction = (store.roundTransactions || []).find(entry => entry.roundId === text(roundId));
+        return transaction ? clone(transaction) : null;
+    }
+
     function applyOperations(chat, operations, options = {}) {
         const store = ensureStore(chat);
         const origin = options.origin || 'manual';
         const roundId = options.roundId || null;
+        const transactional = origin === 'ai' && !!roundId;
         const changed = [];
         const checked = [];
         const rejected = [];
@@ -272,6 +351,14 @@
                 if (timeField) setFieldValue(record, timeField, localStamp, { table });
                 record.changedFieldIds = unique(record.changedFieldIds.concat(table.viewMode === 'rows' ? ['common_source', 'common_time'] : []));
                 rows.push(record);
+                if (transactional) {
+                    recordRoundMutationInStore(store, roundId, {
+                        tableId: table.id,
+                        recordId: record.id,
+                        before: null,
+                        after: record
+                    });
+                }
                 changed.push({ tableId: table.id, recordId: record.id, action: 'add', fields: clone(record.changedFieldIds) });
                 return;
             }
@@ -291,6 +378,7 @@
                 return;
             }
 
+            const beforeUpdate = transactional ? clone(target) : null;
             const changedFields = [];
             for (const [fieldId, value] of Object.entries(resolved)) {
                 const field = table.fields.find(item => item.id === fieldId);
@@ -310,10 +398,132 @@
             target.updatedAt = stamp;
             target.roundId = roundId;
             target.changedFieldIds = unique(changedFields.concat(table.viewMode === 'rows' ? ['common_source', 'common_time'] : []));
+            if (transactional) {
+                recordRoundMutationInStore(store, roundId, {
+                    tableId: table.id,
+                    recordId: target.id,
+                    before: beforeUpdate,
+                    after: target
+                });
+            }
             changed.push({ tableId: table.id, recordId: target.id, action: 'update', fields: clone(target.changedFieldIds) });
         });
 
         return { changed, checked, rejected };
+    }
+
+    function currentRecordSnapshot(store, mutation) {
+        const rows = store.records[mutation.tableId] || [];
+        const record = rows.find(item => item.id === mutation.recordId) || null;
+        return record ? clone(record) : null;
+    }
+
+    function validateRoundTransition(store, transaction, direction) {
+        const conflicts = [];
+        const steps = transaction.mutations.map(mutation => {
+            const source = direction === 'rollback' ? mutation.after : mutation.before;
+            const target = direction === 'rollback' ? mutation.before : mutation.after;
+            const current = currentRecordSnapshot(store, mutation);
+            if (snapshotsEqual(current, source)) return { mutation, target, action: 'apply' };
+            if (snapshotsEqual(current, target)) return { mutation, target, action: 'noop' };
+            conflicts.push({
+                tableId: mutation.tableId,
+                recordId: mutation.recordId,
+                reason: '记录在本轮之后又被修改，无法安全覆盖'
+            });
+            return { mutation, target, action: 'conflict' };
+        });
+        return { ok: conflicts.length === 0, conflicts, steps };
+    }
+
+    function applyTransitionStep(store, step) {
+        if (step.action !== 'apply') return false;
+        const mutation = step.mutation;
+        const rows = store.records[mutation.tableId] ||= [];
+        const index = rows.findIndex(item => item.id === mutation.recordId);
+        if (!step.target) {
+            if (index >= 0) rows.splice(index, 1);
+            return index >= 0;
+        }
+        const table = findTable(store, mutation.tableId);
+        const restored = table ? normalizeRecord(step.target, table) : clone(step.target);
+        if (index >= 0) rows[index] = restored;
+        else rows.push(restored);
+        return true;
+    }
+
+    function refreshAfterRoundTransition(chat, roundId, direction) {
+        const state = ensureSidecarState(chat);
+        if (direction === 'rollback' && state.lastApplyReport?.roundId === roundId) {
+            state.lastApplyReport = null;
+        }
+        refreshStateBar(chat);
+        refreshMemoryUiIfOpen();
+    }
+
+    async function transitionRound(chat, roundId, direction, options = {}) {
+        const normalizedRoundId = text(roundId);
+        if (!chat || !normalizedRoundId) {
+            return { ok: true, found: false, direction, roundId: normalizedRoundId, changed: [], conflicts: [] };
+        }
+        const store = ensureStore(chat);
+        const transaction = (store.roundTransactions || []).find(entry => entry.roundId === normalizedRoundId) || null;
+        if (!transaction) {
+            return { ok: true, found: false, direction, roundId: normalizedRoundId, changed: [], conflicts: [] };
+        }
+        const validation = validateRoundTransition(store, transaction, direction);
+        if (!validation.ok) {
+            return { ok: false, found: true, direction, roundId: normalizedRoundId, changed: [], conflicts: validation.conflicts };
+        }
+        const steps = direction === 'rollback' ? validation.steps.slice().reverse() : validation.steps;
+        const changed = [];
+        steps.forEach(step => {
+            if (applyTransitionStep(store, step)) {
+                changed.push({ tableId: step.mutation.tableId, recordId: step.mutation.recordId });
+            }
+        });
+        transaction.status = direction === 'rollback' ? 'rolled_back' : 'applied';
+        transaction.updatedAt = new Date().toISOString();
+        refreshAfterRoundTransition(chat, normalizedRoundId, direction);
+        if (options.persist !== false) await persist(chat);
+        return { ok: true, found: true, direction, roundId: normalizedRoundId, changed, conflicts: [] };
+    }
+
+    async function transitionRounds(chat, roundIds, direction, options = {}) {
+        const uniqueRoundIds = unique((Array.isArray(roundIds) ? roundIds : [roundIds]).map(text).filter(Boolean));
+        const sequence = direction === 'rollback' ? uniqueRoundIds.slice().reverse() : uniqueRoundIds.slice();
+        const completed = [];
+        const results = [];
+        for (const roundId of sequence) {
+            const result = await transitionRound(chat, roundId, direction, { persist: false });
+            results.push(result);
+            if (!result.ok) {
+                const compensationDirection = direction === 'rollback' ? 'restore' : 'rollback';
+                for (const completedRoundId of completed.slice().reverse()) {
+                    await transitionRound(chat, completedRoundId, compensationDirection, { persist: false });
+                }
+                return { ok: false, direction, results, conflicts: result.conflicts || [] };
+            }
+            if (result.found) completed.push(roundId);
+        }
+        if (options.persist !== false && completed.length) await persist(chat);
+        return { ok: true, direction, results, conflicts: [] };
+    }
+
+    async function rollbackRound(chat, roundId, options = {}) {
+        return transitionRound(chat, roundId, 'rollback', options);
+    }
+
+    async function restoreRound(chat, roundId, options = {}) {
+        return transitionRound(chat, roundId, 'restore', options);
+    }
+
+    async function rollbackRounds(chat, roundIds, options = {}) {
+        return transitionRounds(chat, roundIds, 'rollback', options);
+    }
+
+    async function restoreRounds(chat, roundIds, options = {}) {
+        return transitionRounds(chat, roundIds, 'restore', options);
     }
 
     function formatValue(field, value) {
@@ -954,6 +1164,12 @@ ${tables.map(table => tablePrompt(chat, table, store)).join('\n\n')}
 
     M.engine = Object.freeze({
         applyOperations,
+        recordRoundMutation,
+        getRoundTransaction,
+        rollbackRound,
+        restoreRound,
+        rollbackRounds,
+        restoreRounds,
         formatRecordText,
         getContextProjects,
         getContextBlock,

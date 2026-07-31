@@ -2074,7 +2074,8 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
                 if (!eligibleIds.has(command.messageId) || seen.has(command.messageId)) continue;
                 seen.add(command.messageId);
                 const result = await addCharacterFavorite(command.messageId, targetChatId, command.note, command.tags, {
-                    eligibleMessageIds: Array.from(eligibleIds)
+                    eligibleMessageIds: Array.from(eligibleIds),
+                    roundId: memoryRoundToken?.id || null
                 });
                 if (result?.status === 'rejected') {
                     console.info('[FavoriteMemory] 已忽略无法执行的收藏动作：', result.reason);
@@ -2612,6 +2613,34 @@ async function handleAiReplyContent(fullResponse, chat, targetChatId, targetChat
     }
 }
 
+function collectMemoryRoundIds(messages, fallbackMessage = null) {
+    const ids = [];
+    (Array.isArray(messages) ? messages : []).forEach(message => {
+        const roundId = String(message?.memoryRoundId || '').trim();
+        if (roundId && !ids.includes(roundId)) ids.push(roundId);
+    });
+    const fallbackRoundId = String(fallbackMessage?.memoryRoundId || '').trim();
+    if (!ids.length && fallbackRoundId) ids.push(fallbackRoundId);
+    return ids;
+}
+
+async function rollbackRegeneratedMemory(chat, messages, fallbackMessage = null) {
+    if (currentChatType !== 'private' || !window.MemoryTableSidecar?.rollbackRounds) {
+        return { ok: true, roundIds: [] };
+    }
+    const roundIds = collectMemoryRoundIds(messages, fallbackMessage);
+    if (!roundIds.length) return { ok: true, roundIds: [] };
+    const result = await window.MemoryTableSidecar.rollbackRounds(chat, roundIds, { persist: false });
+    if (!result?.ok) {
+        return {
+            ok: false,
+            roundIds,
+            message: '本轮记忆在回复后又被修改，已停止重回，避免覆盖后续或手动修改。'
+        };
+    }
+    return { ok: true, roundIds };
+}
+
 async function handleRegenerate() {
     if (isGenerating) return;
 
@@ -2664,19 +2693,30 @@ async function handleRegenerate() {
                     role: chat.history[i].role,
                     senderId: chat.history[i].senderId,
                     timestamp: chat.history[i].timestamp,
+                    memoryRoundId: chat.history[i].memoryRoundId || undefined,
                     parts: chat.history[i].parts ? JSON.parse(JSON.stringify(chat.history[i].parts)) : undefined
                 });
             }
             // 避免重复保存相同内容
             const lastSaved = userMsg._regenVersions[userMsg._regenVersions.length - 1];
             const newContent = aiReplies.map(r => r.content).join('');
-            if (!lastSaved || lastSaved.replies.map(r => r.content).join('') !== newContent) {
+            const memoryRoundIds = collectMemoryRoundIds(aiReplies, userMsg);
+            const lastRoundIds = Array.isArray(lastSaved?.memoryRoundIds)
+                ? lastSaved.memoryRoundIds
+                : collectMemoryRoundIds(lastSaved?.replies || [], null);
+            const sameMemoryRounds = JSON.stringify(lastRoundIds) === JSON.stringify(memoryRoundIds);
+            if (!lastSaved || lastSaved.replies.map(r => r.content).join('') !== newContent || !sameMemoryRounds) {
                 userMsg._regenVersions.push({
                     replies: aiReplies,
+                    memoryRoundIds,
                     savedAt: Date.now()
                 });
             }
-            await _doRegenerate(chat, lastUserMessageIndex);
+            const regenerateOk = await _doRegenerate(chat, lastUserMessageIndex);
+            if (!regenerateOk && userMsg._regenVersions?.length) {
+                const latest = userMsg._regenVersions[userMsg._regenVersions.length - 1];
+                if (latest?.replies === aiReplies) userMsg._regenVersions.pop();
+            }
         });
 
         newNo.addEventListener('click', async () => {
@@ -2692,11 +2732,19 @@ async function handleRegenerate() {
 
 async function _doRegenerate(chat, lastUserMessageIndex) {
     const originalLength = chat.history.length;
+    const userMessage = chat.history[lastUserMessageIndex] || null;
+    const discardedReplies = chat.history.slice(lastUserMessageIndex + 1);
+    const rollbackResult = await rollbackRegeneratedMemory(chat, discardedReplies, userMessage);
+    if (!rollbackResult.ok) {
+        showToast(rollbackResult.message, 6000);
+        return false;
+    }
+
     chat.history.splice(lastUserMessageIndex + 1);
 
     if (chat.history.length === originalLength) {
         showToast('未找到AI的回复，无法重新生成。');
-        return;
+        return false;
     }
     
     if (currentChatType === 'private') {
@@ -2709,6 +2757,7 @@ async function _doRegenerate(chat, lastUserMessageIndex) {
     renderMessages(false, true); 
 
     await getAiReply(currentChatId, currentChatType);
+    return true;
 }
 
 /** 将偷看记录中的单条应用内容格式化为可读摘要，供系统提示使用 */

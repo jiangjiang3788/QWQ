@@ -1,8 +1,8 @@
-QWQ V5.8.3 完整文件清单
+QWQ V5.8.3 重回联动记忆事务系统修改完整文件清单
 格式：路径 | 字节数 | SHA-256
 
 CHANGELOG_MEMORY_V5.txt | 9621 | 6ff6efde63d0df54f5c826ba1d4f4733d9c2f14abc9b5573387d18f552b7055c
-PACKAGE_MANIFEST.txt | 850 | d332ffe54d5eea2022f8f67cc2237aa038e52db6b6ceac86b14cecaf60546207
+PACKAGE_MANIFEST.txt | 1357 | 2f0a8da0ccc331b952d3605117ce224b06d49a93de20dc157a3e29091d59d5c2
 VERSION.txt | 6 | 8d051f489bcda0c465d05511b526f187cfd4d60cffde7fae12a90cc1ddba853e
 architecture/ui_budgets.json | 483 | 415672e3da22a7e1a7bf3f7b3a614c91ccb36abab2c085bfaffec2d5529f3e5d
 contacts.css | 17685 | 34eeeac6c069db73358e5ef4f40926d0fd0fad6292643485bff535430c7c8b99
@@ -47,6 +47,7 @@ docs/TEST_REPORT_V5_8_0.txt | 1965 | 5bbc565863823565467049e4a1600f016223e72aecc
 docs/TEST_REPORT_V5_8_1.txt | 2460 | 118bfbb267835275b361baa4f92fa0bcf173e17eb45bd3e8d854939919705bf8
 docs/TEST_REPORT_V5_8_2.txt | 1702 | c84dac2b2564e393496b134c8de8374873cd6321a47497984bb96d17220ac518
 docs/TEST_REPORT_V5_8_3.txt | 1158 | c8e017cc354f653cf8aa4a19b1394ead29966d2dc49cd79f7600db11980425b8
+docs/TEST_REPORT_V5_8_3_REGENERATE_MEMORY_TRANSACTION.txt | 1006 | 9ccf2008dec01f195b8ccdf26c8c3fa96382932679997b8939049c256e5d483e
 docs/UPGRADE_V5_1_1.md | 1223 | 5afaa320c4e0a94ddcbc154513913dc5318169e4d5578f20e41b311d21a62da0
 docs/UPGRADE_V5_2.md | 1660 | f30711e894b923a0bbb3bb5b81e94cb1291330e6a41615f2a742fa7a6dc29012
 docs/UPGRADE_V5_3.md | 2473 | 5dc099f1d334401a9d99cc07eccdcbb19c90180cba99cd5d96cb5be1b6312e52
@@ -68,7 +69,8 @@ docs/UPGRADE_V5_8_0_ROLEPLAY_PROMPT_PROJECTS.md | 6313 | 5b549c768f656d5aafec341
 docs/UPGRADE_V5_8_1_UNIFIED_PROMPT_MODES.md | 6808 | b9e0ea2aa70669f2c98e05c0d3e59126086d859545cb562941faac88b1d37880
 docs/UPGRADE_V5_8_2_RARE_AUTONOMOUS_FAVORITES.md | 3620 | 9b395a7f931ad70df146919eb9de253e26795dbddbbee740befd2bc598088390
 docs/UPGRADE_V5_8_3_EMOTIONAL_FAVORITE_ACTION.md | 2275 | dcac0f22969c9301dee5e879a3ea9372b5882d03cbb1544bdccd93da27b3b7df
-index.html | 308403 | 1b435a47b7bb512b977b9015e8e7325da5c130968b4ae0de8c79a17ce856b01c
+docs/UPGRADE_V5_8_3_REGENERATE_MEMORY_TRANSACTION.md | 3064 | df4c79f1b7f73f8a942e11618aa5e674333a57329d88091f4d47465ad5ea4302
+index.html | 308530 | ed8bae10ff008431be710228cc591bd7656e4ae7d60d106209c342307b89322f
 js/app_registry.js | 13307 | d6fc5a6f928a971328a5c5e16354e85d02a1a065abd0c869247f7732afa6056d
 js/chat.js | 45997 | 7886c069eb6c20d8df971bfbb812e098210396716743cdeb87e131119fac6831
 js/core/ai_request_gateway.js | 3709 | b52579e708e1f9e72ffdeda5a8f597acc218a174dbd5dcc63eafd3a4c4a8ecaf
@@ -83,9 +85,9 @@ js/core/ui_components.js | 4156 | 965bfddf4190e634df8976ebf5fec786fb7295e51de0a5
 js/db.js | 68629 | 3f55097d02a646da614243b66e960bb4823e2ab3c1095ff2c481f551f89a3db9
 js/features/apps/api_workspace.js | 6269 | d08ce382065889f493776063bec808683acec3526adc53ee3ee4975293fc5650
 js/features/apps/settings_hub.js | 8390 | 150f1228cc16961be208b4f8643b2f028e61bab6ff7609fe4415f9d45afdb150
-js/features/memory_v3/memory_compat_v3.js | 2945 | 66e516167948e1236d9ab46a683d89d160e2356a67879afd1eded780fd696a15
-js/features/memory_v3/memory_core_v3.js | 51587 | f713fafa16b503f36eeda7cb3eb9191c826570ae85b587aa8ce2ce4fb951b23f
-js/features/memory_v3/memory_engine_v3.js | 52993 | 669c950ef03a5e8d715f3af886d5a7b18dc64f6cebb850b52076b46f49e7c16b
+js/features/memory_v3/memory_compat_v3.js | 3528 | 39999c98dcebee9682dea1bc9843723d20b1a4fee79aa69ff49bb42786b411bd
+js/features/memory_v3/memory_core_v3.js | 53615 | fe12a425db3809d466f405f107da6ff978959b1338d656d12a099ca8a10a8330
+js/features/memory_v3/memory_engine_v3.js | 62624 | 8b28b0365ab1bf078e1a9968c774bb99f84182982909875a565cb17cab85874f
 js/features/memory_v3/memory_rounds_v3.js | 6273 | a53d5a21dff67a4bd70a14eefc32a47ed14a79233c00a1519cf5d097ac05aa70
 js/features/memory_v3/memory_ui_v3.js | 62967 | 683f24f585c9773007c6b685b8bfdaee39826f1bb221d08b4a981e2e17a45b1f
 js/features/settings/api_controller.js | 68786 | 24b8c3b5447a19f60b730d21b09576a0ff2e51a3e6feb25d731280ed98ee1de1
@@ -112,19 +114,19 @@ js/modules/backup_service.js | 12704 | 60ad57f8528a56f46f42eb76b58979bf98f6b8ffc
 js/modules/battery_interaction.js | 11838 | 64dd35b1cfdc832e60488a237b085735dbdb7cc5fe917ac26e44a6d760d76c50
 js/modules/block_system.js | 34577 | 040bebe1b206aa2f09936ffa04440eda9c253a3f24b27b5cf773ad895c3200f8
 js/modules/character_create.js | 2904 | 49a250eb381e96a0e0233d636cc609c81bddce0548b2cf157c4476a46ae1afdd
-js/modules/chat_ai.js | 212868 | 4bfb08b46f52c85682223031a49590f2879847f263d80f593a4c00f3c9138086
+js/modules/chat_ai.js | 215252 | ca45e13a3a27c0aeefa90a06989a2edfdb4df07473f00e1e8e896b5bba604c06
 js/modules/chat_features.js | 18114 | e91e2d248d9fc17d7fc0fc6ad4aaab79ba13b5e5d24c652a35a127b93843d1ff
 js/modules/chat_list.js | 22910 | 8422433b4d4267e74934c81b7472419eeb11814b34c92ae964c33e251ab420ba
 js/modules/chat_ops.js | 72054 | 639ce7f2458611af756270e5a2838e0cb3750d0b274794ec4cc0316bb203f909
 js/modules/chat_render.js | 126547 | c14deb8472be4c4acee6572110b57c3f788ffa8498bc3d12675695b24ac92f80
 js/modules/cot_settings.js | 43395 | 900f8408bb527580985c00da0fd96d5cb7e2a83bc83b78015a3a3fbef93c3322
-js/modules/favorites.js | 23955 | 1b99fe797fe134e8e8cd74343ab9e3d22bb4ab75175079a25e3da76229827563
+js/modules/favorites.js | 24863 | 9958918eac459e52a4f3452b0eff2823e6e79f3ca46e8f0a29101201e04e8b1d
 js/modules/floating_ball.js | 59101 | 3809aa38c437e36cf8f0c1ed4173d3550c852ae71c7aa71e0ab90a4a3025aa85
 js/modules/journal.js | 90381 | 6f7809aff3af7a876a2178c208bf8465c3f9e85f5b3c88bb1d3deee10a9e0f11
 js/modules/keep_alive.js | 18756 | 6bbe6dacde1b6d2571437d73197096d66da98cb28d51141cfb1502c1e68c968e
 js/modules/message_content.js | 2230 | c22cd855c49b1f061ea9cee091971688f2c76b9527ebb7f00ec21436fc5e7983
 js/modules/more_menu.js | 14646 | 620f0435694344657c8e8a1d2ad82709d2571f99c10e49738fc33c69f4cbad4a
-js/modules/msg_version.js | 12903 | 57fa508bce9685c6f76915a73b8104b47bcd68ea93edb15a40cbb13858f497dc
+js/modules/msg_version.js | 16069 | 15f493e60f4f741bf3be10150ef4052c7d72b4e228905374102d88fb02a0bbeb
 js/modules/music_player.js | 83386 | 1eb23669972fced241d1ba6edfc67fe33b1ffd333ddda738b30a3a4496ffafb8
 js/modules/operation_runtime.js | 46603 | 0c5088e92fef182574a080b242c5dc528b3ada315cf74eeae34287e0dfe7f021
 js/modules/quick_dock_action_bar.js | 1704 | 23b73a248596874eb10aafa8f060de597a736bd7bb296739287063160e373ced
@@ -171,6 +173,8 @@ tests/v5_7_2_retire_reminder_todo.test.js | 4946 | e8656e24878dd97739c8e47b19d5f
 tests/v5_8_0_roleplay_prompt_projects.test.js | 9100 | 3557c6df50ee78eeb1e1842acd23fda1ffed7b6ffb72b2f9a1d5e55a956d9939
 tests/v5_8_1_unified_prompt_modes.test.js | 12327 | 44d4c7904833fd55233478a91edbfdff58e2fcb63e8be886449f9670951b9264
 tests/v5_8_3_emotional_favorite_action.test.js | 5150 | 215a7bc26557eb2365a9dfd2fe7e0005e38b448b0ef51eea079399b2add54a71
+tests/v5_8_3_regenerate_memory_flow.test.js | 5450 | 4b3d623c5647d26fd1f77e80f2f91ff24a181f86d224dcfe8328ead26b02bcaa
+tests/v5_8_3_regenerate_memory_transaction.test.js | 6265 | 1169fc18c6155bab0498efe74fda66380a8f4cb3c489e22f6207b8eae4481b27
 vendor/README.txt | 326 | 2e1451a51fc4f0cb61e2ef9527b371b66873eaafe3b1b76130f4bd3b7a0f7dbe
 vendor/Sortable.min.js | 44581 | ca68430703c4f5960e90735867c6e94d29b5a3de37107d8100e5a301007e9e6e
 vendor/crypto-js.min.js | 198114 | f0bdf25fda8f9af5920c82070775864c7e1166eb31540d030e6b80a382e39ce1

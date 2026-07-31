@@ -1,6 +1,6 @@
 // --- 消息版本管理模块 (js/modules/msg_version.js) ---
 // 重说时保存的AI回复版本存储在用户消息的 _regenVersions 数组中
-// 每个版本: { replies: [{content, role, senderId, timestamp, parts}], savedAt }
+// 每个版本: { replies: [{content, role, senderId, timestamp, memoryRoundId, parts}], memoryRoundIds, savedAt }
 
 const MsgVersion = {
     init() {
@@ -73,6 +73,32 @@ const MsgVersion = {
         return chat.history.filter(m => m._regenVersions && m._regenVersions.length > 0);
     },
 
+    _roundIdsFromReplies(replies, fallbackMessage = null) {
+        const ids = [];
+        (Array.isArray(replies) ? replies : []).forEach(reply => {
+            const roundId = String(reply?.memoryRoundId || '').trim();
+            if (roundId && !ids.includes(roundId)) ids.push(roundId);
+        });
+        const fallbackRoundId = String(fallbackMessage?.memoryRoundId || '').trim();
+        if (!ids.length && fallbackRoundId) ids.push(fallbackRoundId);
+        return ids;
+    },
+
+    async _switchMemoryRounds(chat, currentRoundIds, targetRoundIds) {
+        const api = window.MemoryTableSidecar;
+        if (currentChatType !== 'private' || !api?.rollbackRounds || !api?.restoreRounds) return { ok: true };
+        const rollbackResult = await api.rollbackRounds(chat, currentRoundIds, { persist: false });
+        if (!rollbackResult?.ok) {
+            return { ok: false, message: '当前版本的记忆后来又被修改，无法安全切换。' };
+        }
+        const restoreResult = await api.restoreRounds(chat, targetRoundIds, { persist: false });
+        if (!restoreResult?.ok) {
+            await api.restoreRounds(chat, currentRoundIds, { persist: false });
+            return { ok: false, message: '目标版本的记忆与当前数据冲突，已保持原版本不变。' };
+        }
+        return { ok: true };
+    },
+
     /** 恢复某个版本：删除当前AI回复，插入旧版本的回复 */
     async restoreVersion(userMsgId, versionIndex) {
         const chat = this._getChat();
@@ -101,18 +127,41 @@ const MsgVersion = {
                 role: chat.history[i].role,
                 senderId: chat.history[i].senderId,
                 timestamp: chat.history[i].timestamp,
+                memoryRoundId: chat.history[i].memoryRoundId || undefined,
                 parts: chat.history[i].parts ? JSON.parse(JSON.stringify(chat.history[i].parts)) : undefined
             });
         }
+        let addedCurrentVersion = null;
         if (currentReplies.length > 0) {
             const currentContent = currentReplies.map(r => r.content).join('');
-            const alreadySaved = userMsg._regenVersions.some(v => v.replies.map(r => r.content).join('') === currentContent);
+            const currentMemoryRoundIds = this._roundIdsFromReplies(currentReplies, userMsg);
+            const alreadySaved = userMsg._regenVersions.some(v => {
+                const versionRoundIds = Array.isArray(v.memoryRoundIds) && v.memoryRoundIds.length
+                    ? v.memoryRoundIds
+                    : this._roundIdsFromReplies(v.replies, null);
+                return v.replies.map(r => r.content).join('') === currentContent
+                    && JSON.stringify(versionRoundIds) === JSON.stringify(currentMemoryRoundIds);
+            });
             if (!alreadySaved) {
-                userMsg._regenVersions.push({
+                addedCurrentVersion = {
                     replies: currentReplies,
+                    memoryRoundIds: currentMemoryRoundIds,
                     savedAt: Date.now()
-                });
+                };
+                userMsg._regenVersions.push(addedCurrentVersion);
             }
+        }
+
+        const currentRoundIds = this._roundIdsFromReplies(currentReplies, userMsg);
+        const targetRoundIds = Array.isArray(version.memoryRoundIds) && version.memoryRoundIds.length
+            ? version.memoryRoundIds
+            : this._roundIdsFromReplies(version.replies, null);
+        const memorySwitch = await this._switchMemoryRounds(chat, currentRoundIds, targetRoundIds);
+        if (!memorySwitch.ok) {
+            if (addedCurrentVersion) {
+                userMsg._regenVersions = userMsg._regenVersions.filter(item => item !== addedCurrentVersion);
+            }
+            return memorySwitch;
         }
 
         // 删除当前AI回复
@@ -125,9 +174,12 @@ const MsgVersion = {
             role: r.role,
             senderId: r.senderId,
             timestamp: r.timestamp,
+            memoryRoundId: r.memoryRoundId || (targetRoundIds.length === 1 ? targetRoundIds[0] : undefined),
             parts: r.parts ? JSON.parse(JSON.stringify(r.parts)) : undefined
         }));
         chat.history.splice(userMsgIdx + 1, 0, ...newMsgs);
+        if (targetRoundIds.length) userMsg.memoryRoundId = targetRoundIds[targetRoundIds.length - 1];
+        else delete userMsg.memoryRoundId;
 
         if (currentChatType === 'private' && typeof recalculateChatStatus === 'function') {
             recalculateChatStatus(chat);
@@ -138,6 +190,7 @@ const MsgVersion = {
             currentPage = 1;
             renderMessages(false, true);
         }
+        return { ok: true };
     },
 
     /** 删除某个版本 */
@@ -269,9 +322,13 @@ const MsgVersion = {
 
             item.querySelector('.msg-ver-switch-btn').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                await this.restoreVersion(userMsgId, ver._index);
+                const result = await this.restoreVersion(userMsgId, ver._index);
+                if (result?.ok === false) {
+                    showToast(result.message || '版本切换失败', 6000);
+                    return;
+                }
                 document.getElementById('msg-version-detail-modal').classList.remove('visible');
-                showToast('已恢复到选定版本');
+                showToast('已恢复到选定版本，关联记忆也已同步');
             });
 
             item.querySelector('.msg-ver-delete-btn').addEventListener('click', async (e) => {

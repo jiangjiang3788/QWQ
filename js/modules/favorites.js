@@ -195,6 +195,7 @@
         };
 
         if (existing) {
+            const beforeFavorite = options.roundId ? M.util.clone(existing) : null;
             values.common_tags = unique([].concat(existing.tags || [], tags));
             values.favorite_collectors = unique([].concat(fieldValue(M, existing, table, 'favorite_collectors') || [], input.collectors || ['用户']));
             values.favorite_note = mergeNotes(fieldValue(M, existing, table, 'favorite_note'), input.note);
@@ -208,7 +209,16 @@
             existing.source = '用户明确';
             existing.time = localDateTimeSeconds();
             existing.updatedAt = stamp;
+            existing.roundId = options.roundId || existing.roundId || null;
             existing.changedFieldIds = unique(Object.keys(values));
+            if (options.roundId && typeof M.engine.recordRoundMutation === 'function') {
+                M.engine.recordRoundMutation(chat, options.roundId, {
+                    tableId: TABLE_ID,
+                    recordId: existing.id,
+                    before: beforeFavorite,
+                    after: existing
+                });
+            }
             return { status: 'updated', record: existing };
         }
 
@@ -219,6 +229,7 @@
             time: localDateTimeSeconds(),
             createdAt: stamp,
             updatedAt: stamp,
+            roundId: options.roundId || null,
             category: '收藏',
             title: '',
             content,
@@ -226,6 +237,14 @@
             values: Object.fromEntries(Object.entries(values).filter(([key]) => !key.startsWith('common_')))
         }, table);
         rows.push(record);
+        if (options.roundId && typeof M.engine.recordRoundMutation === 'function') {
+            M.engine.recordRoundMutation(chat, options.roundId, {
+                tableId: TABLE_ID,
+                recordId: record.id,
+                before: null,
+                after: record
+            });
+        }
         return { status: 'added', record };
     }
 
@@ -338,7 +357,7 @@
         const result = upsertFavoriteMemory(chat, {
             ...draft,
             tags: draft.tags.length ? draft.tags : deriveFavoriteTags(draft.content, draft.note).slice(0, 6)
-        });
+        }, { roundId: options.roundId || null });
         if (result.status === 'added' || result.status === 'updated') await persistFavoriteChat(chat);
         return result;
     }

@@ -12,6 +12,12 @@
         processReply: M.engine.processReply,
         completeRound: M.engine.completeRound,
         ensureState: M.engine.ensureSidecarState,
+        recordRoundMutation: M.engine.recordRoundMutation,
+        getRoundTransaction: M.engine.getRoundTransaction,
+        rollbackRound: M.engine.rollbackRound,
+        restoreRound: M.engine.restoreRound,
+        rollbackRounds: M.engine.rollbackRounds,
+        restoreRounds: M.engine.restoreRounds,
         migratePolicies: M.model.ensureStore,
         refreshStateBar: M.engine.refreshStateBar,
         bindUi() { M.engine.refreshStateBar(M.model.getCurrentChat()); }
@@ -39,6 +45,13 @@
 
     global.MemoryTableSidecar = sidecarApi;
     global.MemoryTablePolicy = policyApi;
+    global.MemoryRoundTransactions = Object.freeze({
+        get: M.engine.getRoundTransaction,
+        rollback: M.engine.rollbackRound,
+        restore: M.engine.restoreRound,
+        rollbackMany: M.engine.rollbackRounds,
+        restoreMany: M.engine.restoreRounds
+    });
     global.OvoMemory = facade;
     global.ensureMemoryTableState = M.model.ensureStore;
     global.setupMemoryTableScreen = M.ui.setup;

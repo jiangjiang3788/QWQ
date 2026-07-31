@@ -4,6 +4,7 @@
     const M = global.MemoryV5 = global.MemoryV5 || {};
     const VERSION = '5.8.3';
     const STORE_VERSION = 3;
+    const MAX_ROUND_TRANSACTIONS = 300;
     const FAVORITE_TABLE_ID = 'v5_message_favorites';
 
     const GROUPS = new Set(['core', 'current', 'short', 'medium', 'long']);
@@ -424,7 +425,8 @@
             version: STORE_VERSION,
             settings: defaultSettings(),
             tables,
-            records: Object.fromEntries(tables.map(table => [table.id, []]))
+            records: Object.fromEntries(tables.map(table => [table.id, []])),
+            roundTransactions: []
         };
     }
 
@@ -615,6 +617,43 @@
         return { table, records: [singleton] };
     }
 
+    function normalizeRoundTransactions(input, tables) {
+        const source = Array.isArray(input)
+            ? input
+            : (input && typeof input === 'object' ? Object.values(input) : []);
+        const tableMap = new Map((Array.isArray(tables) ? tables : []).map(table => [table.id, table]));
+        const normalized = [];
+        const seen = new Set();
+
+        source.forEach(entry => {
+            const roundId = text(entry?.roundId || entry?.id);
+            if (!roundId || seen.has(roundId)) return;
+            const mutations = [];
+            (Array.isArray(entry?.mutations) ? entry.mutations : []).forEach(mutation => {
+                const tableId = text(mutation?.tableId);
+                const recordId = text(mutation?.recordId);
+                const table = tableMap.get(tableId);
+                if (!table || !recordId) return;
+                const before = mutation?.before ? normalizeRecord(mutation.before, table) : null;
+                const after = mutation?.after ? normalizeRecord(mutation.after, table) : null;
+                if (!before && !after) return;
+                mutations.push({ tableId, recordId, before, after });
+            });
+            if (!mutations.length) return;
+            seen.add(roundId);
+            normalized.push({
+                roundId,
+                status: entry?.status === 'rolled_back' ? 'rolled_back' : 'applied',
+                createdAt: text(entry?.createdAt) || nowIso(),
+                updatedAt: text(entry?.updatedAt) || text(entry?.createdAt) || nowIso(),
+                mutations
+            });
+        });
+
+        normalized.sort((left, right) => text(left.updatedAt).localeCompare(text(right.updatedAt)));
+        return normalized.slice(-MAX_ROUND_TRANSACTIONS);
+    }
+
     function normalizeStore(store) {
         const settings = Object.assign(defaultSettings(), clone(store?.settings || {}));
         const previousStage = text(store?.settings?.stage);
@@ -663,7 +702,8 @@
                 records[table.id] = incoming.map(record => normalizeRecord(record, table));
             }
         });
-        return { version: STORE_VERSION, settings, tables, records };
+        const roundTransactions = normalizeRoundTransactions(store?.roundTransactions, tables);
+        return { version: STORE_VERSION, settings, tables, records, roundTransactions };
     }
 
     function ensureStore(chat) {
@@ -841,7 +881,7 @@
 
     M.VERSION = VERSION;
     M.STORE_VERSION = STORE_VERSION;
-    M.constants = Object.freeze({ GROUPS, VIEW_MODES, WRITE_POLICIES, CONTEXT_POLICIES, SOURCES, FIELD_TYPES, COMMON_KEYS, COMMON_FIELD_DEFS, FAVORITE_TABLE_ID });
+    M.constants = Object.freeze({ GROUPS, VIEW_MODES, WRITE_POLICIES, CONTEXT_POLICIES, SOURCES, FIELD_TYPES, COMMON_KEYS, COMMON_FIELD_DEFS, FAVORITE_TABLE_ID, MAX_ROUND_TRANSACTIONS });
     M.util = Object.freeze({ clone, text, esc, unique, nowIso, localDateTimeSeconds, id, clampTitle });
     M.model = Object.freeze({
         defaultSettings,
@@ -856,6 +896,7 @@
         normalizeTable,
         normalizeRecord,
         normalizeStore,
+        normalizeRoundTransactions,
         migrateLegacyKvTable,
         ensureStore,
         migrateAllCharacters,
